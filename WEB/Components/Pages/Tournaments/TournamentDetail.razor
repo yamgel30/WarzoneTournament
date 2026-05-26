@@ -45,6 +45,8 @@ else
                     {
                         <RadzenButton Text="Check In" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Large" />
                     }
+                    <RadzenButton Text="Gestionar" Icon="build" ButtonStyle="ButtonStyle.Warning"
+                                  Click="@(() => NavManager.NavigateTo($"/admin/setup/{_tournament.Id}"))" />
                     <RadzenButton Text="Admin Controls" Icon="settings" ButtonStyle="ButtonStyle.Light"
                                   Click="@(() => _showAdmin = !_showAdmin)" />
                 </div>

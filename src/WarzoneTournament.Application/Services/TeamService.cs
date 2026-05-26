@@ -268,4 +268,42 @@ public class TeamService : ITeamService
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
     }
+
+    public async Task<Result<IReadOnlyList<TournamentTeamStatusDto>>> GetTeamsWithTournamentStatusAsync(Guid tournamentId, CancellationToken ct = default)
+    {
+        var allTeams = await _uow.Teams.GetAllAsync(ct);
+        var registeredEntries = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
+        var registeredMap = registeredEntries.ToDictionary(tt => tt.TeamId);
+
+        var result = new List<TournamentTeamStatusDto>();
+        foreach (var team in allTeams.OrderBy(t => t.Name))
+        {
+            registeredMap.TryGetValue(team.Id, out var entry);
+            var playerCount = await _uow.TeamPlayers.CountAsync(tp => tp.TeamId == team.Id && tp.IsActive, ct);
+            result.Add(new TournamentTeamStatusDto
+            {
+                TeamId = team.Id,
+                TeamName = team.Name,
+                TeamTag = team.Tag,
+                LogoUrl = team.LogoUrl,
+                PlayerCount = playerCount,
+                IsRegistered = entry is not null,
+                CheckedIn = entry?.CheckedIn ?? false,
+                CheckInTime = entry?.CheckInTime
+            });
+        }
+
+        return Result.Success<IReadOnlyList<TournamentTeamStatusDto>>(result);
+    }
+
+    public async Task<Result> UnregisterTeamFromTournamentAsync(Guid teamId, Guid tournamentId, CancellationToken ct = default)
+    {
+        var entry = await _uow.TournamentTeams.FirstOrDefaultAsync(
+            tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
+        if (entry is null) return Result.Failure("Team is not registered for this tournament.");
+
+        _uow.TournamentTeams.Remove(entry);
+        await _uow.SaveChangesAsync(ct);
+        return Result.Success();
+    }
 }
