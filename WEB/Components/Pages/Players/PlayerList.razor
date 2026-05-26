@@ -111,8 +111,7 @@
     private Platform? _platformFilter;
     private bool _onlyBanned;
 
-    private readonly List<(string Label, Platform Value)> _platforms =
-        Enum.GetValues<Platform>().Select(p => (p.ToString(), p)).ToList();
+    private readonly Platform[] _platforms = Enum.GetValues<Platform>();
 
     protected override async Task OnInitializedAsync()
     {
