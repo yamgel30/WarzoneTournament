@@ -1,0 +1,156 @@
+@page "/"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Domain.Enums
+@inject ITournamentService TournamentService
+@inject NavigationManager NavManager
+
+<PageTitle>Dashboard - Warzone Tournament</PageTitle>
+
+<div class="dashboard-page">
+    <div class="page-header">
+        <h1 class="page-title">Tournament Dashboard</h1>
+        <RadzenButton Text="New Tournament" Icon="add" ButtonStyle="ButtonStyle.Primary"
+                      Click="@(() => NavManager.NavigateTo("/tournaments/create"))" />
+    </div>
+
+    @if (_loading)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <div class="stats-grid">
+            <div class="stat-card stat-card--active">
+                <div class="stat-icon">🏆</div>
+                <div class="stat-value">@_totalTournaments</div>
+                <div class="stat-label">Total Tournaments</div>
+            </div>
+            <div class="stat-card stat-card--live">
+                <div class="stat-icon">⚡</div>
+                <div class="stat-value">@_activeTournaments</div>
+                <div class="stat-label">Active Tournaments</div>
+            </div>
+            <div class="stat-card stat-card--teams">
+                <div class="stat-icon">👥</div>
+                <div class="stat-value">@_registrationTournaments</div>
+                <div class="stat-label">Open Registration</div>
+            </div>
+            <div class="stat-card stat-card--complete">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value">@_completedTournaments</div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="dashboard-section">
+                <h2>Active Tournaments</h2>
+                @if (_activeTournamentList.Any())
+                {
+                    <RadzenDataList Data="@_activeTournamentList" WrapItems="false">
+                        <Template Context="tournament">
+                            <div class="tournament-card" @onclick="@(() => NavManager.NavigateTo($"/tournaments/{tournament.Id}"))">
+                                <div class="tournament-card__header">
+                                    <span class="tournament-name">@tournament.Name</span>
+                                    <RadzenBadge Text="@tournament.StatusName"
+                                                 BadgeStyle="@GetStatusBadgeStyle(tournament.Status)" />
+                                </div>
+                                <div class="tournament-card__info">
+                                    <span>📅 @(tournament.StartDate?.ToString("MMM dd, yyyy") ?? "TBD")</span>
+                                    <span>👥 @tournament.RegisteredTeamsCount / @tournament.MaxTeams teams</span>
+                                    <span>🎮 @tournament.PlatformName</span>
+                                    @if (tournament.PrizePool.HasValue)
+                                    {
+                                        <span>💰 $@tournament.PrizePool.Value.ToString("N0")</span>
+                                    }
+                                </div>
+                            </div>
+                        </Template>
+                    </RadzenDataList>
+                }
+                else
+                {
+                    <div class="empty-state">
+                        <p>No active tournaments. <a href="/tournaments/create">Create one!</a></p>
+                    </div>
+                }
+            </div>
+
+            <div class="dashboard-section">
+                <h2>Recent Tournaments</h2>
+                <RadzenDataGrid Data="@_recentTournaments" TItem="TournamentListDto"
+                                AllowPaging="false" Style="height:300px">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="TournamentListDto" Property="Name" Title="Name" Width="180px" />
+                        <RadzenDataGridColumn TItem="TournamentListDto" Property="TypeName" Title="Type" Width="100px" />
+                        <RadzenDataGridColumn TItem="TournamentListDto" Title="Status" Width="100px">
+                            <Template Context="t">
+                                <RadzenBadge Text="@t.StatusName" BadgeStyle="@GetStatusBadgeStyle(t.Status)" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="TournamentListDto" Property="RegisteredTeamsCount" Title="Teams" Width="80px" />
+                    </Columns>
+                </RadzenDataGrid>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private int _totalTournaments = 0;
+    private int _activeTournaments = 0;
+    private int _registrationTournaments = 0;
+    private int _completedTournaments = 0;
+    private List<TournamentListDto> _activeTournamentList = new();
+    private List<TournamentListDto> _recentTournaments = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardDataAsync();
+    }
+
+    private async Task LoadDashboardDataAsync()
+    {
+        _loading = true;
+        try
+        {
+            var allResult = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
+            {
+                PageSize = 100,
+                SortDescending = true
+            });
+
+            if (allResult.IsSuccess)
+            {
+                var all = allResult.Value.Items;
+                _totalTournaments = allResult.Value.TotalCount;
+                _activeTournaments = all.Count(t => t.Status == TournamentStatus.InProgress);
+                _registrationTournaments = all.Count(t => t.Status == TournamentStatus.Registration);
+                _completedTournaments = all.Count(t => t.Status == TournamentStatus.Completed);
+
+                _activeTournamentList = all
+                    .Where(t => t.Status == TournamentStatus.InProgress || t.Status == TournamentStatus.CheckIn)
+                    .Take(5)
+                    .ToList();
+
+                _recentTournaments = all.Take(10).ToList();
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private BadgeStyle GetStatusBadgeStyle(TournamentStatus status) => status switch
+    {
+        TournamentStatus.InProgress => BadgeStyle.Danger,
+        TournamentStatus.Registration => BadgeStyle.Success,
+        TournamentStatus.CheckIn => BadgeStyle.Warning,
+        TournamentStatus.Completed => BadgeStyle.Info,
+        TournamentStatus.Cancelled => BadgeStyle.Secondary,
+        _ => BadgeStyle.Light
+    };
+}

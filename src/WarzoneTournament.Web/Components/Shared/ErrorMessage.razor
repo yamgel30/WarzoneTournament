@@ -1,0 +1,10 @@
+@if (!string.IsNullOrEmpty(Message))
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="my-2">
+        @Message
+    </RadzenAlert>
+}
+
+@code {
+    [Parameter] public string? Message { get; set; }
+}

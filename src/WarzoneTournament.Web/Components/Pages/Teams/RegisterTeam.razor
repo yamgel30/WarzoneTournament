@@ -1,0 +1,203 @@
+@page "/teams/register"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Team
+@using WarzoneTournament.Application.DTOs.Player
+@using WarzoneTournament.Domain.Enums
+@inject ITeamService TeamService
+@inject IPlayerService PlayerService
+@inject NavigationManager NavManager
+
+<PageTitle>Register Team - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Register Team</h1>
+        <RadzenButton Text="Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/teams"))" />
+    </div>
+
+    <RadzenCard class="form-card">
+        <RadzenTemplateForm TItem="CreateTeamDto" Data="@_model" Submit="@OnSubmit">
+            <div class="form-grid">
+                <div class="form-field">
+                    <RadzenLabel Text="Team Name *" />
+                    <RadzenTextBox @bind-Value="_model.Name" Placeholder="Team Name" Style="width:100%" />
+                </div>
+                <div class="form-field">
+                    <RadzenLabel Text="Team Tag (max 10 chars)" />
+                    <RadzenTextBox @bind-Value="_model.Tag" Placeholder="e.g. WZ1" MaxLength="10" Style="width:100%" />
+                </div>
+                <div class="form-field">
+                    <RadzenLabel Text="Platform *" />
+                    <RadzenDropDown @bind-Value="_model.PreferredPlatform"
+                                   Data="@Enum.GetValues<Platform>()"
+                                   Style="width:100%" />
+                </div>
+                <div class="form-field">
+                    <RadzenLabel Text="Country" />
+                    <RadzenTextBox @bind-Value="_model.Country" Placeholder="e.g. United States" Style="width:100%" />
+                </div>
+                <div class="form-field">
+                    <RadzenLabel Text="Contact Email" />
+                    <RadzenTextBox @bind-Value="_model.ContactEmail" Placeholder="team@example.com" Style="width:100%" />
+                </div>
+                <div class="form-field">
+                    <RadzenLabel Text="Team Logo URL" />
+                    <RadzenTextBox @bind-Value="_model.LogoUrl" Placeholder="https://..." Style="width:100%" />
+                </div>
+
+                <div class="form-field form-field--full">
+                    <RadzenLabel Text="Captain (Discord ID or Username) *" />
+                    <div class="player-search">
+                        <RadzenTextBox @bind-Value="_captainSearch" Placeholder="Search player..."
+                                       Style="width:280px" @oninput="@SearchPlayers" />
+                        @if (_foundPlayers.Any())
+                        {
+                            <div class="player-suggestions">
+                                @foreach (var player in _foundPlayers)
+                                {
+                                    <div class="player-suggestion" @onclick="@(() => SelectCaptain(player))">
+                                        @player.Username
+                                        @if (!string.IsNullOrEmpty(player.DiscordUsername))
+                                        { <small>(@player.DiscordUsername)</small> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (_selectedCaptain is not null)
+                        {
+                            <RadzenBadge Text="@($"Captain: {_selectedCaptain.Username}")"
+                                         BadgeStyle="BadgeStyle.Success" />
+                        }
+                    </div>
+                </div>
+
+                <div class="form-field form-field--full">
+                    <RadzenLabel Text="Team Members" />
+                    <div class="players-selection">
+                        @foreach (var player in _selectedPlayers)
+                        {
+                            <div class="player-tag">
+                                @player.Username
+                                <button @onclick="@(() => RemovePlayer(player))" class="remove-btn">×</button>
+                            </div>
+                        }
+                        <div class="player-search">
+                            <RadzenTextBox @bind-Value="_playerSearch" Placeholder="Add player..."
+                                           Style="width:240px" @oninput="@SearchPlayersForRoster" />
+                            @if (_rosterSearchResults.Any())
+                            {
+                                <div class="player-suggestions">
+                                    @foreach (var player in _rosterSearchResults)
+                                    {
+                                        <div class="player-suggestion" @onclick="@(() => AddPlayer(player))">
+                                            @player.Username
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <ErrorMessage Message="@_errorMessage" />
+
+            <div class="form-actions">
+                <RadzenButton ButtonType="ButtonType.Submit" Text="Register Team"
+                              Icon="group_add" ButtonStyle="ButtonStyle.Primary"
+                              Disabled="@_saving" />
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => NavManager.NavigateTo("/teams"))" />
+            </div>
+        </RadzenTemplateForm>
+    </RadzenCard>
+</div>
+
+@code {
+    private CreateTeamDto _model = new();
+    private bool _saving = false;
+    private string? _errorMessage;
+    private string? _captainSearch;
+    private string? _playerSearch;
+    private List<PlayerDto> _foundPlayers = new();
+    private List<PlayerDto> _rosterSearchResults = new();
+    private PlayerDto? _selectedCaptain;
+    private List<PlayerDto> _selectedPlayers = new();
+    private List<PlayerDto> _allPlayers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await PlayerService.GetPlayersAsync();
+        if (result.IsSuccess)
+            _allPlayers = result.Value.ToList();
+    }
+
+    private void SearchPlayers(ChangeEventArgs e)
+    {
+        var term = e.Value?.ToString()?.ToLower();
+        _foundPlayers = string.IsNullOrWhiteSpace(term)
+            ? new()
+            : _allPlayers.Where(p => p.Username.ToLower().Contains(term) ||
+                (p.DiscordUsername?.ToLower().Contains(term) ?? false)).Take(5).ToList();
+    }
+
+    private void SearchPlayersForRoster(ChangeEventArgs e)
+    {
+        var term = e.Value?.ToString()?.ToLower();
+        _rosterSearchResults = string.IsNullOrWhiteSpace(term)
+            ? new()
+            : _allPlayers.Where(p => p.Username.ToLower().Contains(term) &&
+                !_selectedPlayers.Any(s => s.Id == p.Id) &&
+                p.Id != _selectedCaptain?.Id).Take(5).ToList();
+    }
+
+    private void SelectCaptain(PlayerDto player)
+    {
+        _selectedCaptain = player;
+        _model.CaptainId = player.Id;
+        _captainSearch = player.Username;
+        _foundPlayers.Clear();
+    }
+
+    private void AddPlayer(PlayerDto player)
+    {
+        if (!_selectedPlayers.Any(p => p.Id == player.Id))
+        {
+            _selectedPlayers.Add(player);
+            _model.PlayerIds = _selectedPlayers.Select(p => p.Id).ToList();
+        }
+        _playerSearch = null;
+        _rosterSearchResults.Clear();
+    }
+
+    private void RemovePlayer(PlayerDto player)
+    {
+        _selectedPlayers.Remove(player);
+        _model.PlayerIds = _selectedPlayers.Select(p => p.Id).ToList();
+    }
+
+    private async Task OnSubmit()
+    {
+        if (_selectedCaptain is null)
+        {
+            _errorMessage = "Please select a captain.";
+            return;
+        }
+
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            var result = await TeamService.CreateTeamAsync(_model);
+            if (result.IsSuccess)
+                NavManager.NavigateTo($"/teams/{result.Value.Id}");
+            else
+                _errorMessage = result.Error;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

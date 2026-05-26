@@ -1,0 +1,312 @@
+@page "/admin/evidence"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Evidence
+@using WarzoneTournament.Domain.Enums
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IEvidenceService EvidenceService
+@inject NavigationManager NavManager
+@implements IAsyncDisposable
+
+<PageTitle>Evidence Review - Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Evidence Review</h1>
+        <div class="header-actions">
+            @if (_pendingCount > 0)
+            {
+                <RadzenBadge Text="@_pendingCount.ToString() Pending"
+                             BadgeStyle="BadgeStyle.Warning" />
+            }
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                          Click="@LoadPendingEvidenceAsync" />
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!_pendingEvidence.Any())
+    {
+        <div class="empty-state">
+            <div class="empty-state__icon">✅</div>
+            <h3>No Pending Evidence</h3>
+            <p>All evidence submissions have been reviewed.</p>
+        </div>
+    }
+    else
+    {
+        <div class="evidence-review-layout">
+            <div class="evidence-list">
+                @foreach (var evidence in _pendingEvidence)
+                {
+                    <div class="evidence-item @(_selectedEvidence?.Id == evidence.Id ? "evidence-item--selected" : "")"
+                         @onclick="@(() => SelectEvidence(evidence))">
+                        <div class="evidence-thumb-container">
+                            <img src="@evidence.ImageUrl" alt="Evidence" class="evidence-thumb"
+                                 loading="lazy" />
+                        </div>
+                        <div class="evidence-meta">
+                            <div class="evidence-team">@evidence.SubmittedByTeamName</div>
+                            <div class="evidence-date">@evidence.CreatedAt.ToString("MMM dd HH:mm")</div>
+                            <RadzenBadge Text="@evidence.StatusName"
+                                         BadgeStyle="@GetEvidenceBadgeStyle(evidence.Status)" />
+                            @if (evidence.SourceType == EvidenceSourceType.DiscordBot)
+                            {
+                                <RadzenBadge Text="Discord" BadgeStyle="BadgeStyle.Secondary" />
+                            }
+                            @if (evidence.OcrProcessed && evidence.OcrResult is not null)
+                            {
+                                <RadzenBadge Text="OCR ✓" BadgeStyle="BadgeStyle.Info" />
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (_selectedEvidence is not null)
+            {
+                <div class="evidence-detail">
+                    <div class="evidence-image-preview">
+                        <img src="@_selectedEvidence.ImageUrl" alt="Evidence Screenshot"
+                             class="evidence-full-image" />
+                    </div>
+
+                    <div class="evidence-info-panel">
+                        <h3>Evidence Details</h3>
+                        <div class="info-grid">
+                            <span class="info-label">Match ID</span>
+                            <span class="info-value">@_selectedEvidence.MatchId.ToString()[..8]...</span>
+                            <span class="info-label">Team</span>
+                            <span class="info-value">@_selectedEvidence.SubmittedByTeamName</span>
+                            <span class="info-label">Submitted by</span>
+                            <span class="info-value">@(_selectedEvidence.SubmittedByPlayerUsername ?? "Unknown")</span>
+                            <span class="info-label">Source</span>
+                            <span class="info-value">@_selectedEvidence.SourceTypeName</span>
+                            <span class="info-label">Submitted</span>
+                            <span class="info-value">@_selectedEvidence.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</span>
+                            @if (_selectedEvidence.FileSizeBytes.HasValue)
+                            {
+                                <span class="info-label">File Size</span>
+                                <span class="info-value">@(_selectedEvidence.FileSizeBytes.Value / 1024)KB</span>
+                            }
+                        </div>
+
+                        @if (_selectedEvidence.OcrResult is not null)
+                        {
+                            <div class="ocr-results">
+                                <h4>OCR Results (@(_selectedEvidence.OcrResult.OcrProvider))</h4>
+                                <div class="ocr-confidence">
+                                    <span>Confidence: </span>
+                                    <RadzenProgressBar Value="@((double)_selectedEvidence.OcrResult.ConfidenceScore * 100)"
+                                                       ShowValue="true" Style="width:150px" />
+                                </div>
+                                @if (_selectedEvidence.OcrResult.ExtractedPlacement.HasValue)
+                                {
+                                    <div class="ocr-field">
+                                        <strong>Placement:</strong> #@_selectedEvidence.OcrResult.ExtractedPlacement.Value
+                                    </div>
+                                }
+                                @if (_selectedEvidence.OcrResult.ExtractedKills.HasValue)
+                                {
+                                    <div class="ocr-field">
+                                        <strong>Kills:</strong> @_selectedEvidence.OcrResult.ExtractedKills.Value
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ExtractedTeamName))
+                                {
+                                    <div class="ocr-field">
+                                        <strong>Team:</strong> @_selectedEvidence.OcrResult.ExtractedTeamName
+                                    </div>
+                                }
+                                @if (_selectedEvidence.OcrResult.RequiresManualReview)
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
+                                        Low confidence — manual review recommended.
+                                    </RadzenAlert>
+                                }
+                            </div>
+                        }
+
+                        <div class="review-actions">
+                            <h4>Admin Decision</h4>
+                            <div class="form-field">
+                                <RadzenLabel Text="Notes" />
+                                <RadzenTextArea @bind-Value="_reviewNotes" Rows="3"
+                                                Placeholder="Add notes (optional for approval, required for rejection)"
+                                                Style="width:100%" />
+                            </div>
+                            <div class="action-buttons">
+                                <RadzenButton Text="Approve" Icon="check_circle"
+                                             ButtonStyle="ButtonStyle.Success"
+                                             Disabled="@_reviewing"
+                                             Click="@ApproveEvidence" />
+                                <RadzenButton Text="Reject" Icon="cancel"
+                                             ButtonStyle="ButtonStyle.Danger"
+                                             Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
+                                             Click="@RejectEvidence" />
+                                <RadzenButton Text="Request Resubmission" Icon="redo"
+                                             ButtonStyle="ButtonStyle.Warning"
+                                             Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
+                                             Click="@RejectEvidence" />
+                            </div>
+                            <ErrorMessage Message="@_actionError" />
+                        </div>
+
+                        @if (_selectedEvidence.Reviews.Any())
+                        {
+                            <div class="review-history">
+                                <h4>Review History</h4>
+                                @foreach (var review in _selectedEvidence.Reviews.OrderByDescending(r => r.ReviewedAt))
+                                {
+                                    <div class="review-entry">
+                                        <RadzenBadge Text="@review.Decision.ToString()"
+                                                     BadgeStyle="@GetEvidenceBadgeStyle(review.Decision)" />
+                                        <span>by @review.ReviewedBy at @review.ReviewedAt.ToString("MMM dd HH:mm")</span>
+                                        @if (!string.IsNullOrEmpty(review.Notes))
+                                        {
+                                            <p class="review-note">@review.Notes</p>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = false;
+    private bool _reviewing = false;
+    private List<EvidenceDto> _pendingEvidence = new();
+    private EvidenceDto? _selectedEvidence;
+    private string? _reviewNotes;
+    private string? _actionError;
+    private int _pendingCount = 0;
+    private HubConnection? _hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPendingEvidenceAsync();
+        await ConnectSignalRAsync();
+    }
+
+    private async Task LoadPendingEvidenceAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await EvidenceService.GetPendingEvidenceAsync();
+            if (result.IsSuccess)
+            {
+                _pendingEvidence = result.Value.ToList();
+                _pendingCount = _pendingEvidence.Count;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SelectEvidence(EvidenceDto evidence)
+    {
+        _selectedEvidence = evidence;
+        _reviewNotes = null;
+        _actionError = null;
+    }
+
+    private async Task ApproveEvidence()
+    {
+        if (_selectedEvidence is null) return;
+        _reviewing = true;
+        _actionError = null;
+        try
+        {
+            var result = await EvidenceService.ApproveEvidenceAsync(
+                _selectedEvidence.Id, "Admin", _reviewNotes);
+
+            if (result.IsSuccess)
+            {
+                _pendingEvidence.RemoveAll(e => e.Id == _selectedEvidence.Id);
+                _selectedEvidence = null;
+                _pendingCount = _pendingEvidence.Count;
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        finally
+        {
+            _reviewing = false;
+        }
+    }
+
+    private async Task RejectEvidence()
+    {
+        if (_selectedEvidence is null || string.IsNullOrWhiteSpace(_reviewNotes)) return;
+        _reviewing = true;
+        _actionError = null;
+        try
+        {
+            var result = await EvidenceService.RejectEvidenceAsync(
+                _selectedEvidence.Id, "Admin", _reviewNotes);
+
+            if (result.IsSuccess)
+            {
+                _pendingEvidence.RemoveAll(e => e.Id == _selectedEvidence.Id);
+                _selectedEvidence = null;
+                _pendingCount = _pendingEvidence.Count;
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        finally
+        {
+            _reviewing = false;
+        }
+    }
+
+    private async Task ConnectSignalRAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavManager.ToAbsoluteUri("/hubs/tournament"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<Guid, Guid>("EvidenceSubmitted", async (matchId, evidenceId) =>
+        {
+            await LoadPendingEvidenceAsync();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            await _hubConnection.SendAsync("JoinAdminGroup");
+        }
+        catch { }
+    }
+
+    private BadgeStyle GetEvidenceBadgeStyle(EvidenceStatus status) => status switch
+    {
+        EvidenceStatus.Approved => BadgeStyle.Success,
+        EvidenceStatus.Rejected => BadgeStyle.Danger,
+        EvidenceStatus.UnderReview => BadgeStyle.Warning,
+        EvidenceStatus.RequiresResubmission => BadgeStyle.Warning,
+        _ => BadgeStyle.Secondary
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+            await _hubConnection.DisposeAsync();
+    }
+}
