@@ -1,0 +1,222 @@
+@page "/tournaments/create"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Domain.Enums
+@using System.Text.Json
+@inject ITournamentService TournamentService
+@inject NavigationManager NavManager
+
+<PageTitle>Create Tournament - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Create Tournament</h1>
+        <RadzenButton Text="Back" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/tournaments"))" />
+    </div>
+
+    <RadzenCard class="form-card">
+        <RadzenTemplateForm TItem="CreateTournamentDto" Data="@_model" Submit="@OnSubmit">
+            <RadzenTabs>
+                <Tabs>
+                    <RadzenTabsItem Text="Basic Info" Icon="info">
+                        <div class="form-grid">
+                            <div class="form-field form-field--full">
+                                <RadzenLabel Text="Tournament Name *" />
+                                <RadzenTextBox @bind-Value="_model.Name" Placeholder="e.g. Warzone Sunday Cup #5"
+                                               Style="width:100%" />
+                            </div>
+                            <div class="form-field form-field--full">
+                                <RadzenLabel Text="Description" />
+                                <RadzenTextArea @bind-Value="_model.Description" Rows="3"
+                                                Placeholder="Describe your tournament..."
+                                                Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Tournament Type *" />
+                                <RadzenDropDown @bind-Value="_model.Type"
+                                               Data="@Enum.GetValues<TournamentType>()"
+                                               TextProperty="ToString"
+                                               Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Platform *" />
+                                <RadzenDropDown @bind-Value="_model.Platform"
+                                               Data="@Enum.GetValues<Platform>()"
+                                               TextProperty="ToString"
+                                               Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Max Teams *" />
+                                <RadzenNumeric @bind-Value="_model.MaxTeams" Min="2" Max="200" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Players per Team *" />
+                                <RadzenNumeric @bind-Value="_model.PlayersPerTeam" Min="1" Max="20" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Prize Pool ($)" />
+                                <RadzenNumeric @bind-Value="_model.PrizePool" Min="0" Style="width:100%" Format="N2" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Organizer Name" />
+                                <RadzenTextBox @bind-Value="_model.OrganizerName" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Stream URL" />
+                                <RadzenTextBox @bind-Value="_model.StreamUrl" Placeholder="https://twitch.tv/..." Style="width:100%" />
+                            </div>
+                            <div class="form-field form-field--checkbox">
+                                <RadzenCheckBox @bind-Value="_model.IsPrivate" Name="IsPrivate" />
+                                <RadzenLabel Text="Private Tournament (Lobby Code Required)" Component="IsPrivate" />
+                            </div>
+                            @if (_model.IsPrivate)
+                            {
+                                <div class="form-field">
+                                    <RadzenLabel Text="Lobby Code" />
+                                    <RadzenTextBox @bind-Value="_model.LobbyCode" Style="width:100%" />
+                                </div>
+                                <div class="form-field">
+                                    <RadzenLabel Text="Lobby Password" />
+                                    <RadzenPassword @bind-Value="_model.LobbyPassword" Style="width:100%" />
+                                </div>
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Schedule" Icon="schedule">
+                        <div class="form-grid">
+                            <div class="form-field">
+                                <RadzenLabel Text="Registration Opens" />
+                                <RadzenDatePicker @bind-Value="_model.RegistrationStart" ShowTime="true" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Registration Closes" />
+                                <RadzenDatePicker @bind-Value="_model.RegistrationEnd" ShowTime="true" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Check-In Opens" />
+                                <RadzenDatePicker @bind-Value="_model.CheckInStart" ShowTime="true" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Check-In Closes" />
+                                <RadzenDatePicker @bind-Value="_model.CheckInEnd" ShowTime="true" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Tournament Start" />
+                                <RadzenDatePicker @bind-Value="_model.StartDate" ShowTime="true" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Tournament End" />
+                                <RadzenDatePicker @bind-Value="_model.EndDate" ShowTime="true" Style="width:100%" />
+                            </div>
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Scoring" Icon="scoreboard">
+                        <div class="scoring-section">
+                            <div class="form-field">
+                                <RadzenLabel Text="Kill Points" />
+                                <RadzenNumeric @bind-Value="_model.KillPoints" Min="0" Max="10"
+                                               Style="width:150px"
+                                               Change="@UpdatePlacementJson" />
+                                <small class="field-hint">Points awarded per kill</small>
+                            </div>
+                            <h3>Placement Points</h3>
+                            <div class="placement-grid">
+                                @for (int i = 1; i <= 20; i++)
+                                {
+                                    var pos = i;
+                                    <div class="placement-row">
+                                        <span class="placement-rank rank-@(pos <= 3 ? pos : 0)">#@pos</span>
+                                        <RadzenNumeric Value="@GetPlacementPoints(pos)"
+                                                       Min="0" Max="100"
+                                                       Change="@((int v) => SetPlacementPoints(pos, v))"
+                                                       Style="width:90px" />
+                                        <span class="pts-label">pts</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Discord" Icon="chat">
+                        <div class="form-grid">
+                            <div class="form-field">
+                                <RadzenLabel Text="Discord Guild ID" />
+                                <RadzenTextBox @bind-Value="_model.DiscordGuildId" Placeholder="Discord server ID" Style="width:100%" />
+                            </div>
+                            <div class="form-field">
+                                <RadzenLabel Text="Discord Channel ID" />
+                                <RadzenTextBox @bind-Value="_model.DiscordChannelId" Placeholder="Announcement channel ID" Style="width:100%" />
+                            </div>
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Rules" Icon="gavel">
+                        <div class="form-field">
+                            <RadzenLabel Text="Rules & Regulations" />
+                            <RadzenTextArea @bind-Value="_model.TournamentRulesText" Rows="10"
+                                            Placeholder="Enter tournament rules..." Style="width:100%" />
+                        </div>
+                    </RadzenTabsItem>
+                </Tabs>
+            </RadzenTabs>
+
+            <ErrorMessage Message="@_errorMessage" />
+
+            <div class="form-actions">
+                <RadzenButton ButtonType="ButtonType.Submit" Text="Create Tournament"
+                              Icon="add_circle" ButtonStyle="ButtonStyle.Primary"
+                              Disabled="@_saving" />
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => NavManager.NavigateTo("/tournaments"))" />
+            </div>
+        </RadzenTemplateForm>
+    </RadzenCard>
+</div>
+
+@code {
+    private CreateTournamentDto _model = new();
+    private Dictionary<int, int> _placementPoints = new()
+    {
+        {1, 10}, {2, 6}, {3, 4}, {4, 3}, {5, 2}, {6, 1}
+    };
+    private bool _saving = false;
+    private string? _errorMessage;
+
+    private int GetPlacementPoints(int position) =>
+        _placementPoints.TryGetValue(position, out var pts) ? pts : 0;
+
+    private void SetPlacementPoints(int position, int value)
+    {
+        if (value > 0) _placementPoints[position] = value;
+        else _placementPoints.Remove(position);
+        UpdatePlacementJson();
+    }
+
+    private void UpdatePlacementJson()
+    {
+        _model.PlacementPointsJson = JsonSerializer.Serialize(_placementPoints);
+    }
+
+    private async Task OnSubmit()
+    {
+        _saving = true;
+        _errorMessage = null;
+        UpdatePlacementJson();
+
+        try
+        {
+            var result = await TournamentService.CreateTournamentAsync(_model);
+            if (result.IsSuccess)
+                NavManager.NavigateTo($"/tournaments/{result.Value.Id}");
+            else
+                _errorMessage = result.Error;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
