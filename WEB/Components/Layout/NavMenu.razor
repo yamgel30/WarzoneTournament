@@ -3,19 +3,28 @@
 
 <RadzenPanelMenu>
     <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/" />
+
     <RadzenPanelMenuItem Text="Tournaments" Icon="emoji_events">
         <RadzenPanelMenuItem Text="All Tournaments" Icon="list" Path="/tournaments" />
         <RadzenPanelMenuItem Text="Create Tournament" Icon="add_circle" Path="/tournaments/create" />
     </RadzenPanelMenuItem>
+
     <RadzenPanelMenuItem Text="Teams" Icon="groups">
         <RadzenPanelMenuItem Text="All Teams" Icon="list" Path="/teams" />
-        <RadzenPanelMenuItem Text="Register Team" Icon="person_add" Path="/teams/register" />
+        <RadzenPanelMenuItem Text="Register Team" Icon="group_add" Path="/teams/register" />
     </RadzenPanelMenuItem>
+
+    <RadzenPanelMenuItem Text="Players" Icon="person">
+        <RadzenPanelMenuItem Text="All Players" Icon="list" Path="/players" />
+        <RadzenPanelMenuItem Text="Register Player" Icon="person_add" Path="/players/register" />
+    </RadzenPanelMenuItem>
+
     <RadzenPanelMenuItem Text="Leaderboard" Icon="leaderboard" Path="/leaderboard" />
-    <RadzenPanelMenuItem Text="Matches" Icon="sports_esports" Path="/matches" />
+
     <RadzenPanelMenuItem Text="Admin" Icon="admin_panel_settings">
         <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/admin" />
         <RadzenPanelMenuItem Text="Evidence Review" Icon="fact_check" Path="/admin/evidence" />
+        <RadzenPanelMenuItem Text="Manual Points" Icon="add_box" Path="/admin/manual-points" />
         <RadzenPanelMenuItem Text="Hangfire Jobs" Icon="schedule" Path="/hangfire" />
     </RadzenPanelMenuItem>
 </RadzenPanelMenu>

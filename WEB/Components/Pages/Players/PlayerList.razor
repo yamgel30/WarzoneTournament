@@ -1,0 +1,148 @@
+@page "/players"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Player
+@using WarzoneTournament.Domain.Enums
+@inject IPlayerService PlayerService
+@inject NavigationManager NavManager
+
+<PageTitle>Players - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Players</h1>
+        <RadzenButton Text="Register Player" Icon="person_add"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Click="@(() => NavManager.NavigateTo("/players/register"))" />
+    </div>
+
+    <div class="filters-row">
+        <RadzenTextBox @bind-Value="_search" Placeholder="Buscar por username o Discord..."
+                       Style="width:260px" @oninput="@OnSearch" />
+        <RadzenDropDown @bind-Value="_platformFilter"
+                        Data="@_platforms" TextProperty="Label" ValueProperty="Value"
+                        Placeholder="Todas las plataformas" AllowClear="true"
+                        Style="width:180px" Change="@OnFilterChanged" />
+        <RadzenCheckBox @bind-Value="_onlyBanned" Name="onlyBanned" Change="@OnFilterChanged" />
+        <RadzenLabel Text="Solo baneados" Component="onlyBanned" />
+    </div>
+
+    @if (_loading)
+    {
+        <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" class="my-3" />
+    }
+    else
+    {
+        <RadzenDataGrid Data="@_filtered" TItem="PlayerDto"
+                        AllowPaging="true" PageSize="25"
+                        AllowSorting="true"
+                        AllowFiltering="false"
+                        GridLines="DataGridGridLines.Horizontal"
+                        RowClick="@(args => NavManager.NavigateTo($"/players/{args.Data.Id}"))">
+            <Columns>
+                <RadzenDataGridColumn TItem="PlayerDto" Title="Avatar" Width="60px" Sortable="false">
+                    <Template Context="p">
+                        @if (!string.IsNullOrEmpty(p.AvatarUrl))
+                        {
+                            <img src="@p.AvatarUrl" alt="@p.Username" style="width:36px;height:36px;border-radius:50%;object-fit:cover" />
+                        }
+                        else
+                        {
+                            <div style="width:36px;height:36px;border-radius:50%;background:var(--rz-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">
+                                @p.Username[0].ToString().ToUpper()
+                            </div>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="PlayerDto" Property="Username" Title="Username" Width="160px" />
+                <RadzenDataGridColumn TItem="PlayerDto" Property="ActivisionId" Title="Activision ID" Width="160px">
+                    <Template Context="p">
+                        <span style="font-family:monospace;font-size:12px">@(p.ActivisionId ?? "—")</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="PlayerDto" Property="DiscordUsername" Title="Discord" Width="150px">
+                    <Template Context="p">
+                        @if (!string.IsNullOrEmpty(p.DiscordUsername))
+                        {
+                            <span style="color:var(--rz-series-4-color)">@p.DiscordUsername</span>
+                        }
+                        else { <span style="color:var(--rz-text-disabled-color)">—</span> }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="PlayerDto" Property="PlatformName" Title="Plataforma" Width="110px" />
+                <RadzenDataGridColumn TItem="PlayerDto" Title="K/D" Width="80px">
+                    <Template Context="p">
+                        <strong>@p.KdRatio.ToString("F2")</strong>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="PlayerDto" Property="TotalKills" Title="Kills" Width="80px" />
+                <RadzenDataGridColumn TItem="PlayerDto" Property="TotalMatches" Title="Partidas" Width="90px" />
+                <RadzenDataGridColumn TItem="PlayerDto" Title="Estado" Width="110px">
+                    <Template Context="p">
+                        @if (p.IsBanned)
+                        {
+                            <RadzenBadge Text="BANEADO" BadgeStyle="BadgeStyle.Danger" />
+                        }
+                        else if (p.IsVerified)
+                        {
+                            <RadzenBadge Text="Verificado" BadgeStyle="BadgeStyle.Success" />
+                        }
+                        else
+                        {
+                            <RadzenBadge Text="Pendiente" BadgeStyle="BadgeStyle.Warning" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="PlayerDto" Title="" Width="80px" Sortable="false">
+                    <Template Context="p">
+                        <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      Click="@(() => NavManager.NavigateTo($"/players/{p.Id}"))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private List<PlayerDto> _all = new();
+    private List<PlayerDto> _filtered = new();
+    private string? _search;
+    private Platform? _platformFilter;
+    private bool _onlyBanned;
+
+    private readonly List<(string Label, Platform Value)> _platforms =
+        Enum.GetValues<Platform>().Select(p => (p.ToString(), p)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await PlayerService.GetPlayersAsync();
+            if (result.IsSuccess) { _all = result.Value.ToList(); ApplyFilters(); }
+        }
+        finally { _loading = false; }
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString();
+        ApplyFilters();
+    }
+
+    private void OnFilterChanged(object? _) => ApplyFilters();
+
+    private void ApplyFilters()
+    {
+        _filtered = _all
+            .Where(p => !_onlyBanned || p.IsBanned)
+            .Where(p => _platformFilter is null || p.Platform == _platformFilter)
+            .Where(p => string.IsNullOrWhiteSpace(_search) ||
+                        p.Username.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                        (p.DiscordUsername?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (p.ActivisionId?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false))
+            .OrderBy(p => p.Username)
+            .ToList();
+    }
+}

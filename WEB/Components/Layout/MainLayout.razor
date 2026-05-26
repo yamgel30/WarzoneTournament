@@ -1,6 +1,8 @@
 @inherits LayoutComponentBase
 @using Radzen
-<RadzenComponents @rendermode="InteractiveAuto" />
+
+<RadzenComponents @rendermode="InteractiveServer" />
+
 <RadzenLayout>
     <RadzenHeader>
         <div class="header-content">
@@ -24,11 +26,8 @@
     </RadzenBody>
 </RadzenLayout>
 
-<RadzenComponents />
-
 @code {
     private RadzenSidebar _sidebar = null!;
     private bool _sidebarExpanded = true;
-
     void ToggleSidebar() => _sidebarExpanded = !_sidebarExpanded;
 }
