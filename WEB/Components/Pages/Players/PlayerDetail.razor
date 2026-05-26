@@ -1,0 +1,297 @@
+@page "/players/{Id:guid}"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Player
+@using WarzoneTournament.Domain.Enums
+@inject IPlayerService PlayerService
+@inject NavigationManager NavManager
+
+<PageTitle>@(_player?.Username ?? "Jugador") - Warzone</PageTitle>
+
+@if (_loading)
+{
+    <div class="page-container">
+        <RadzenProgressBarCircular Value="100" ShowValue="false"
+                                   Mode="ProgressBarMode.Indeterminate"
+                                   Size="ProgressBarCircularSize.Large" />
+    </div>
+}
+else if (_player == null)
+{
+    <div class="page-container">
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">
+            Jugador no encontrado.
+        </RadzenAlert>
+        <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/players"))" class="mt-3" />
+    </div>
+}
+else
+{
+    <div class="page-container">
+        <div class="page-header">
+            <div style="display:flex;align-items:center;gap:16px">
+                @if (!string.IsNullOrEmpty(_player.AvatarUrl))
+                {
+                    <img src="@_player.AvatarUrl" alt="@_player.Username"
+                         style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--rz-primary)" />
+                }
+                else
+                {
+                    <div style="width:56px;height:56px;border-radius:50%;background:var(--rz-primary);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700">
+                        @_player.Username[0].ToString().ToUpper()
+                    </div>
+                }
+                <div>
+                    <h1 class="page-title" style="margin:0">@_player.Username</h1>
+                    <div style="display:flex;gap:8px;margin-top:4px">
+                        <RadzenBadge Text="@_player.PlatformName" BadgeStyle="BadgeStyle.Info" />
+                        @if (_player.IsBanned)
+                        {<RadzenBadge Text="BANEADO" BadgeStyle="BadgeStyle.Danger" />}
+                        else if (_player.IsVerified)
+                        {<RadzenBadge Text="Verificado" BadgeStyle="BadgeStyle.Success" />}
+                        else
+                        {<RadzenBadge Text="Pendiente" BadgeStyle="BadgeStyle.Warning" />}
+                    </div>
+                </div>
+            </div>
+            <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => NavManager.NavigateTo("/players"))" />
+        </div>
+
+        @* ── Stats ── *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px">
+            <RadzenCard style="text-align:center;padding:16px">
+                <div style="font-size:1.8em;font-weight:700;color:var(--rz-primary)">@_player.KdRatio.ToString("F2")</div>
+                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">K/D Ratio</div>
+            </RadzenCard>
+            <RadzenCard style="text-align:center;padding:16px">
+                <div style="font-size:1.8em;font-weight:700">@_player.TotalKills</div>
+                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">Total Kills</div>
+            </RadzenCard>
+            <RadzenCard style="text-align:center;padding:16px">
+                <div style="font-size:1.8em;font-weight:700">@_player.TotalDeaths</div>
+                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">Total Muertes</div>
+            </RadzenCard>
+            <RadzenCard style="text-align:center;padding:16px">
+                <div style="font-size:1.8em;font-weight:700">@_player.TotalMatches</div>
+                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">Partidas</div>
+            </RadzenCard>
+            <RadzenCard style="text-align:center;padding:16px">
+                <div style="font-size:1.8em;font-weight:700">@_player.TotalWins</div>
+                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">Victorias</div>
+            </RadzenCard>
+        </div>
+
+        @* ── Edit Form ── *@
+        <RadzenCard>
+            <div class="page-header" style="margin-bottom:16px">
+                <h3 style="margin:0">Datos del Jugador</h3>
+                @if (!_editing)
+                {
+                    <RadzenButton Text="Editar" Icon="edit" ButtonStyle="ButtonStyle.Secondary"
+                                  Size="ButtonSize.Small" Click="@StartEdit" />
+                }
+            </div>
+
+            @if (_editing)
+            {
+                <div style="display:flex;flex-direction:column;gap:16px;max-width:560px">
+                    <div>
+                        <RadzenLabel Text="Username *" />
+                        <RadzenTextBox @bind-Value="_edit.Username" Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="Activision ID" />
+                        <RadzenTextBox @bind-Value="_edit.ActivisionId" Placeholder="NombreJugador#1234567" Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="Discord ID" />
+                        <RadzenTextBox @bind-Value="_edit.DiscordId" Placeholder="123456789012345678" Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="Discord Username" />
+                        <RadzenTextBox @bind-Value="_edit.DiscordUsername" Placeholder="sniperplayer" Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="Plataforma" />
+                        <RadzenDropDown @bind-Value="_edit.Platform"
+                                        Data="@(Enum.GetValues<Platform>())"
+                                        Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="Email" />
+                        <RadzenTextBox @bind-Value="_edit.Email" Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="País" />
+                        <RadzenTextBox @bind-Value="_edit.Country" Placeholder="Colombia" Style="width:100%" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="URL de Avatar" />
+                        <RadzenTextBox @bind-Value="_edit.AvatarUrl" Placeholder="https://..." Style="width:100%" />
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_saveError))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">@_saveError</RadzenAlert>
+                    }
+
+                    <div style="display:flex;gap:10px">
+                        <RadzenButton Text="Guardar" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                      Click="@SaveEdit" Disabled="@_saving" />
+                        <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light"
+                                      Click="@CancelEdit" Disabled="@_saving" />
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;max-width:560px">
+                    <div><small style="color:var(--rz-text-secondary-color)">Username</small><div><strong>@_player.Username</strong></div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">Activision ID</small><div style="font-family:monospace">@(_player.ActivisionId ?? "—")</div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">Discord ID</small><div style="font-family:monospace;font-size:0.85em">@(_player.DiscordId ?? "—")</div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">Discord Username</small><div>@(_player.DiscordUsername ?? "—")</div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">Plataforma</small><div>@_player.PlatformName</div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">País</small><div>@(_player.Country ?? "—")</div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">Email</small><div>@(_player.Email ?? "—")</div></div>
+                    <div><small style="color:var(--rz-text-secondary-color)">Registrado</small><div>@_player.CreatedAt.ToString("MMM dd, yyyy")</div></div>
+                </div>
+            }
+        </RadzenCard>
+
+        @* ── Ban / Unban ── *@
+        <RadzenCard class="mt-3">
+            <h3 style="margin:0 0 12px">Acciones de Moderación</h3>
+            @if (_player.IsBanned)
+            {
+                <div style="margin-bottom:12px">
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">
+                        Baneado. Razón: @(_player.BanReason ?? "Sin especificar")
+                    </RadzenAlert>
+                </div>
+                <RadzenButton Text="Quitar Ban" Icon="lock_open" ButtonStyle="ButtonStyle.Success"
+                              Click="@UnbanPlayer" Disabled="@_saving" />
+            }
+            else
+            {
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                    <div>
+                        <RadzenLabel Text="Razón del ban" />
+                        <RadzenTextBox @bind-Value="_banReason" Placeholder="ej: Trampas detectadas"
+                                       Style="width:280px" />
+                    </div>
+                    <RadzenButton Text="Banear Jugador" Icon="block" ButtonStyle="ButtonStyle.Danger"
+                                  Click="@BanPlayer" Disabled="@(_saving || string.IsNullOrWhiteSpace(_banReason))" />
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_modMessage))
+            {
+                <RadzenAlert AlertStyle="@_modStyle" ShowIcon="true" Variant="Variant.Flat" class="mt-3">@_modMessage</RadzenAlert>
+            }
+        </RadzenCard>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private PlayerDto? _player;
+    private bool _loading = true;
+    private bool _editing = false;
+    private bool _saving = false;
+    private UpdatePlayerDto _edit = new();
+    private string? _saveError;
+    private string? _banReason;
+    private string? _modMessage;
+    private AlertStyle _modStyle = AlertStyle.Success;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        var result = await PlayerService.GetPlayerByIdAsync(Id);
+        _player = result.IsSuccess ? result.Value : null;
+        _loading = false;
+    }
+
+    private void StartEdit()
+    {
+        if (_player == null) return;
+        _edit = new UpdatePlayerDto
+        {
+            Username = _player.Username,
+            ActivisionId = _player.ActivisionId,
+            DiscordId = _player.DiscordId,
+            DiscordUsername = _player.DiscordUsername,
+            Email = _player.Email,
+            Platform = _player.Platform,
+            Country = _player.Country,
+            AvatarUrl = _player.AvatarUrl
+        };
+        _saveError = null;
+        _editing = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _saveError = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        _saving = true;
+        _saveError = null;
+        var result = await PlayerService.UpdatePlayerAsync(Id, _edit);
+        if (result.IsSuccess)
+        {
+            _player = result.Value;
+            _editing = false;
+        }
+        else
+        {
+            _saveError = result.Error;
+        }
+        _saving = false;
+    }
+
+    private async Task BanPlayer()
+    {
+        _saving = true;
+        _modMessage = null;
+        var result = await PlayerService.BanPlayerAsync(Id, _banReason!);
+        if (result.IsSuccess)
+        {
+            _modMessage = "Jugador baneado.";
+            _modStyle = AlertStyle.Warning;
+            _banReason = null;
+            await Load();
+        }
+        else
+        {
+            _modMessage = result.Error;
+            _modStyle = AlertStyle.Danger;
+        }
+        _saving = false;
+    }
+
+    private async Task UnbanPlayer()
+    {
+        _saving = true;
+        _modMessage = null;
+        var result = await PlayerService.UnbanPlayerAsync(Id);
+        if (result.IsSuccess)
+        {
+            _modMessage = "Ban levantado correctamente.";
+            _modStyle = AlertStyle.Success;
+            await Load();
+        }
+        else
+        {
+            _modMessage = result.Error;
+            _modStyle = AlertStyle.Danger;
+        }
+        _saving = false;
+    }
+}

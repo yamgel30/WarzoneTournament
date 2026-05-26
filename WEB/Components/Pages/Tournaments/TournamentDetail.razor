@@ -186,35 +186,35 @@ else
                                 <div class="admin-actions">
                                     @if (_tournament.Status == TournamentStatus.Draft)
                                     {
-                                        <RadzenButton Text="Open Registration" Icon="how_to_reg"
+                                        <RadzenButton Text="Abrir Inscripción" Icon="how_to_reg"
                                                       ButtonStyle="ButtonStyle.Success"
-                                                      Click="@(() => UpdateStatus(TournamentStatus.Registration))" />
+                                                      Click="@OpenRegistration" Disabled="@_adminBusy" />
                                     }
                                     @if (_tournament.Status == TournamentStatus.Registration)
                                     {
-                                        <RadzenButton Text="Start Check-In" Icon="checklist"
+                                        <RadzenButton Text="Iniciar Check-In" Icon="checklist"
                                                       ButtonStyle="ButtonStyle.Warning"
-                                                      Click="@StartCheckIn" />
+                                                      Click="@StartCheckIn" Disabled="@_adminBusy" />
                                     }
-                                    @if (_tournament.Status == TournamentStatus.CheckIn)
+                                    @if (_tournament.Status == TournamentStatus.CheckIn ||
+                                         _tournament.Status == TournamentStatus.Registration)
                                     {
-                                        <RadzenButton Text="Start Tournament" Icon="play_arrow"
+                                        <RadzenButton Text="Iniciar Torneo" Icon="play_arrow"
                                                       ButtonStyle="ButtonStyle.Danger"
-                                                      Click="@StartTournament" />
+                                                      Click="@StartTournament" Disabled="@_adminBusy" />
                                     }
                                     @if (_tournament.Status == TournamentStatus.InProgress)
                                     {
-                                        <RadzenButton Text="Complete Tournament" Icon="flag"
+                                        <RadzenButton Text="Finalizar Torneo" Icon="flag"
                                                       ButtonStyle="ButtonStyle.Info"
-                                                      Click="@CompleteTournament" />
+                                                      Click="@CompleteTournament" Disabled="@_adminBusy" />
                                     }
-                                    <RadzenButton Text="Edit Tournament" Icon="edit"
-                                                  ButtonStyle="ButtonStyle.Secondary" />
-                                    @if (_tournament.Status != TournamentStatus.Cancelled)
+                                    @if (_tournament.Status != TournamentStatus.Cancelled &&
+                                         _tournament.Status != TournamentStatus.Completed)
                                     {
-                                        <RadzenButton Text="Cancel Tournament" Icon="cancel"
+                                        <RadzenButton Text="Cancelar Torneo" Icon="cancel"
                                                       ButtonStyle="ButtonStyle.Secondary"
-                                                      Click="@CancelTournament" />
+                                                      Click="@CancelTournament" Disabled="@_adminBusy" />
                                     }
                                 </div>
                                 <ErrorMessage Message="@_adminError" />
@@ -232,6 +232,7 @@ else
 
     private bool _loading = true;
     private bool _showAdmin = false;
+    private bool _adminBusy = false;
     private TournamentDto? _tournament;
     private List<LeaderboardEntryDto> _leaderboard = new();
     private List<WarzoneTournament.Application.DTOs.Team.TeamDto> _teams = new();
@@ -275,38 +276,49 @@ else
             _teams = result.Value.ToList();
     }
 
+    private async Task OpenRegistration()
+    {
+        _adminBusy = true; _adminError = null;
+        var result = await TournamentService.OpenRegistrationAsync(Id);
+        if (result.IsSuccess) _tournament = result.Value;
+        else _adminError = result.Error;
+        _adminBusy = false;
+    }
+
     private async Task StartCheckIn()
     {
+        _adminBusy = true; _adminError = null;
         var result = await TournamentService.StartCheckInAsync(Id);
-        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        if (result.IsSuccess) _tournament = result.Value;
         else _adminError = result.Error;
+        _adminBusy = false;
     }
 
     private async Task StartTournament()
     {
+        _adminBusy = true; _adminError = null;
         var result = await TournamentService.StartTournamentAsync(Id);
-        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        if (result.IsSuccess) _tournament = result.Value;
         else _adminError = result.Error;
+        _adminBusy = false;
     }
 
     private async Task CompleteTournament()
     {
+        _adminBusy = true; _adminError = null;
         var result = await TournamentService.CompleteTournamentAsync(Id);
-        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        if (result.IsSuccess) _tournament = result.Value;
         else _adminError = result.Error;
+        _adminBusy = false;
     }
 
     private async Task CancelTournament()
     {
+        _adminBusy = true; _adminError = null;
         var result = await TournamentService.CancelTournamentAsync(Id);
-        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        if (result.IsSuccess) _tournament = result.Value;
         else _adminError = result.Error;
-    }
-
-    private async Task UpdateStatus(TournamentStatus status)
-    {
-        // For future: direct status update
-        await Task.CompletedTask;
+        _adminBusy = false;
     }
 
     private BadgeStyle GetStatusBadge(TournamentStatus status) => status switch

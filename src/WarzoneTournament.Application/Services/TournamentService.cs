@@ -140,6 +140,23 @@ public class TournamentService : ITournamentService
         return Result.Success();
     }
 
+    public async Task<Result<TournamentDto>> OpenRegistrationAsync(Guid id, CancellationToken ct = default)
+    {
+        var tournament = await _uow.Tournaments.GetByIdAsync(id, ct);
+        if (tournament is null)
+            return Result.Failure<TournamentDto>("Tournament not found.");
+
+        if (tournament.Status != TournamentStatus.Draft)
+            return Result.Failure<TournamentDto>("Tournament must be in Draft to open registration.");
+
+        tournament.Status = TournamentStatus.Registration;
+        _uow.Tournaments.Update(tournament);
+        await _uow.SaveChangesAsync(ct);
+        await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.Registration.ToString(), ct);
+
+        return Result.Success(_mapper.Map<TournamentDto>(tournament));
+    }
+
     public async Task<Result<TournamentDto>> StartCheckInAsync(Guid id, CancellationToken ct = default)
     {
         var tournament = await _uow.Tournaments.GetByIdAsync(id, ct);
