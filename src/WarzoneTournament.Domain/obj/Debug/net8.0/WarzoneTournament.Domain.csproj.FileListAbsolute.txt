@@ -1,0 +1,12 @@
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\bin\Debug\net8.0\WarzoneTournament.Domain.deps.json
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\bin\Debug\net8.0\WarzoneTournament.Domain.dll
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\bin\Debug\net8.0\WarzoneTournament.Domain.pdb
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.AssemblyInfoInputs.cache
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.AssemblyInfo.cs
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.csproj.CoreCompileInputs.cache
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.sourcelink.json
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.dll
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\refint\WarzoneTournament.Domain.dll
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\WarzoneTournament.Domain.pdb
+C:\devroot\WarzoneTournament\src\WarzoneTournament.Domain\obj\Debug\net8.0\ref\WarzoneTournament.Domain.dll

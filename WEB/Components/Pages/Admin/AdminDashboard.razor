@@ -1,0 +1,71 @@
+@page "/admin"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Tournament
+@inject ITournamentService TournamentService
+@inject IEvidenceService EvidenceService
+@inject NavigationManager NavManager
+
+<PageTitle>Admin Dashboard - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Admin Dashboard</h1>
+    </div>
+
+    <div class="admin-grid">
+        <RadzenCard class="admin-card" @onclick="@(() => NavManager.NavigateTo("/admin/evidence"))">
+            <div class="admin-card__icon">📋</div>
+            <div class="admin-card__value">@_pendingEvidence</div>
+            <div class="admin-card__label">Pending Evidence Reviews</div>
+            @if (_pendingEvidence > 0)
+            {
+                <RadzenBadge Text="Action Required" BadgeStyle="BadgeStyle.Warning" />
+            }
+        </RadzenCard>
+        <RadzenCard class="admin-card" @onclick="@(() => NavManager.NavigateTo("/tournaments"))">
+            <div class="admin-card__icon">🏆</div>
+            <div class="admin-card__value">@_activeTournaments</div>
+            <div class="admin-card__label">Active Tournaments</div>
+        </RadzenCard>
+        <RadzenCard class="admin-card" @onclick="@(() => NavManager.NavigateTo("/hangfire"))">
+            <div class="admin-card__icon">⚙️</div>
+            <div class="admin-card__label">Background Jobs</div>
+            <div class="admin-card__sub">Hangfire Dashboard →</div>
+        </RadzenCard>
+    </div>
+
+    <div class="admin-quick-actions">
+        <h2>Quick Actions</h2>
+        <div class="action-buttons">
+            <RadzenButton Text="Create Tournament" Icon="add"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@(() => NavManager.NavigateTo("/tournaments/create"))" />
+            <RadzenButton Text="Review Evidence" Icon="fact_check"
+                          ButtonStyle="ButtonStyle.Warning"
+                          Click="@(() => NavManager.NavigateTo("/admin/evidence"))" />
+            <RadzenButton Text="View Leaderboard" Icon="leaderboard"
+                          ButtonStyle="ButtonStyle.Info"
+                          Click="@(() => NavManager.NavigateTo("/leaderboard"))" />
+        </div>
+    </div>
+</div>
+
+@code {
+    private int _pendingEvidence = 0;
+    private int _activeTournaments = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var evidenceResult = await EvidenceService.GetPendingEvidenceAsync();
+        if (evidenceResult.IsSuccess)
+            _pendingEvidence = evidenceResult.Value.Count;
+
+        var tournamentsResult = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
+        {
+            Status = WarzoneTournament.Domain.Enums.TournamentStatus.InProgress,
+            PageSize = 100
+        });
+        if (tournamentsResult.IsSuccess)
+            _activeTournaments = tournamentsResult.Value.TotalCount;
+    }
+}

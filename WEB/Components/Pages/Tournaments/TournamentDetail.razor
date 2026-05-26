@@ -1,0 +1,318 @@
+@page "/tournaments/{Id:guid}"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Application.DTOs.Leaderboard
+@using WarzoneTournament.Domain.Enums
+@inject ITournamentService TournamentService
+@inject ILeaderboardService LeaderboardService
+@inject ITeamService TeamService
+@inject NavigationManager NavManager
+
+<PageTitle>@(_tournament?.Name ?? "Tournament") - Warzone</PageTitle>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_tournament is null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger">Tournament not found.</RadzenAlert>
+}
+else
+{
+    <div class="tournament-detail-page">
+        <div class="tournament-hero" style="@(_tournament.BannerImageUrl is not null ? $"background-image:url({_tournament.BannerImageUrl})" : "")">
+            <div class="tournament-hero__overlay">
+                <div class="tournament-hero__content">
+                    <div class="tournament-hero__badges">
+                        <RadzenBadge Text="@_tournament.TypeName" BadgeStyle="BadgeStyle.Info" />
+                        <RadzenBadge Text="@_tournament.StatusName" BadgeStyle="@GetStatusBadge(_tournament.Status)" />
+                        <RadzenBadge Text="@_tournament.PlatformName" BadgeStyle="BadgeStyle.Secondary" />
+                    </div>
+                    <h1>@_tournament.Name</h1>
+                    @if (!string.IsNullOrEmpty(_tournament.OrganizerName))
+                    {
+                        <p class="organizer">Organized by @_tournament.OrganizerName</p>
+                    }
+                </div>
+                <div class="tournament-hero__actions">
+                    @if (_tournament.Status == TournamentStatus.Registration)
+                    {
+                        <RadzenButton Text="Register Team" Icon="person_add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Large"
+                                      Click="@(() => NavManager.NavigateTo($"/teams/register?tournamentId={_tournament.Id}"))" />
+                    }
+                    @if (_tournament.Status == TournamentStatus.CheckIn)
+                    {
+                        <RadzenButton Text="Check In" Icon="check_circle" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Large" />
+                    }
+                    <RadzenButton Text="Admin Controls" Icon="settings" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => _showAdmin = !_showAdmin)" />
+                </div>
+            </div>
+        </div>
+
+        <div class="tournament-detail-body">
+            <div class="tournament-info-grid">
+                <RadzenCard class="info-card">
+                    <div class="info-card__value">@_tournament.RegisteredTeamsCount / @_tournament.MaxTeams</div>
+                    <div class="info-card__label">Teams Registered</div>
+                </RadzenCard>
+                <RadzenCard class="info-card">
+                    <div class="info-card__value">@_tournament.PlayersPerTeam</div>
+                    <div class="info-card__label">Players per Team</div>
+                </RadzenCard>
+                @if (_tournament.PrizePool.HasValue)
+                {
+                    <RadzenCard class="info-card info-card--prize">
+                        <div class="info-card__value">$@_tournament.PrizePool.Value.ToString("N0")</div>
+                        <div class="info-card__label">Prize Pool</div>
+                    </RadzenCard>
+                }
+                <RadzenCard class="info-card">
+                    <div class="info-card__value">@(_tournament.KillPoints)pt</div>
+                    <div class="info-card__label">Per Kill</div>
+                </RadzenCard>
+            </div>
+
+            <RadzenTabs>
+                <Tabs>
+                    <RadzenTabsItem Text="Overview" Icon="info">
+                        <div class="tab-content">
+                            @if (!string.IsNullOrEmpty(_tournament.Description))
+                            {
+                                <div class="tournament-description">
+                                    <h3>About</h3>
+                                    <p>@_tournament.Description</p>
+                                </div>
+                            }
+                            <div class="tournament-schedule">
+                                <h3>Schedule</h3>
+                                <div class="schedule-grid">
+                                    @if (_tournament.RegistrationStart.HasValue)
+                                    {
+                                        <div class="schedule-item">
+                                            <span class="schedule-label">Registration Opens</span>
+                                            <span class="schedule-value">@_tournament.RegistrationStart.Value.ToString("MMM dd, yyyy HH:mm") UTC</span>
+                                        </div>
+                                    }
+                                    @if (_tournament.RegistrationEnd.HasValue)
+                                    {
+                                        <div class="schedule-item">
+                                            <span class="schedule-label">Registration Closes</span>
+                                            <span class="schedule-value">@_tournament.RegistrationEnd.Value.ToString("MMM dd, yyyy HH:mm") UTC</span>
+                                        </div>
+                                    }
+                                    @if (_tournament.CheckInStart.HasValue)
+                                    {
+                                        <div class="schedule-item">
+                                            <span class="schedule-label">Check-In Opens</span>
+                                            <span class="schedule-value">@_tournament.CheckInStart.Value.ToString("MMM dd, yyyy HH:mm") UTC</span>
+                                        </div>
+                                    }
+                                    @if (_tournament.StartDate.HasValue)
+                                    {
+                                        <div class="schedule-item">
+                                            <span class="schedule-label">Tournament Start</span>
+                                            <span class="schedule-value">@_tournament.StartDate.Value.ToString("MMM dd, yyyy HH:mm") UTC</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Leaderboard" Icon="leaderboard">
+                        @if (_leaderboard.Any())
+                        {
+                            <div class="leaderboard-table">
+                                <div class="leaderboard-header">
+                                    <span>#</span>
+                                    <span>Team</span>
+                                    <span>Pts</span>
+                                    <span>Kills</span>
+                                    <span>Matches</span>
+                                </div>
+                                @foreach (var entry in _leaderboard)
+                                {
+                                    <div class="leaderboard-row @(entry.Rank <= 3 ? $"rank-{entry.Rank}" : "")">
+                                        <span class="rank-badge rank-@entry.Rank">@entry.Rank</span>
+                                        <span class="team-info">
+                                            @if (!string.IsNullOrEmpty(entry.TeamTag))
+                                            {
+                                                <span class="team-tag">[@entry.TeamTag]</span>
+                                            }
+                                            @entry.TeamName
+                                        </span>
+                                        <span class="points-value">@entry.TotalPoints</span>
+                                        <span>@entry.TotalKills</span>
+                                        <span>@entry.MatchesPlayed</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="empty-state">No results yet. Matches haven't started.</div>
+                        }
+                    </RadzenTabsItem>
+
+                    <RadzenTabsItem Text="Teams" Icon="groups">
+                        <div class="teams-list">
+                            @foreach (var team in _teams)
+                            {
+                                <div class="team-item">
+                                    @if (!string.IsNullOrEmpty(team.LogoUrl))
+                                    {
+                                        <img src="@team.LogoUrl" alt="@team.Name" class="team-logo-small" />
+                                    }
+                                    else
+                                    {
+                                        <div class="team-logo-placeholder">@team.Name[0]</div>
+                                    }
+                                    <span>@(team.Tag is not null ? $"[{team.Tag}] " : "")@team.Name</span>
+                                    <RadzenBadge Text="@team.PlatformName" BadgeStyle="BadgeStyle.Secondary" />
+                                </div>
+                            }
+                        </div>
+                    </RadzenTabsItem>
+
+                    @if (_showAdmin)
+                    {
+                        <RadzenTabsItem Text="Admin" Icon="admin_panel_settings">
+                            <div class="admin-controls">
+                                <h3>Tournament Management</h3>
+                                <div class="admin-actions">
+                                    @if (_tournament.Status == TournamentStatus.Draft)
+                                    {
+                                        <RadzenButton Text="Open Registration" Icon="how_to_reg"
+                                                      ButtonStyle="ButtonStyle.Success"
+                                                      Click="@(() => UpdateStatus(TournamentStatus.Registration))" />
+                                    }
+                                    @if (_tournament.Status == TournamentStatus.Registration)
+                                    {
+                                        <RadzenButton Text="Start Check-In" Icon="checklist"
+                                                      ButtonStyle="ButtonStyle.Warning"
+                                                      Click="@StartCheckIn" />
+                                    }
+                                    @if (_tournament.Status == TournamentStatus.CheckIn)
+                                    {
+                                        <RadzenButton Text="Start Tournament" Icon="play_arrow"
+                                                      ButtonStyle="ButtonStyle.Danger"
+                                                      Click="@StartTournament" />
+                                    }
+                                    @if (_tournament.Status == TournamentStatus.InProgress)
+                                    {
+                                        <RadzenButton Text="Complete Tournament" Icon="flag"
+                                                      ButtonStyle="ButtonStyle.Info"
+                                                      Click="@CompleteTournament" />
+                                    }
+                                    <RadzenButton Text="Edit Tournament" Icon="edit"
+                                                  ButtonStyle="ButtonStyle.Secondary" />
+                                    @if (_tournament.Status != TournamentStatus.Cancelled)
+                                    {
+                                        <RadzenButton Text="Cancel Tournament" Icon="cancel"
+                                                      ButtonStyle="ButtonStyle.Secondary"
+                                                      Click="@CancelTournament" />
+                                    }
+                                </div>
+                                <ErrorMessage Message="@_adminError" />
+                            </div>
+                        </RadzenTabsItem>
+                    }
+                </Tabs>
+            </RadzenTabs>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _showAdmin = false;
+    private TournamentDto? _tournament;
+    private List<LeaderboardEntryDto> _leaderboard = new();
+    private List<WarzoneTournament.Application.DTOs.Team.TeamDto> _teams = new();
+    private string? _adminError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTournamentAsync();
+    }
+
+    private async Task LoadTournamentAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await TournamentService.GetTournamentByIdAsync(Id);
+            if (result.IsSuccess)
+            {
+                _tournament = result.Value;
+                await LoadLeaderboardAsync();
+                await LoadTeamsAsync();
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadLeaderboardAsync()
+    {
+        var result = await LeaderboardService.GetTournamentLeaderboardAsync(Id);
+        if (result.IsSuccess)
+            _leaderboard = result.Value.ToList();
+    }
+
+    private async Task LoadTeamsAsync()
+    {
+        var result = await TeamService.GetTeamsAsync();
+        if (result.IsSuccess)
+            _teams = result.Value.ToList();
+    }
+
+    private async Task StartCheckIn()
+    {
+        var result = await TournamentService.StartCheckInAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        else _adminError = result.Error;
+    }
+
+    private async Task StartTournament()
+    {
+        var result = await TournamentService.StartTournamentAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        else _adminError = result.Error;
+    }
+
+    private async Task CompleteTournament()
+    {
+        var result = await TournamentService.CompleteTournamentAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        else _adminError = result.Error;
+    }
+
+    private async Task CancelTournament()
+    {
+        var result = await TournamentService.CancelTournamentAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _adminError = null; }
+        else _adminError = result.Error;
+    }
+
+    private async Task UpdateStatus(TournamentStatus status)
+    {
+        // For future: direct status update
+        await Task.CompletedTask;
+    }
+
+    private BadgeStyle GetStatusBadge(TournamentStatus status) => status switch
+    {
+        TournamentStatus.InProgress => BadgeStyle.Danger,
+        TournamentStatus.Registration => BadgeStyle.Success,
+        TournamentStatus.CheckIn => BadgeStyle.Warning,
+        TournamentStatus.Completed => BadgeStyle.Info,
+        _ => BadgeStyle.Secondary
+    };
+}

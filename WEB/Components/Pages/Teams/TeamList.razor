@@ -1,0 +1,85 @@
+@page "/teams"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Team
+@inject ITeamService TeamService
+@inject NavigationManager NavManager
+
+<PageTitle>Teams - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Teams</h1>
+        <RadzenButton Text="Register Team" Icon="group_add"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Click="@(() => NavManager.NavigateTo("/teams/register"))" />
+    </div>
+
+    @if (_loading)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <RadzenDataGrid Data="@_teams" TItem="TeamDto"
+                        AllowPaging="true" PageSize="20"
+                        AllowSorting="true"
+                        AllowFiltering="true"
+                        GridLines="DataGridGridLines.Horizontal"
+                        RowClick="@(args => NavManager.NavigateTo($"/teams/{args.Data.Id}"))">
+            <Columns>
+                <RadzenDataGridColumn TItem="TeamDto" Title="Team" Width="220px">
+                    <Template Context="t">
+                        <div class="team-cell">
+                            @if (!string.IsNullOrEmpty(t.LogoUrl))
+                            {
+                                <img src="@t.LogoUrl" alt="@t.Name" class="team-logo-xs" />
+                            }
+                            else
+                            {
+                                <div class="team-logo-placeholder">@t.Name[0]</div>
+                            }
+                            <div>
+                                <strong>@t.Name</strong>
+                                @if (!string.IsNullOrEmpty(t.Tag))
+                                {
+                                    <small class="text-muted d-block">[@t.Tag]</small>
+                                }
+                            </div>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TeamDto" Property="CaptainUsername" Title="Captain" Width="140px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="PlatformName" Title="Platform" Width="110px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="PlayerCount" Title="Players" Width="90px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="Country" Title="Country" Width="100px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="CreatedAt" Title="Joined" Width="120px" FormatString="{0:MMM dd, yyyy}" />
+                <RadzenDataGridColumn TItem="TeamDto" Title="" Width="80px">
+                    <Template Context="t">
+                        <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      Click="@(() => NavManager.NavigateTo($"/teams/{t.Id}"))" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private List<TeamDto> _teams = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await TeamService.GetTeamsAsync();
+            if (result.IsSuccess)
+                _teams = result.Value.ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
