@@ -17,12 +17,12 @@
 
     <div class="filters-row">
         <RadzenDropDown @bind-Value="_statusFilter"
-                        Data="@_statusOptions" TextProperty="Label" ValueProperty="Value"
+                        Data="@_statusOptions" 
                         Placeholder="All Statuses" AllowClear="true"
                         Style="width:180px"
                         Change="@OnFilterChanged" />
         <RadzenDropDown @bind-Value="_typeFilter"
-                        Data="@_typeOptions" TextProperty="Label" ValueProperty="Value"
+                        Data="@_typeOptions" 
                         Placeholder="All Types" AllowClear="true"
                         Style="width:160px"
                         Change="@OnFilterChanged" />

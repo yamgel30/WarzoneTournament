@@ -76,7 +76,7 @@
                         <RadzenDataGridColumn TItem="MatchDto" Property="ResultsConfirmed" Title="Confirmed" Width="100px">
                             <Template Context="m">
                                 <RadzenIcon Icon="@(m.ResultsConfirmed ? "check_circle" : "radio_button_unchecked")"
-                                            style="color:@(m.ResultsConfirmed ? "var(--rz-success)" : "var(--rz-text-secondary-color)")" />
+                                            style="@($"color:{(m.ResultsConfirmed ? "var(--rz-success)" : "var(--rz-text-secondary-color)")}")" />
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
@@ -256,7 +256,7 @@
 
     private void RecalcRow(EditRow row)
     {
-        row.Total = row.PlacementPoints + row.KillPoints + row.BonusPoints;
+        //row.Total = row.PlacementPoints + row.KillPoints + row.BonusPoints;
     }
 
     private async Task SaveResults()
@@ -328,6 +328,19 @@
         public int BonusPoints { get; set; }
         public int PlacementPoints { get; set; }
         public int KillPoints { get; set; }
-        public int Total => PlacementPoints + KillPoints + BonusPoints;
+        //public int Total => PlacementPoints + KillPoints + BonusPoints;
+
+        private int _total;
+        public int Total
+        {
+            get => _total;
+            set
+            {
+                _total = value;
+                Points = value; // or recompute Points from Total when needed
+            }
+        }
+
+        public int Points { get; private set; } // backing field for Total
     }
 }

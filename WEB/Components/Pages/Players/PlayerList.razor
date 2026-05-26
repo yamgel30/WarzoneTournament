@@ -19,10 +19,10 @@
         <RadzenTextBox @bind-Value="_search" Placeholder="Buscar por username o Discord..."
                        Style="width:260px" @oninput="@OnSearch" />
         <RadzenDropDown @bind-Value="_platformFilter"
-                        Data="@_platforms" TextProperty="Label" ValueProperty="Value"
+                        Data="@_platforms"
                         Placeholder="Todas las plataformas" AllowClear="true"
                         Style="width:180px" Change="@OnFilterChanged" />
-        <RadzenCheckBox @bind-Value="_onlyBanned" Name="onlyBanned" Change="@OnFilterChanged" />
+        <RadzenCheckBox @bind-Value="_onlyBanned" Name="onlyBanned" Change="@((bool args) => OnFilterChanged(null))" />
         <RadzenLabel Text="Solo baneados" Component="onlyBanned" />
     </div>
 
