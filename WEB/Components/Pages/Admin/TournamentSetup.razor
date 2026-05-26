@@ -364,7 +364,9 @@ else
         if (_tournament != null)
         {
             _newRound.TournamentId = Id;
-            await Task.WhenAll(LoadTeams(), LoadRounds());
+            
+            await LoadTeams();
+            await LoadRounds();
         }
 
         _loading = false;
