@@ -1,0 +1,187 @@
+@page "/tournaments"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Domain.Enums
+@inject ITournamentService TournamentService
+@inject NavigationManager NavManager
+
+<PageTitle>Tournaments - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Tournaments</h1>
+        <RadzenButton Text="Create Tournament" Icon="add_circle"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Click="@(() => NavManager.NavigateTo("/tournaments/create"))" />
+    </div>
+
+    <div class="filters-row">
+        <RadzenDropDown @bind-Value="_statusFilter"
+                        Data="@_statusOptions" TextProperty="Label" ValueProperty="Value"
+                        Placeholder="All Statuses" AllowClear="true"
+                        Style="width:180px"
+                        Change="@OnFilterChanged" />
+        <RadzenDropDown @bind-Value="_typeFilter"
+                        Data="@_typeOptions" TextProperty="Label" ValueProperty="Value"
+                        Placeholder="All Types" AllowClear="true"
+                        Style="width:160px"
+                        Change="@OnFilterChanged" />
+        <RadzenTextBox @bind-Value="_searchTerm" Placeholder="Search tournaments..."
+                       Style="width:220px"
+                       @oninput="@OnSearchChanged" />
+    </div>
+
+    @if (_loading)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <ErrorMessage Message="@_errorMessage" />
+
+        <RadzenDataGrid @ref="_grid" Data="@_tournaments" TItem="TournamentListDto"
+                        LoadData="@LoadData" Count="@_count"
+                        AllowPaging="true" PageSize="20"
+                        AllowSorting="true"
+                        PagerHorizontalAlign="HorizontalAlign.Left"
+                        ShowPagingSummary="true"
+                        GridLines="DataGridGridLines.Horizontal"
+                        RowClick="@OnRowClick"
+                        class="tournaments-grid">
+            <Columns>
+                <RadzenDataGridColumn TItem="TournamentListDto" Property="Name" Title="Tournament" Width="250px" Sortable="true">
+                    <Template Context="t">
+                        <div class="tournament-name-cell">
+                            @if (!string.IsNullOrEmpty(t.BannerImageUrl))
+                            {
+                                <img src="@t.BannerImageUrl" alt="@t.Name" class="tournament-thumb" />
+                            }
+                            <div>
+                                <strong>@t.Name</strong>
+                                @if (!string.IsNullOrEmpty(t.OrganizerName))
+                                {
+                                    <small class="text-muted d-block">by @t.OrganizerName</small>
+                                }
+                            </div>
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TournamentListDto" Property="TypeName" Title="Type" Width="120px">
+                    <Template Context="t">
+                        <span class="type-badge type-badge--@t.Type.ToString().ToLower()">@t.TypeName</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TournamentListDto" Title="Status" Width="120px">
+                    <Template Context="t">
+                        <RadzenBadge Text="@t.StatusName" BadgeStyle="@GetStatusBadgeStyle(t.Status)" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TournamentListDto" Property="PlatformName" Title="Platform" Width="110px" />
+                <RadzenDataGridColumn TItem="TournamentListDto" Title="Teams" Width="100px">
+                    <Template Context="t">
+                        <span>@t.RegisteredTeamsCount / @t.MaxTeams</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TournamentListDto" Property="StartDate" Title="Start Date" Width="130px" FormatString="{0:MMM dd, yyyy}" Sortable="true" />
+                <RadzenDataGridColumn TItem="TournamentListDto" Property="PrizePool" Title="Prize Pool" Width="110px">
+                    <Template Context="t">
+                        @(t.PrizePool.HasValue ? $"${t.PrizePool.Value:N0}" : "–")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TournamentListDto" Title="Actions" Width="120px" Sortable="false">
+                    <Template Context="t">
+                        <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                      Click="@(() => NavManager.NavigateTo($"/tournaments/{t.Id}"))"
+                                      title="View" />
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+</div>
+
+@code {
+    private RadzenDataGrid<TournamentListDto> _grid = null!;
+    private List<TournamentListDto> _tournaments = new();
+    private int _count = 0;
+    private bool _loading = false;
+    private string? _errorMessage;
+    private string? _searchTerm;
+    private TournamentStatus? _statusFilter;
+    private TournamentType? _typeFilter;
+
+    private readonly List<(string Label, TournamentStatus Value)> _statusOptions = Enum.GetValues<TournamentStatus>()
+        .Select(s => (s.ToString(), s)).ToList();
+
+    private readonly List<(string Label, TournamentType Value)> _typeOptions = Enum.GetValues<TournamentType>()
+        .Select(t => (t.ToString(), t)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync(1, 20, null, null);
+    }
+
+    private async Task LoadData(LoadDataArgs args)
+    {
+        var pageNumber = (args.Skip / args.Top ?? 20) + 1;
+        await LoadDataAsync(pageNumber, args.Top ?? 20, args.OrderBy, null);
+    }
+
+    private async Task LoadDataAsync(int page, int pageSize, string? orderBy, object? _)
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            var result = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
+            {
+                PageNumber = page,
+                PageSize = pageSize,
+                Status = _statusFilter,
+                Type = _typeFilter,
+                SearchTerm = _searchTerm,
+                SortDescending = true
+            });
+
+            if (result.IsSuccess)
+            {
+                _tournaments = result.Value.Items.ToList();
+                _count = result.Value.TotalCount;
+            }
+            else
+            {
+                _errorMessage = result.Error;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnFilterChanged(object? _)
+    {
+        await _grid.Reload();
+    }
+
+    private async Task OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchTerm = e.Value?.ToString();
+        await _grid.Reload();
+    }
+
+    private void OnRowClick(DataGridRowMouseEventArgs<TournamentListDto> args)
+    {
+        NavManager.NavigateTo($"/tournaments/{args.Data.Id}");
+    }
+
+    private BadgeStyle GetStatusBadgeStyle(TournamentStatus status) => status switch
+    {
+        TournamentStatus.InProgress => BadgeStyle.Danger,
+        TournamentStatus.Registration => BadgeStyle.Success,
+        TournamentStatus.CheckIn => BadgeStyle.Warning,
+        TournamentStatus.Completed => BadgeStyle.Info,
+        TournamentStatus.Cancelled => BadgeStyle.Secondary,
+        _ => BadgeStyle.Light
+    };
+}

@@ -1,0 +1,21 @@
+@using Radzen
+@inject NavigationManager NavManager
+
+<RadzenPanelMenu>
+    <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/" />
+    <RadzenPanelMenuItem Text="Tournaments" Icon="emoji_events">
+        <RadzenPanelMenuItem Text="All Tournaments" Icon="list" Path="/tournaments" />
+        <RadzenPanelMenuItem Text="Create Tournament" Icon="add_circle" Path="/tournaments/create" />
+    </RadzenPanelMenuItem>
+    <RadzenPanelMenuItem Text="Teams" Icon="groups">
+        <RadzenPanelMenuItem Text="All Teams" Icon="list" Path="/teams" />
+        <RadzenPanelMenuItem Text="Register Team" Icon="person_add" Path="/teams/register" />
+    </RadzenPanelMenuItem>
+    <RadzenPanelMenuItem Text="Leaderboard" Icon="leaderboard" Path="/leaderboard" />
+    <RadzenPanelMenuItem Text="Matches" Icon="sports_esports" Path="/matches" />
+    <RadzenPanelMenuItem Text="Admin" Icon="admin_panel_settings">
+        <RadzenPanelMenuItem Text="Dashboard" Icon="dashboard" Path="/admin" />
+        <RadzenPanelMenuItem Text="Evidence Review" Icon="fact_check" Path="/admin/evidence" />
+        <RadzenPanelMenuItem Text="Hangfire Jobs" Icon="schedule" Path="/hangfire" />
+    </RadzenPanelMenuItem>
+</RadzenPanelMenu>
