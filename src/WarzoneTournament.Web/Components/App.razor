@@ -3,19 +3,24 @@
 
 <head>
     <meta charset="utf-8" />
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <title>Warzone Tournament Platform</title>
-    <link rel="stylesheet" href="lib/radzen/css/default.css" />
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="css/app.css" />
+    <RadzenTheme Theme="material" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
 <body>
+
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
-    <script src="lib/radzen/js/radzen.blazor.js"></script>
-    <script src="js/signalr.js"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js?v=@(typeof(Radzen.Colors).Assembly.GetName().Version)"></script>
+ 
 </body>
 
 </html>

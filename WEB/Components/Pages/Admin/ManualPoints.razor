@@ -1,0 +1,333 @@
+@page "/admin/manual-points"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Match
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Domain.Enums
+@inject ITournamentService TournamentService
+@inject IMatchService MatchService
+@inject ILeaderboardService LeaderboardService
+@inject NavigationManager NavManager
+
+<PageTitle>Manual Points - Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Manual Points Assignment</h1>
+        <RadzenButton Text="Back to Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/admin"))" />
+    </div>
+
+    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" class="mb-4">
+        <strong>Admin Only.</strong> Changes here override OCR-extracted and reported values.
+        Submitting overwrites the entire match result — fill all team rows before saving.
+    </RadzenAlert>
+
+    @* ── Step 1: Tournament ── *@
+    <RadzenCard class="mb-3">
+        <h3 class="rz-mb-4">1. Select Tournament</h3>
+        @if (_loadingTournaments)
+        {
+            <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+        }
+        else
+        {
+            <RadzenDropDown @bind-Value="_selectedTournamentId"
+                            Data="@_tournaments"
+                            TextProperty="Name"
+                            ValueProperty="Id"
+                            Placeholder="-- Pick a tournament --"
+                            Style="width:100%;max-width:500px"
+                            Change="@OnTournamentSelected" />
+        }
+    </RadzenCard>
+
+    @* ── Step 2: Match ── *@
+    @if (_selectedTournamentId != Guid.Empty)
+    {
+        <RadzenCard class="mb-3">
+            <h3 class="rz-mb-4">2. Select Match</h3>
+            @if (_loadingMatches)
+            {
+                <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+            }
+            else if (!_matches.Any())
+            {
+                <p style="color:var(--rz-text-secondary-color)">No matches found for this tournament.</p>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@_matches" TItem="MatchDto"
+                                AllowPaging="false" AllowSorting="false"
+                                GridLines="DataGridGridLines.Horizontal"
+                                RowClick="@OnMatchSelected"
+                                class="rz-cursor-pointer">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="MatchDto" Property="MatchNumber" Title="#" Width="60px" />
+                        <RadzenDataGridColumn TItem="MatchDto" Property="RoundName" Title="Round" Width="140px" />
+                        <RadzenDataGridColumn TItem="MatchDto" Title="Status" Width="130px">
+                            <Template Context="m">
+                                <RadzenBadge Text="@m.StatusName" BadgeStyle="@GetMatchBadgeStyle(m.Status)" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="MatchDto" Property="ScheduledTime" Title="Scheduled" Width="160px" FormatString="{0:MMM dd, HH:mm}" />
+                        <RadzenDataGridColumn TItem="MatchDto" Title="Teams" Width="80px">
+                            <Template Context="m">@m.TeamResults.Count</Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="MatchDto" Property="ResultsConfirmed" Title="Confirmed" Width="100px">
+                            <Template Context="m">
+                                <RadzenIcon Icon="@(m.ResultsConfirmed ? "check_circle" : "radio_button_unchecked")"
+                                            style="color:@(m.ResultsConfirmed ? "var(--rz-success)" : "var(--rz-text-secondary-color)")" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+    }
+
+    @* ── Step 3: Edit results ── *@
+    @if (_editingMatch != null)
+    {
+        <RadzenCard>
+            <div class="page-header" style="margin-bottom:16px">
+                <h3>3. Edit Results — Match @_editingMatch.MatchNumber
+                    @if (!string.IsNullOrEmpty(_editingMatch.RoundName))
+                    {
+                        <small style="color:var(--rz-text-secondary-color)"> (@_editingMatch.RoundName)</small>
+                    }
+                </h3>
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => _editingMatch = null)" title="Close" />
+            </div>
+
+            @if (!_editRows.Any())
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat">
+                    This match has no team results yet. Use Submit Results to add teams first.
+                </RadzenAlert>
+            }
+            else
+            {
+                <div style="overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--rz-grid-header-border-color)">
+                                <th style="text-align:left;padding:8px 12px">Team</th>
+                                <th style="text-align:center;padding:8px 12px;width:90px">Placement</th>
+                                <th style="text-align:center;padding:8px 12px;width:90px">Kills</th>
+                                <th style="text-align:center;padding:8px 12px;width:90px">Deaths</th>
+                                <th style="text-align:center;padding:8px 12px;width:110px">Bonus Pts</th>
+                                <th style="text-align:center;padding:8px 12px;width:110px">Placement Pts</th>
+                                <th style="text-align:center;padding:8px 12px;width:90px">Kill Pts</th>
+                                <th style="text-align:center;padding:8px 12px;width:90px">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _editRows)
+                            {
+                                <tr style="border-bottom:1px solid var(--rz-grid-header-border-color)">
+                                    <td style="padding:8px 12px">
+                                        <strong>@row.TeamName</strong>
+                                        @if (!string.IsNullOrEmpty(row.TeamTag))
+                                        {
+                                            <small style="color:var(--rz-text-secondary-color)"> [@row.TeamTag]</small>
+                                        }
+                                    </td>
+                                    <td style="padding:4px 8px">
+                                        <RadzenNumeric @bind-Value="row.Placement" Min="1" Max="150"
+                                                       Style="width:70px" TValue="int"
+                                                       Change="@(_ => RecalcRow(row))" />
+                                    </td>
+                                    <td style="padding:4px 8px">
+                                        <RadzenNumeric @bind-Value="row.Kills" Min="0"
+                                                       Style="width:70px" TValue="int"
+                                                       Change="@(_ => RecalcRow(row))" />
+                                    </td>
+                                    <td style="padding:4px 8px">
+                                        <RadzenNumeric @bind-Value="row.Deaths" Min="0"
+                                                       Style="width:70px" TValue="int" />
+                                    </td>
+                                    <td style="padding:4px 8px">
+                                        <RadzenNumeric @bind-Value="row.BonusPoints" Min="-999" Max="999"
+                                                       Style="width:90px" TValue="int"
+                                                       Change="@(_ => RecalcRow(row))" />
+                                    </td>
+                                    <td style="text-align:center;padding:8px 12px;color:var(--rz-text-secondary-color)">
+                                        @row.PlacementPoints
+                                    </td>
+                                    <td style="text-align:center;padding:8px 12px;color:var(--rz-text-secondary-color)">
+                                        @row.KillPoints
+                                    </td>
+                                    <td style="text-align:center;padding:8px 12px;font-weight:700;color:var(--rz-primary)">
+                                        @row.Total
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <small style="color:var(--rz-text-secondary-color);display:block;margin-top:8px">
+                    Placement/Kill points are recalculated server-side from the tournament scoring config when you save.
+                    The preview above uses the last known values from this match.
+                </small>
+
+                @if (!string.IsNullOrEmpty(_saveError))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mt-3">
+                        @_saveError
+                    </RadzenAlert>
+                }
+
+                @if (!string.IsNullOrEmpty(_saveSuccess))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mt-3">
+                        @_saveSuccess
+                    </RadzenAlert>
+                }
+
+                <div style="display:flex;gap:12px;margin-top:16px">
+                    <RadzenButton Text="Save Points" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                  Click="@SaveResults" Disabled="@_saving" />
+                    <RadzenButton Text="Recalculate Leaderboard" Icon="refresh" ButtonStyle="ButtonStyle.Secondary"
+                                  Click="@RecalcLeaderboard" Disabled="@_saving" />
+                    <RadzenButton Text="Cancel" Icon="close" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => _editingMatch = null)" Disabled="@_saving" />
+                </div>
+            }
+        </RadzenCard>
+    }
+</div>
+
+@code {
+    private bool _loadingTournaments = true;
+    private bool _loadingMatches = false;
+    private bool _saving = false;
+    private List<TournamentListDto> _tournaments = new();
+    private List<MatchDto> _matches = new();
+    private Guid _selectedTournamentId = Guid.Empty;
+    private MatchDto? _editingMatch;
+    private List<EditRow> _editRows = new();
+    private string? _saveError;
+    private string? _saveSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
+        {
+            PageNumber = 1, PageSize = 100
+        });
+        if (result.IsSuccess)
+            _tournaments = result.Value.Items.ToList();
+        _loadingTournaments = false;
+    }
+
+    private async Task OnTournamentSelected(object? _)
+    {
+        _editingMatch = null;
+        _matches.Clear();
+        if (_selectedTournamentId == Guid.Empty) return;
+
+        _loadingMatches = true;
+        var result = await MatchService.GetMatchesByTournamentAsync(_selectedTournamentId);
+        if (result.IsSuccess)
+            _matches = result.Value.ToList();
+        _loadingMatches = false;
+    }
+
+    private void OnMatchSelected(DataGridRowMouseEventArgs<MatchDto> args)
+    {
+        _editingMatch = args.Data;
+        _saveError = null;
+        _saveSuccess = null;
+        _editRows = args.Data.TeamResults.Select(tr => new EditRow
+        {
+            TeamId = tr.TeamId,
+            TeamName = tr.TeamName,
+            TeamTag = tr.TeamTag,
+            Placement = tr.Placement,
+            Kills = tr.Kills,
+            Deaths = tr.Deaths,
+            BonusPoints = tr.BonusPoints,
+            PlacementPoints = tr.PlacementPoints,
+            KillPoints = tr.KillPoints,
+        }).ToList();
+    }
+
+    private void RecalcRow(EditRow row)
+    {
+        row.Total = row.PlacementPoints + row.KillPoints + row.BonusPoints;
+    }
+
+    private async Task SaveResults()
+    {
+        if (_editingMatch == null) return;
+        _saving = true;
+        _saveError = null;
+        _saveSuccess = null;
+
+        var dto = new SubmitMatchResultsDto
+        {
+            TeamResults = _editRows.Select(r => new TeamResultDto
+            {
+                TeamId = r.TeamId,
+                Placement = r.Placement,
+                Kills = r.Kills,
+                Deaths = r.Deaths,
+                BonusPoints = r.BonusPoints,
+            }).ToList(),
+            PlayerStats = new()
+        };
+
+        var result = await MatchService.SubmitMatchResultsAsync(_editingMatch.Id, dto);
+        if (result.IsSuccess)
+        {
+            _editingMatch = result.Value;
+            _saveSuccess = "Match results saved successfully.";
+            // refresh match list
+            await OnTournamentSelected(null);
+        }
+        else
+        {
+            _saveError = result.Error;
+        }
+        _saving = false;
+    }
+
+    private async Task RecalcLeaderboard()
+    {
+        if (_selectedTournamentId == Guid.Empty) return;
+        _saving = true;
+        _saveError = null;
+        var result = await LeaderboardService.RecalculateLeaderboardAsync(_selectedTournamentId);
+        if (result.IsSuccess)
+            _saveSuccess = "Leaderboard recalculated.";
+        else
+            _saveError = result.Error;
+        _saving = false;
+    }
+
+    private BadgeStyle GetMatchBadgeStyle(WarzoneTournament.Domain.Enums.MatchStatus status) => status switch
+    {
+        WarzoneTournament.Domain.Enums.MatchStatus.InProgress => BadgeStyle.Danger,
+        WarzoneTournament.Domain.Enums.MatchStatus.Completed => BadgeStyle.Success,
+        WarzoneTournament.Domain.Enums.MatchStatus.UnderReview => BadgeStyle.Warning,
+        WarzoneTournament.Domain.Enums.MatchStatus.Disputed => BadgeStyle.Warning,
+        WarzoneTournament.Domain.Enums.MatchStatus.Cancelled => BadgeStyle.Secondary,
+        _ => BadgeStyle.Light
+    };
+
+    private class EditRow
+    {
+        public Guid TeamId { get; set; }
+        public string TeamName { get; set; } = string.Empty;
+        public string? TeamTag { get; set; }
+        public int Placement { get; set; }
+        public int Kills { get; set; }
+        public int Deaths { get; set; }
+        public int BonusPoints { get; set; }
+        public int PlacementPoints { get; set; }
+        public int KillPoints { get; set; }
+        public int Total => PlacementPoints + KillPoints + BonusPoints;
+    }
+}

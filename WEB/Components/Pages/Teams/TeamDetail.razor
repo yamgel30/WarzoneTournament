@@ -1,0 +1,320 @@
+@page "/teams/{Id:guid}"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Team
+@using WarzoneTournament.Application.DTOs.Player
+@using WarzoneTournament.Domain.Enums
+@inject ITeamService TeamService
+@inject IPlayerService PlayerService
+@inject NavigationManager NavManager
+
+<PageTitle>Team Detail - Warzone</PageTitle>
+
+@if (_loading)
+{
+    <div class="page-container">
+        <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate"
+                                   Size="ProgressBarCircularSize.Large" />
+    </div>
+}
+else if (_team == null)
+{
+    <div class="page-container">
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">
+            Team not found.
+        </RadzenAlert>
+        <RadzenButton Text="All Teams" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/teams"))" class="mt-3" />
+    </div>
+}
+else
+{
+    <div class="page-container">
+        @* ── Header ── *@
+        <div class="page-header">
+            <div style="display:flex;align-items:center;gap:16px">
+                @if (!string.IsNullOrEmpty(_team.LogoUrl))
+                {
+                    <img src="@_team.LogoUrl" alt="@_team.Name logo"
+                         style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--rz-primary)" />
+                }
+                <div>
+                    <h1 class="page-title" style="margin:0">
+                        @_team.Name
+                        @if (!string.IsNullOrEmpty(_team.Tag))
+                        {
+                            <span style="font-size:0.6em;color:var(--rz-text-secondary-color);margin-left:8px">[@_team.Tag]</span>
+                        }
+                    </h1>
+                    <small style="color:var(--rz-text-secondary-color)">
+                        @_team.PlatformName
+                        @if (!string.IsNullOrEmpty(_team.Country)) { <span> · @_team.Country</span> }
+                        @if (!string.IsNullOrEmpty(_team.CaptainUsername)) { <span> · Captain: @_team.CaptainUsername</span> }
+                    </small>
+                </div>
+            </div>
+            <RadzenButton Text="All Teams" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => NavManager.NavigateTo("/teams"))" />
+        </div>
+
+        @* ── Roster ── *@
+        <RadzenCard class="mb-3">
+            <div class="page-header" style="margin-bottom:16px">
+                <h3 style="margin:0">Roster (@_team.Players.Count players)</h3>
+                <RadzenButton Text="Add Player" Icon="person_add" ButtonStyle="ButtonStyle.Primary"
+                              Size="ButtonSize.Small" Click="@OpenAddPlayerDialog" />
+            </div>
+
+            @if (!_team.Players.Any())
+            {
+                <p style="color:var(--rz-text-secondary-color)">No players yet. Add players using the button above.</p>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@_team.Players" TItem="TeamPlayerDto"
+                                AllowPaging="false" AllowSorting="false"
+                                GridLines="DataGridGridLines.Horizontal">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Title="Player" Width="220px">
+                            <Template Context="p">
+                                <div style="display:flex;align-items:center;gap:10px">
+                                    @if (!string.IsNullOrEmpty(p.AvatarUrl))
+                                    {
+                                        <img src="@p.AvatarUrl" alt=""
+                                             style="width:32px;height:32px;border-radius:50%;object-fit:cover" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenIcon Icon="account_circle" style="font-size:32px;color:var(--rz-text-secondary-color)" />
+                                    }
+                                    <strong>@p.Username</strong>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Property="ActivisionId" Title="Activision ID" Width="180px">
+                            <Template Context="p">
+                                <span style="color:var(--rz-text-secondary-color);font-size:0.9em">@(p.ActivisionId ?? "–")</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Property="DiscordUsername" Title="Discord" Width="150px">
+                            <Template Context="p">
+                                <span style="color:var(--rz-text-secondary-color)">@(p.DiscordUsername ?? "–")</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Title="Platform" Width="110px">
+                            <Template Context="p">
+                                <span>@p.Platform.ToString()</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Property="Role" Title="Role" Width="110px">
+                            <Template Context="p">
+                                <span>@(p.Role ?? "–")</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Property="JoinedAt" Title="Joined" Width="130px" FormatString="{0:MMM dd, yyyy}" />
+                        <RadzenDataGridColumn TItem="TeamPlayerDto" Title="" Width="80px" Sortable="false">
+                            <Template Context="p">
+                                <RadzenButton Icon="person_remove" ButtonStyle="ButtonStyle.Danger"
+                                              Size="ButtonSize.Small"
+                                              Click="@(() => RemovePlayer(p.PlayerId))"
+                                              title="Remove from team"
+                                              Disabled="@(p.PlayerId == _team.CaptainId)" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+
+        @* ── Add Player Panel ── *@
+        @if (_showAddPlayer)
+        {
+            <RadzenCard class="mb-3" style="border:1px solid var(--rz-primary)">
+                <h3 class="rz-mb-4">Search & Add Player</h3>
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                    <div>
+                        <RadzenLabel Text="Search by username or Activision ID" />
+                        <RadzenTextBox @bind-Value="_playerSearch"
+                                       Placeholder="ej: SniperElite99"
+                                       Style="width:280px"
+                                       @oninput="@OnPlayerSearchInput" />
+                    </div>
+                    <RadzenButton Text="Search" Icon="search" ButtonStyle="ButtonStyle.Secondary"
+                                  Click="@SearchPlayers" Disabled="@_searching" />
+                    <RadzenButton Text="Cancel" Icon="close" ButtonStyle="ButtonStyle.Light"
+                                  Click="@CloseAddPlayerDialog" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(_addPlayerError))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mt-3">
+                        @_addPlayerError
+                    </RadzenAlert>
+                }
+
+                @if (_searchResults.Any())
+                {
+                    <RadzenDataGrid Data="@_searchResults" TItem="PlayerDto"
+                                    AllowPaging="false" AllowSorting="false"
+                                    GridLines="DataGridGridLines.Horizontal"
+                                    class="mt-3">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="PlayerDto" Property="Username" Title="Username" Width="180px" />
+                            <RadzenDataGridColumn TItem="PlayerDto" Property="ActivisionId" Title="Activision ID" Width="180px">
+                                <Template Context="p"><span style="color:var(--rz-text-secondary-color)">@(p.ActivisionId ?? "–")</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="PlayerDto" Title="Platform" Width="110px">
+                                <Template Context="p">@p.PlatformName</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="PlayerDto" Title="" Width="100px" Sortable="false">
+                                <Template Context="p">
+                                    @if (IsAlreadyOnTeam(p.Id))
+                                    {
+                                        <RadzenBadge Text="On team" BadgeStyle="BadgeStyle.Info" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenButton Text="Add" Icon="add" ButtonStyle="ButtonStyle.Success"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => AddPlayer(p.Id))"
+                                                      Disabled="@_saving" />
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+                else if (_searchedOnce && !_searching)
+                {
+                    <p class="mt-3" style="color:var(--rz-text-secondary-color)">No players found matching "@_playerSearch".</p>
+                }
+            </RadzenCard>
+        }
+
+        @if (!string.IsNullOrEmpty(_actionMessage))
+        {
+            <RadzenAlert AlertStyle="@_actionAlertStyle" ShowIcon="true" Variant="Variant.Flat">
+                @_actionMessage
+            </RadzenAlert>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private TeamDto? _team;
+    private bool _loading = true;
+    private bool _showAddPlayer = false;
+    private bool _searching = false;
+    private bool _saving = false;
+    private bool _searchedOnce = false;
+    private string _playerSearch = string.Empty;
+    private List<PlayerDto> _searchResults = new();
+    private string? _addPlayerError;
+    private string? _actionMessage;
+    private AlertStyle _actionAlertStyle = AlertStyle.Success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTeam();
+    }
+
+    private async Task LoadTeam()
+    {
+        _loading = true;
+        var result = await TeamService.GetTeamByIdAsync(Id);
+        _team = result.IsSuccess ? result.Value : null;
+        _loading = false;
+    }
+
+    private void OpenAddPlayerDialog()
+    {
+        _showAddPlayer = true;
+        _searchResults.Clear();
+        _playerSearch = string.Empty;
+        _addPlayerError = null;
+        _searchedOnce = false;
+    }
+
+    private void CloseAddPlayerDialog()
+    {
+        _showAddPlayer = false;
+        _searchResults.Clear();
+        _addPlayerError = null;
+    }
+
+    private async Task OnPlayerSearchInput(ChangeEventArgs e)
+    {
+        _playerSearch = e.Value?.ToString() ?? string.Empty;
+        if (_playerSearch.Length >= 2)
+            await SearchPlayers();
+    }
+
+    private async Task SearchPlayers()
+    {
+        if (string.IsNullOrWhiteSpace(_playerSearch)) return;
+        _searching = true;
+        _addPlayerError = null;
+        _searchedOnce = true;
+        var result = await PlayerService.GetPlayersAsync();
+        if (result.IsSuccess)
+        {
+            var term = _playerSearch.ToLowerInvariant();
+            _searchResults = result.Value
+                .Where(p => (p.Username.ToLowerInvariant().Contains(term) ||
+                             (p.ActivisionId?.ToLowerInvariant().Contains(term) ?? false)) &&
+                            !p.IsBanned)
+                .Take(20)
+                .ToList();
+        }
+        else
+        {
+            _addPlayerError = result.Error;
+        }
+        _searching = false;
+    }
+
+    private async Task AddPlayer(Guid playerId)
+    {
+        if (_team == null) return;
+        _saving = true;
+        _addPlayerError = null;
+        var result = await TeamService.AddPlayerToTeamAsync(_team.Id, playerId);
+        if (result.IsSuccess)
+        {
+            _actionMessage = "Player added to team.";
+            _actionAlertStyle = AlertStyle.Success;
+            await LoadTeam();
+            // remove from search results to avoid re-adding
+            _searchResults.RemoveAll(p => p.Id == playerId);
+        }
+        else
+        {
+            _addPlayerError = result.Error;
+        }
+        _saving = false;
+    }
+
+    private async Task RemovePlayer(Guid playerId)
+    {
+        if (_team == null) return;
+        _saving = true;
+        _actionMessage = null;
+        var result = await TeamService.RemovePlayerFromTeamAsync(_team.Id, playerId);
+        if (result.IsSuccess)
+        {
+            _actionMessage = "Player removed from team.";
+            _actionAlertStyle = AlertStyle.Warning;
+            await LoadTeam();
+        }
+        else
+        {
+            _actionMessage = result.Error;
+            _actionAlertStyle = AlertStyle.Danger;
+        }
+        _saving = false;
+    }
+
+    private bool IsAlreadyOnTeam(Guid playerId) =>
+        _team?.Players.Any(p => p.PlayerId == playerId) ?? false;
+}

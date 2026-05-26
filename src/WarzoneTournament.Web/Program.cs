@@ -3,7 +3,7 @@ using Radzen;
 using WarzoneTournament.Application;
 using WarzoneTournament.Infrastructure;
 using WarzoneTournament.Infrastructure.Data;
-using WarzoneTournament.Infrastructure.Discord;
+
 using WarzoneTournament.Web.Components;
 using WarzoneTournament.Web.Hubs;
 using Microsoft.EntityFrameworkCore;
@@ -16,12 +16,14 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+
+builder.Services.AddRadzenComponents();
+
 builder.Services.AddSignalR(options =>
 {
     options.EnableDetailedErrors = builder.Environment.IsDevelopment();
 });
 
-builder.Services.AddRadzenComponents();
 builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddResponseCompression(opts =>
@@ -47,6 +49,8 @@ if (app.Environment.IsDevelopment())
     }
 }
 
+
+
 // Start Discord bot
 var discordBot = app.Services.GetRequiredService<WarzoneTournament.Application.Common.Interfaces.IDiscordNotificationService>();
 await discordBot.StartBotAsync();
@@ -58,9 +62,11 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseResponseCompression();
+
 app.UseStaticFiles();
+
 app.UseAntiforgery();
+
 
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {

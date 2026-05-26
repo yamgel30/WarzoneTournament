@@ -1,0 +1,33 @@
+@inherits LayoutComponentBase
+@using Radzen
+
+<RadzenComponents @rendermode="InteractiveServer" />
+
+<RadzenLayout>
+    <RadzenHeader>
+        <div class="header-content">
+            <RadzenSidebarToggle Click="@ToggleSidebar" />
+            <span class="app-title">
+                <span class="title-icon">⚡</span>
+                WARZONE TOURNAMENT
+            </span>
+            <div class="header-right">
+                <RadzenBadge Text="LIVE" BadgeStyle="BadgeStyle.Danger" class="live-badge" />
+            </div>
+        </div>
+    </RadzenHeader>
+    <RadzenSidebar @ref="_sidebar" @bind-Expanded="@_sidebarExpanded">
+        <NavMenu />
+    </RadzenSidebar>
+    <RadzenBody>
+        <RadzenContentContainer Name="main">
+            @Body
+        </RadzenContentContainer>
+    </RadzenBody>
+</RadzenLayout>
+
+@code {
+    private RadzenSidebar _sidebar = null!;
+    private bool _sidebarExpanded = true;
+    void ToggleSidebar() => _sidebarExpanded = !_sidebarExpanded;
+}

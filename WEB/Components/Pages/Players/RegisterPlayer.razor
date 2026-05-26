@@ -1,0 +1,170 @@
+@page "/players/register"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Player
+@using WarzoneTournament.Domain.Enums
+@inject IPlayerService PlayerService
+@inject NavigationManager NavManager
+
+<PageTitle>Registrar Jugador - Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Registrar Jugador</h1>
+        <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/players"))" />
+    </div>
+
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-4">
+        <strong>¿Cómo funciona el registro?</strong><br />
+        Cada jugador necesita un nombre de usuario único. El Discord ID vincula al jugador con el bot de Discord
+        para auto-registrar evidencias. El Activision ID es su nombre en el juego (ej: <code>NombreJugador#1234567</code>).
+    </RadzenAlert>
+
+    <RadzenCard style="max-width:600px">
+        <RadzenTemplateForm TItem="CreatePlayerDto" Data="@_model" Submit="@OnSubmit">
+            <div style="display:flex;flex-direction:column;gap:20px">
+
+                <div>
+                    <RadzenLabel Text="Nombre de Usuario *" />
+                    <RadzenTextBox @bind-Value="_model.Username"
+                                   Placeholder="ej: SniperElite99"
+                                   Style="width:100%"
+                                   @oninput="@ClearError" />
+                    <small style="color:var(--rz-text-secondary-color)">
+                        Solo letras, números, guiones y # (sin espacios). Máx 100 caracteres.
+                    </small>
+                </div>
+
+                <div>
+                    <RadzenLabel Text="Activision ID (nombre en juego)" />
+                    <RadzenTextBox @bind-Value="_model.ActivisionId"
+                                   Placeholder="ej: SniperElite99#1234567"
+                                   Style="width:100%" />
+                    <small style="color:var(--rz-text-secondary-color)">
+                        Visible en el perfil de CoD. Necesario para verificación de resultados.
+                    </small>
+                </div>
+
+                <div>
+                    <RadzenLabel Text="Discord ID" />
+                    <RadzenTextBox @bind-Value="_model.DiscordId"
+                                   Placeholder="ej: 123456789012345678"
+                                   Style="width:100%" />
+                    <small style="color:var(--rz-text-secondary-color)">
+                        ID numérico de Discord (17-20 dígitos). En Discord: <code>Ajustes → Mi Cuenta → Copiar ID de usuario</code>.
+                        Necesario para vinculación con el bot.
+                    </small>
+                </div>
+
+                <div>
+                    <RadzenLabel Text="Username de Discord" />
+                    <RadzenTextBox @bind-Value="_model.DiscordUsername"
+                                   Placeholder="ej: sniperplayer"
+                                   Style="width:100%" />
+                </div>
+
+                <div>
+                    <RadzenLabel Text="Plataforma *" />
+                    <RadzenDropDown @bind-Value="_model.Platform"
+                                   Data="@Enum.GetValues<Platform>()"
+                                   Style="width:100%" />
+                </div>
+
+                <div>
+                    <RadzenLabel Text="Email (opcional)" />
+                    <RadzenTextBox @bind-Value="_model.Email"
+                                   Placeholder="jugador@ejemplo.com"
+                                   Style="width:100%" />
+                </div>
+
+                <div>
+                    <RadzenLabel Text="País (opcional)" />
+                    <RadzenTextBox @bind-Value="_model.Country"
+                                   Placeholder="ej: Colombia"
+                                   Style="width:100%" />
+                </div>
+
+                <div>
+                    <RadzenLabel Text="URL de Avatar (opcional)" />
+                    <RadzenTextBox @bind-Value="_model.AvatarUrl"
+                                   Placeholder="https://..."
+                                   Style="width:100%" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">
+                        @_errorMessage
+                    </RadzenAlert>
+                }
+
+                @if (!string.IsNullOrEmpty(_successMessage))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat">
+                        @_successMessage
+                        <br /><strong>Jugador registrado con ID: @_createdId</strong>
+                    </RadzenAlert>
+                }
+
+                <div style="display:flex;gap:12px;padding-top:8px">
+                    <RadzenButton ButtonType="ButtonType.Submit"
+                                  Text="Registrar Jugador"
+                                  Icon="person_add"
+                                  ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@_saving" />
+                    <RadzenButton Text="Registrar otro"
+                                  Icon="refresh"
+                                  ButtonStyle="ButtonStyle.Secondary"
+                                  Click="@ResetForm"
+                                  Disabled="@(!_registeredAtLeastOne)" />
+                    <RadzenButton Text="Ver todos los jugadores"
+                                  Icon="list"
+                                  ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => NavManager.NavigateTo("/players"))" />
+                </div>
+            </div>
+        </RadzenTemplateForm>
+    </RadzenCard>
+</div>
+
+@code {
+    private CreatePlayerDto _model = new();
+    private bool _saving = false;
+    private string? _errorMessage;
+    private string? _successMessage;
+    private string? _createdId;
+    private bool _registeredAtLeastOne = false;
+
+    private void ClearError(ChangeEventArgs _) => _errorMessage = null;
+
+    private async Task OnSubmit()
+    {
+        _saving = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var result = await PlayerService.CreatePlayerAsync(_model);
+            if (result.IsSuccess)
+            {
+                _successMessage = $"¡Jugador '{result.Value.Username}' registrado exitosamente!";
+                _createdId = result.Value.Id.ToString()[..8] + "...";
+                _registeredAtLeastOne = true;
+            }
+            else
+            {
+                _errorMessage = result.Error;
+            }
+        }
+        finally { _saving = false; }
+    }
+
+    private void ResetForm()
+    {
+        _model = new();
+        _errorMessage = null;
+        _successMessage = null;
+        _createdId = null;
+    }
+}

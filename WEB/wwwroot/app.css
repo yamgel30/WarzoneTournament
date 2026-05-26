@@ -1,0 +1,2 @@
+/* Minimal reset — Radzen Dark theme handles everything else */
+*, *::before, *::after { box-sizing: border-box; }
