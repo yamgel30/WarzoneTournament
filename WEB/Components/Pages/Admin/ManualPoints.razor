@@ -447,7 +447,8 @@
     {
         if (_editingMatch == null) return;
 
-        // If a Match Point team placed 1st, warn before finalizing tournament
+        // Show a warning if a Match Point team placed 1st — the backend will verify
+        // whether they were truly in MP *before* this map and finalize accordingly.
         var mpWinner = _editTeams.FirstOrDefault(t => t.IsMatchPoint && t.Placement == 1);
         if (mpWinner != null)
         {
