@@ -1,26 +1,26 @@
 @page "/admin/manual-points"
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Match
+@using WarzoneTournament.Application.DTOs.Round
 @using WarzoneTournament.Application.DTOs.Tournament
 @using WarzoneTournament.Domain.Enums
 @inject ITournamentService TournamentService
 @inject ITeamService TeamService
 @inject IMatchService MatchService
-@inject ILeaderboardService LeaderboardService
+@inject IRoundService RoundService
 @inject NavigationManager NavManager
 
-<PageTitle>Resultados de Mapas - Admin</PageTitle>
+<PageTitle>Ingresar Kills - Admin</PageTitle>
 
 <div class="page-container">
     <div class="page-header">
-        <h1 class="page-title">Ingresar Resultados</h1>
-        <RadzenButton Text="Volver al Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+        <h1 class="page-title">Ingresar Kills</h1>
+        <RadzenButton Text="Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
                       Click="@(() => NavManager.NavigateTo("/admin"))" />
     </div>
 
-    @* ── Paso 1: Torneo ── *@
+    @* ── Selección de torneo ── *@
     <RadzenCard class="mb-3">
-        <h3 class="rz-mb-3">1. Selecciona el torneo</h3>
         @if (_loadingTournaments)
         {
             <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
@@ -31,79 +31,75 @@
                             Data="@_tournaments"
                             TextProperty="Name"
                             ValueProperty="Id"
-                            Placeholder="-- Elige un torneo --"
+                            Placeholder="-- Selecciona el torneo --"
                             Style="width:100%;max-width:500px"
                             Change="@OnTournamentSelected" />
         }
     </RadzenCard>
 
-    @* ── Paso 2: Match ── *@
+    @* ── Lista de mapas ── *@
     @if (_selectedTournamentId != Guid.Empty)
     {
         <RadzenCard class="mb-3">
-            <h3 class="rz-mb-3">2. Selecciona el mapa (match)</h3>
-            @if (_loadingMatches)
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">
+                    Mapas
+                    @if (_matches.Any())
+                    {<small style="font-weight:400;color:var(--rz-text-secondary-color)"> (@_matches.Count jugados)</small>}
+                </h3>
+                <RadzenButton Text="Agregar Mapa" Icon="add" ButtonStyle="ButtonStyle.Primary"
+                              Click="@AddMap" Disabled="@_addingMap" />
+            </div>
+
+            @if (_loadingMatches || _addingMap)
             {
                 <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
             }
             else if (!_matches.Any())
             {
-                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat">
-                    No hay matches en este torneo. Créalos primero en
-                    <RadzenLink Text="Setup del Torneo" Path="@($"/admin/setup/{_selectedTournamentId}")" /> → pestaña Rondas.
-                </RadzenAlert>
+                <div style="text-align:center;padding:24px;color:var(--rz-text-secondary-color)">
+                    <div style="font-size:2em;margin-bottom:8px">🗺️</div>
+                    <div>Sin mapas. Pulsa <strong>Agregar Mapa</strong> para empezar el primer mapa.</div>
+                </div>
             }
             else
             {
-                <RadzenDataGrid Data="@_matches" TItem="MatchDto"
-                                AllowPaging="false" AllowSorting="false"
-                                GridLines="DataGridGridLines.Horizontal"
-                                RowClick="@OnMatchSelected"
-                                style="cursor:pointer">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="MatchDto" Property="MatchNumber" Title="Mapa #" Width="80px" />
-                        <RadzenDataGridColumn TItem="MatchDto" Property="RoundName" Title="Ronda" Width="140px" />
-                        <RadzenDataGridColumn TItem="MatchDto" Title="Estado" Width="130px">
-                            <Template Context="m">
-                                <RadzenBadge Text="@m.StatusName" BadgeStyle="@GetMatchBadge(m.Status)" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="MatchDto" Title="Equipos" Width="90px">
-                            <Template Context="m">
-                                @if (m.TeamResults.Count > 0)
-                                {<span style="color:var(--rz-success)">@m.TeamResults.Count equipos</span>}
-                                else
-                                {<span style="color:var(--rz-text-secondary-color)">Sin datos</span>}
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="MatchDto" Property="ResultsConfirmed" Title="Confirmado" Width="110px">
-                            <Template Context="m">
-                                <RadzenIcon Icon="@(m.ResultsConfirmed ? "check_circle" : "radio_button_unchecked")"
-                                            style="@($"color:{(m.ResultsConfirmed ? "var(--rz-success)" : "var(--rz-text-secondary-color)")}")" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
+                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    @foreach (var m in _matches.OrderBy(x => x.MatchNumber))
+                    {
+                        var isSelected = _editingMatch?.Id == m.Id;
+                        <div @onclick="@(() => SelectMatch(m))"
+                             style="cursor:pointer;padding:10px 18px;border-radius:8px;border:2px solid @(isSelected ? "var(--rz-primary)" : "var(--rz-grid-header-border-color)");background:@(isSelected ? "var(--rz-primary-light)" : "transparent");display:flex;flex-direction:column;align-items:center;min-width:90px;transition:all 0.15s">
+                            <span style="font-weight:700;font-size:1.1em;color:@(isSelected ? "var(--rz-primary)" : "inherit")">Mapa @m.MatchNumber</span>
+                            <RadzenBadge Text="@(m.ResultsConfirmed ? "✓" : (m.TeamResults.Count > 0 ? "Parcial" : "Vacío"))"
+                                         BadgeStyle="@(m.ResultsConfirmed ? BadgeStyle.Success : (m.TeamResults.Count > 0 ? BadgeStyle.Warning : BadgeStyle.Light))"
+                                         style="margin-top:4px;font-size:0.75em" />
+                        </div>
+                    }
+                </div>
             }
         </RadzenCard>
     }
 
-    @* ── Paso 3: Tabla de resultados ── *@
+    @* ── Formulario de kills ── *@
     @if (_editingMatch != null)
     {
         <RadzenCard>
-            <div class="page-header" style="margin-bottom:4px">
-                <h3 style="margin:0">
-                    Mapa #@_editingMatch.MatchNumber
-                    @if (!string.IsNullOrEmpty(_editingMatch.RoundName))
-                    {<small style="color:var(--rz-text-secondary-color)"> — @_editingMatch.RoundName</small>}
-                </h3>
-                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                              Click="@(() => _editingMatch = null)" />
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+                <h3 style="margin:0">Mapa @_editingMatch.MatchNumber — Ingresar Kills</h3>
+                <div style="display:flex;gap:8px">
+                    @if (!_editingMatch.ResultsConfirmed && _editingMatch.TeamResults.Any())
+                    {
+                        <RadzenButton Text="Confirmar" Icon="check_circle" ButtonStyle="ButtonStyle.Success"
+                                      Size="ButtonSize.Small" Click="@ConfirmResults" Disabled="@_saving" />
+                    }
+                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                  Click="@(() => { _editingMatch = null; _saveError = null; _saveSuccess = null; })" />
+                </div>
             </div>
 
             <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
-                Llena los datos de cada equipo conforme van reportando kills en Discord. Placement = posición final en el mapa (1er lugar, 2do...).
+                Posición = lugar final del equipo en este mapa (1 = ganador). Puedes guardar parcialmente.
             </small>
 
             @if (_loadingTeams)
@@ -113,31 +109,23 @@
             else if (!_editRows.Any())
             {
                 <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat">
-                    No hay equipos inscritos en este torneo. Inscríbelos primero en
-                    <RadzenLink Text="Setup del Torneo" Path="@($"/admin/setup/{_selectedTournamentId}")" />.
+                    No hay equipos inscritos en este torneo.
+                    <RadzenLink Text="Configura el torneo" Path="@($"/admin/setup/{_selectedTournamentId}")" />.
                 </RadzenAlert>
             }
             else
             {
                 <div style="overflow-x:auto">
-                    <table style="width:100%;border-collapse:collapse;min-width:600px">
+                    <table style="width:100%;border-collapse:collapse;min-width:440px">
                         <thead>
                             <tr style="background:var(--rz-base-background-color)">
                                 <th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--rz-grid-header-border-color)">Equipo</th>
-                                <th style="text-align:center;padding:10px 8px;width:100px;border-bottom:2px solid var(--rz-grid-header-border-color)">
+                                <th style="text-align:center;padding:10px 8px;width:90px;border-bottom:2px solid var(--rz-grid-header-border-color)">
                                     Posición
-                                    <div style="font-weight:400;font-size:0.75em;color:var(--rz-text-secondary-color)">(1er lugar = 1)</div>
-                                </th>
-                                <th style="text-align:center;padding:10px 8px;width:100px;border-bottom:2px solid var(--rz-grid-header-border-color)">
-                                    Kills
-                                    <div style="font-weight:400;font-size:0.75em;color:var(--rz-text-secondary-color)">(total equipo)</div>
+                                    <div style="font-weight:400;font-size:0.75em;color:var(--rz-text-secondary-color)">(1=1er lugar)</div>
                                 </th>
                                 <th style="text-align:center;padding:10px 8px;width:90px;border-bottom:2px solid var(--rz-grid-header-border-color)">
-                                    Muertes
-                                </th>
-                                <th style="text-align:center;padding:10px 8px;width:100px;border-bottom:2px solid var(--rz-grid-header-border-color)">
-                                    Bonus
-                                    <div style="font-weight:400;font-size:0.75em;color:var(--rz-text-secondary-color)">(ajuste manual)</div>
+                                    Kills
                                 </th>
                                 <th style="text-align:center;padding:10px 8px;width:90px;border-bottom:2px solid var(--rz-grid-header-border-color);color:var(--rz-primary)">
                                     Puntos
@@ -155,27 +143,16 @@
                                     </td>
                                     <td style="padding:4px 8px;text-align:center">
                                         <RadzenNumeric @bind-Value="row.Placement" Min="0" Max="150"
-                                                       TValue="int" Style="width:70px"
+                                                       TValue="int" Style="width:68px"
                                                        Change="@(_ => StateHasChanged())" />
                                     </td>
                                     <td style="padding:4px 8px;text-align:center">
                                         <RadzenNumeric @bind-Value="row.Kills" Min="0"
-                                                       TValue="int" Style="width:70px"
-                                                       Change="@(_ => StateHasChanged())" />
-                                    </td>
-                                    <td style="padding:4px 8px;text-align:center">
-                                        <RadzenNumeric @bind-Value="row.Deaths" Min="0"
-                                                       TValue="int" Style="width:70px" />
-                                    </td>
-                                    <td style="padding:4px 8px;text-align:center">
-                                        <RadzenNumeric @bind-Value="row.BonusPoints" Min="-999" Max="999"
-                                                       TValue="int" Style="width:80px"
+                                                       TValue="int" Style="width:68px"
                                                        Change="@(_ => StateHasChanged())" />
                                     </td>
                                     <td style="text-align:center;padding:8px 12px;font-weight:700;font-size:1.1em;color:var(--rz-primary)">
-                                        @((_placementMap.TryGetValue(row.Placement, out var pp) ? pp : 0)
-                                          + row.Kills * _killPoints
-                                          + row.BonusPoints)
+                                        @CalcPoints(row)
                                     </td>
                                 </tr>
                             }
@@ -184,8 +161,7 @@
                 </div>
 
                 <small style="color:var(--rz-text-secondary-color);display:block;margin-top:8px">
-                    Puntos = Pts por posición + (kills × @_killPoints) + bonus.
-                    Puedes guardar parcialmente y volver a guardar cuando tengas todos los datos.
+                    Puntos = pts por posición + (kills × @_killPoints) + bonus.
                 </small>
 
                 @if (!string.IsNullOrEmpty(_saveError))
@@ -198,11 +174,11 @@
                 }
 
                 <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">
-                    <RadzenButton Text="Guardar y actualizar leaderboard" Icon="save"
-                                  ButtonStyle="ButtonStyle.Primary"
+                    <RadzenButton Text="Guardar" Icon="save" ButtonStyle="ButtonStyle.Primary"
                                   Click="@SaveResults" Disabled="@_saving" />
-                    <RadzenButton Text="Cancelar" Icon="close" ButtonStyle="ButtonStyle.Light"
-                                  Click="@(() => _editingMatch = null)" Disabled="@_saving" />
+                    <RadzenButton Text="Cerrar" Icon="close" ButtonStyle="ButtonStyle.Light"
+                                  Click="@(() => { _editingMatch = null; _saveError = null; _saveSuccess = null; })"
+                                  Disabled="@_saving" />
                 </div>
             }
         </RadzenCard>
@@ -214,6 +190,7 @@
     private bool _loadingMatches = false;
     private bool _loadingTeams = false;
     private bool _saving = false;
+    private bool _addingMap = false;
 
     private List<TournamentListDto> _tournaments = new();
     private List<MatchDto> _matches = new();
@@ -227,10 +204,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var result = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
-        {
-            PageNumber = 1, PageSize = 100
-        });
+        var result = await TournamentService.GetTournamentsAsync(new TournamentQueryDto { PageNumber = 1, PageSize = 100 });
         if (result.IsSuccess)
             _tournaments = result.Value.Items.ToList();
         _loadingTournaments = false;
@@ -245,17 +219,11 @@
 
         _loadingMatches = true;
 
-        // Load scoring config from tournament
         var tResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
         if (tResult.IsSuccess)
         {
             _killPoints = tResult.Value.KillPoints;
-            try
-            {
-                _placementMap = System.Text.Json.JsonSerializer
-                    .Deserialize<Dictionary<int, int>>(tResult.Value.PlacementPointsJson)
-                    ?? new();
-            }
+            try { _placementMap = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, int>>(tResult.Value.PlacementPointsJson) ?? new(); }
             catch { _placementMap = new(); }
         }
 
@@ -266,43 +234,85 @@
         _loadingMatches = false;
     }
 
-    private async Task OnMatchSelected(DataGridRowMouseEventArgs<MatchDto> args)
+    private async Task AddMap()
     {
-        _editingMatch = args.Data;
+        _addingMap = true;
         _saveError = null;
         _saveSuccess = null;
 
-        if (args.Data.TeamResults.Any())
+        Guid roundId;
+        var roundsResult = await RoundService.GetRoundsByTournamentAsync(_selectedTournamentId);
+        if (roundsResult.IsSuccess && roundsResult.Value.Any())
         {
-            // Match ya tiene resultados → cargar los existentes
-            _editRows = args.Data.TeamResults.Select(tr => new EditRow
+            roundId = roundsResult.Value.First().Id;
+        }
+        else
+        {
+            var newRound = await RoundService.CreateRoundAsync(new CreateRoundDto
             {
-                TeamId      = tr.TeamId,
-                TeamName    = tr.TeamName,
-                TeamTag     = tr.TeamTag,
-                Placement   = tr.Placement,
-                Kills       = tr.Kills,
-                Deaths      = tr.Deaths,
-                BonusPoints = tr.BonusPoints,
+                TournamentId = _selectedTournamentId,
+                RoundNumber  = 1,
+                Name         = "General"
+            });
+            if (!newRound.IsSuccess)
+            {
+                _saveError = "No se pudo crear la ronda: " + newRound.Error;
+                _addingMap = false;
+                return;
+            }
+            roundId = newRound.Value.Id;
+        }
+
+        int nextNumber = _matches.Any() ? _matches.Max(m => m.MatchNumber) + 1 : 1;
+
+        var matchResult = await MatchService.CreateMatchAsync(new CreateMatchDto
+        {
+            RoundId       = roundId,
+            TournamentId  = _selectedTournamentId,
+            MatchNumber   = nextNumber
+        });
+
+        if (matchResult.IsSuccess)
+        {
+            _matches.Add(matchResult.Value);
+            _matches = _matches.OrderBy(m => m.MatchNumber).ToList();
+            await SelectMatch(matchResult.Value);
+        }
+        else
+        {
+            _saveError = "No se pudo crear el mapa: " + matchResult.Error;
+        }
+
+        _addingMap = false;
+    }
+
+    private async Task SelectMatch(MatchDto match)
+    {
+        _editingMatch = match;
+        _saveError = null;
+        _saveSuccess = null;
+
+        if (match.TeamResults.Any())
+        {
+            _editRows = match.TeamResults.Select(tr => new EditRow
+            {
+                TeamId    = tr.TeamId,
+                TeamName  = tr.TeamName,
+                TeamTag   = tr.TeamTag,
+                Placement = tr.Placement,
+                Kills     = tr.Kills,
             }).ToList();
         }
         else
         {
-            // Match nuevo → cargar equipos inscritos en el torneo como filas vacías
             _loadingTeams = true;
             StateHasChanged();
-
             var teamsResult = await TeamService.GetTeamsWithTournamentStatusAsync(_selectedTournamentId);
             if (teamsResult.IsSuccess)
             {
                 _editRows = teamsResult.Value
                     .Where(t => t.IsRegistered)
-                    .Select(t => new EditRow
-                    {
-                        TeamId   = t.TeamId,
-                        TeamName = t.TeamName,
-                        TeamTag  = t.TeamTag,
-                    })
+                    .Select(t => new EditRow { TeamId = t.TeamId, TeamName = t.TeamName, TeamTag = t.TeamTag })
                     .ToList();
             }
             _loadingTeams = false;
@@ -323,7 +333,7 @@
                 TeamId      = r.TeamId,
                 Placement   = r.Placement > 0 ? r.Placement : 1,
                 Kills       = r.Kills,
-                Deaths      = r.Deaths,
+                Deaths      = 0,
                 BonusPoints = r.BonusPoints,
             }).ToList(),
             PlayerStats = new()
@@ -332,19 +342,17 @@
         var result = await MatchService.SubmitMatchResultsAsync(_editingMatch.Id, dto);
         if (result.IsSuccess)
         {
+            var idx = _matches.FindIndex(m => m.Id == result.Value.Id);
+            if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
-            _saveSuccess = $"✓ Mapa #{_editingMatch.MatchNumber} guardado. Leaderboard actualizado.";
-            await OnTournamentSelected(null);
-            // Re-cargar filas con los datos guardados
+            _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado.";
             _editRows = result.Value.TeamResults.Select(tr => new EditRow
             {
-                TeamId      = tr.TeamId,
-                TeamName    = tr.TeamName,
-                TeamTag     = tr.TeamTag,
-                Placement   = tr.Placement,
-                Kills       = tr.Kills,
-                Deaths      = tr.Deaths,
-                BonusPoints = tr.BonusPoints,
+                TeamId    = tr.TeamId,
+                TeamName  = tr.TeamName,
+                TeamTag   = tr.TeamTag,
+                Placement = tr.Placement,
+                Kills     = tr.Kills,
             }).ToList();
         }
         else
@@ -354,15 +362,30 @@
         _saving = false;
     }
 
-    private BadgeStyle GetMatchBadge(WarzoneTournament.Domain.Enums.MatchStatus s) => s switch
+    private async Task ConfirmResults()
     {
-        WarzoneTournament.Domain.Enums.MatchStatus.InProgress     => BadgeStyle.Danger,
-        WarzoneTournament.Domain.Enums.MatchStatus.Completed      => BadgeStyle.Success,
-        WarzoneTournament.Domain.Enums.MatchStatus.WaitingEvidence => BadgeStyle.Warning,
-        WarzoneTournament.Domain.Enums.MatchStatus.UnderReview    => BadgeStyle.Warning,
-        WarzoneTournament.Domain.Enums.MatchStatus.Cancelled      => BadgeStyle.Secondary,
-        _ => BadgeStyle.Light
-    };
+        if (_editingMatch == null) return;
+        _saving = true;
+        var result = await MatchService.ConfirmMatchResultsAsync(_editingMatch.Id);
+        if (result.IsSuccess)
+        {
+            var idx = _matches.FindIndex(m => m.Id == result.Value.Id);
+            if (idx >= 0) _matches[idx] = result.Value;
+            _editingMatch = result.Value;
+            _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} confirmado.";
+        }
+        else
+        {
+            _saveError = result.Error;
+        }
+        _saving = false;
+    }
+
+    private int CalcPoints(EditRow row)
+    {
+        var pp = _placementMap.TryGetValue(row.Placement, out var v) ? v : 0;
+        return pp + row.Kills * _killPoints + row.BonusPoints;
+    }
 
     private class EditRow
     {
@@ -371,7 +394,6 @@
         public string? TeamTag  { get; set; }
         public int Placement    { get; set; } = 0;
         public int Kills        { get; set; } = 0;
-        public int Deaths       { get; set; } = 0;
         public int BonusPoints  { get; set; } = 0;
     }
 }
