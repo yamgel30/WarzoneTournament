@@ -98,7 +98,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Discord: error sending match results for {MatchId}", matchId);
+            LogDiscordException(ex, $"SendMatchResults matchId={matchId}");
         }
     }
 
@@ -136,7 +136,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Discord: error sending leaderboard for tournament {TournamentId}", tournamentId);
+            LogDiscordException(ex, $"SendLeaderboardUpdate tournamentId={tournamentId}");
         }
     }
 
@@ -165,7 +165,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Discord: error sending check-in for team {TeamId}", teamId);
+            LogDiscordException(ex, $"NotifyTeamCheckIn teamId={teamId}");
         }
     }
 
@@ -198,7 +198,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Discord: error sending evidence rejection for {EvidenceId}", evidenceId);
+            LogDiscordException(ex, $"SendEvidenceRejection evidenceId={evidenceId}");
         }
     }
 
@@ -226,7 +226,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Discord: error sending announcement for tournament {TournamentId}", tournamentId);
+            LogDiscordException(ex, $"SendTournamentAnnouncement tournamentId={tournamentId}");
         }
     }
 
@@ -248,6 +248,24 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
 
         return _client.GetChannel(channelId) as ITextChannel;
+    }
+
+    // ── Error handling ────────────────────────────────────────────────────
+
+    private void LogDiscordException(Exception ex, string context)
+    {
+        if (ex is Discord.Net.HttpException { HttpCode: System.Net.HttpStatusCode.Forbidden } httpEx
+            && (int)httpEx.DiscordCode == 50013)
+        {
+            _logger.LogWarning(
+                "Discord: bot is missing Send Messages or Embed Links permission in the configured channel ({Context}). " +
+                "Go to the channel settings → Integrations → Bots and grant Send Messages + Embed Links.",
+                context);
+        }
+        else
+        {
+            _logger.LogError(ex, "Discord: error in {Context}", context);
+        }
     }
 
     // ── Event handlers ─────────────────────────────────────────────────────
