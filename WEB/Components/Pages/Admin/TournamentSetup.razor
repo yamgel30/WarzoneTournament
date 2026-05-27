@@ -45,6 +45,31 @@ else
             </div>
         </div>
 
+        @* ── Control rápido de estado ──────────────────────────────────── *@
+        @if (_tournament.Status != TournamentStatus.InProgress &&
+             _tournament.Status != TournamentStatus.Completed &&
+             _tournament.Status != TournamentStatus.Cancelled)
+        {
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--rz-base-background-color);border:1px solid var(--rz-border-disabled-color);border-radius:8px;padding:10px 16px;margin-bottom:12px">
+                <span style="font-size:0.85em;color:var(--rz-text-secondary-color)">Estado:</span>
+                @if (_tournament.Status == TournamentStatus.Draft)
+                {
+                    <RadzenButton Text="Abrir Inscripción" Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
+                                  Size="ButtonSize.Small" Click="@OpenRegistration" Disabled="@_busy" />
+                }
+                @if (_tournament.Status == TournamentStatus.Registration)
+                {
+                    <RadzenButton Text="Iniciar Check-In" Icon="checklist" ButtonStyle="ButtonStyle.Warning"
+                                  Size="ButtonSize.Small" Click="@StartCheckIn" Disabled="@_busy" />
+                }
+                @if (_tournament.Status == TournamentStatus.CheckIn || _tournament.Status == TournamentStatus.Registration)
+                {
+                    <RadzenButton Text="Iniciar Torneo" Icon="play_arrow" ButtonStyle="ButtonStyle.Danger"
+                                  Size="ButtonSize.Small" Click="@StartTournament" Disabled="@_busy" />
+                }
+            </div>
+        }
+
         @if (!string.IsNullOrEmpty(_globalError))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_globalError</RadzenAlert>
@@ -62,10 +87,20 @@ else
                    ══════════════════════════════════════════ *@
                 <RadzenTabsItem Text="Equipos" Icon="groups">
                     <div style="margin-top:16px">
-                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-3">
-                            Registra los equipos en el torneo y confirma su check-in. El torneo debe estar en
-                            <strong>Registration</strong> para inscribir y en <strong>CheckIn</strong> para confirmar asistencia.
-                        </RadzenAlert>
+                        @* ── Acciones masivas ────────────────────────────────────────── *@
+                        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+                            <RadzenButton Text="@($"Inscribir todos ({UnregisteredCount})")"
+                                          Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
+                                          Click="@RegisterAllTeams"
+                                          Disabled="@(_busy || _tournament.Status != TournamentStatus.Registration || UnregisteredCount == 0)" />
+                            <RadzenButton Text="@($"Check-In todos ({PendingCheckInCount})")"
+                                          Icon="check_circle" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@CheckInAllTeams"
+                                          Disabled="@(_busy || _tournament.Status != TournamentStatus.CheckIn || PendingCheckInCount == 0)" />
+                            <span style="font-size:0.82em;color:var(--rz-text-secondary-color)">
+                                @_teamStatuses.Count(t => t.IsRegistered) inscritos · @_teamStatuses.Count(t => t.CheckedIn) con check-in
+                            </span>
+                        </div>
 
                         <RadzenDataGrid Data="@_teamStatuses" TItem="TournamentTeamStatusDto"
                                         AllowPaging="true" PageSize="15"
@@ -476,6 +511,39 @@ else
         _busy = false;
     }
 
+    // ── Helpers (computed) ─────────────────────────────────────────────────
+    private int UnregisteredCount    => _teamStatuses.Count(t => !t.IsRegistered);
+    private int PendingCheckInCount  => _teamStatuses.Count(t => t.IsRegistered && !t.CheckedIn);
+
+    // ── Tournament status ──────────────────────────────────────────────────
+
+    private async Task OpenRegistration()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TournamentService.OpenRegistrationAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Inscripción abierta."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task StartCheckIn()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TournamentService.StartCheckInAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Fase de Check-In iniciada."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task StartTournament()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TournamentService.StartTournamentAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "¡Torneo iniciado!"; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
     // ── Teams ──────────────────────────────────────────────────────────────
 
     private async Task RegisterTeam(Guid teamId)
@@ -502,6 +570,36 @@ else
         var result = await TeamService.UnregisterTeamFromTournamentAsync(teamId, Id);
         if (result.IsSuccess) { _globalSuccess = "Equipo eliminado del torneo."; await LoadTeams(); }
         else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task RegisterAllTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => !t.IsRegistered).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.RegisterTeamForTournamentAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} inscrito{(ok != 1 ? "s" : "")} correctamente.";
+        await LoadTeams();
+        _busy = false;
+    }
+
+    private async Task CheckInAllTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => t.IsRegistered && !t.CheckedIn).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.CheckInTeamAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} con check-in confirmado.";
+        await LoadTeams();
         _busy = false;
     }
 
