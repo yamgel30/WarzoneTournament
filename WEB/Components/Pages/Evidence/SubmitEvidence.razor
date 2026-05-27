@@ -90,14 +90,15 @@
                     <div style="font-weight:600;margin-bottom:8px">
                         📍 Captura 1 — Posición final del equipo
                     </div>
-                    <InputFile id="file-placement" OnChange="@(e => HandleFile(e, 0))"
-                               accept="image/jpeg,image/png,image/webp" style="display:none" />
-                    <label for="file-placement" style="cursor:pointer;display:inline-block">
+                    <div style="position:relative;display:inline-block">
                         <RadzenButton Text="@(_files[0] != null ? _files[0]!.Name : "Seleccionar imagen…")"
                                       Icon="@(_files[0] != null ? "check_circle" : "image")"
                                       ButtonStyle="@(_files[0] != null ? ButtonStyle.Success : ButtonStyle.Light)"
                                       Size="ButtonSize.Small" />
-                    </label>
+                        <InputFile OnChange="@(e => HandleFile(e, 0))"
+                                   accept="image/jpeg,image/png,image/webp"
+                                   style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" />
+                    </div>
                     @if (_fileErrors[0] is not null)
                     {<div style="color:var(--rz-danger);font-size:0.85em;margin-top:6px">@_fileErrors[0]</div>}
                 </div>
@@ -107,14 +108,15 @@
                     <div style="font-weight:600;margin-bottom:8px">
                         📊 Captura 2 — Tabla de kills por jugador (scoreboard)
                     </div>
-                    <InputFile id="file-scoreboard" OnChange="@(e => HandleFile(e, 1))"
-                               accept="image/jpeg,image/png,image/webp" style="display:none" />
-                    <label for="file-scoreboard" style="cursor:pointer;display:inline-block">
+                    <div style="position:relative;display:inline-block">
                         <RadzenButton Text="@(_files[1] != null ? _files[1]!.Name : "Seleccionar imagen…")"
                                       Icon="@(_files[1] != null ? "check_circle" : "image")"
                                       ButtonStyle="@(_files[1] != null ? ButtonStyle.Success : ButtonStyle.Light)"
                                       Size="ButtonSize.Small" />
-                    </label>
+                        <InputFile OnChange="@(e => HandleFile(e, 1))"
+                                   accept="image/jpeg,image/png,image/webp"
+                                   style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" />
+                    </div>
                     @if (_fileErrors[1] is not null)
                     {<div style="color:var(--rz-danger);font-size:0.85em;margin-top:6px">@_fileErrors[1]</div>}
                 </div>

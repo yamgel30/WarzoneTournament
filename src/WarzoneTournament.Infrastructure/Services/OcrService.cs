@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using Tesseract;
 using WarzoneTournament.Application.Common.Interfaces;
@@ -13,14 +14,16 @@ public class OcrService : IOcrService
 {
     private readonly IUnitOfWork _uow;
     private readonly ILogger<OcrService> _logger;
+    private readonly IHttpClientFactory _httpFactory;
     private readonly string _ocrProvider;
     private readonly string _tessdataPath;
     private readonly bool _ocrEnabled;
 
-    public OcrService(IUnitOfWork uow, ILogger<OcrService> logger, IConfiguration config)
+    public OcrService(IUnitOfWork uow, ILogger<OcrService> logger, IConfiguration config, IHttpClientFactory httpFactory)
     {
         _uow = uow;
         _logger = logger;
+        _httpFactory = httpFactory;
         _ocrProvider = config["Ocr:Provider"] ?? "Tesseract";
         _tessdataPath = config["Ocr:TesseractDataPath"] ?? "tessdata";
 
@@ -86,23 +89,27 @@ public class OcrService : IOcrService
             });
         }
 
+        string? tempFile = null;
         try
         {
-            // Discord CDN and other external URLs cannot be read as local files
+            string localPath;
+
             if (imageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                 imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
-                return Result.Success(new OcrResultDto
-                {
-                    RequiresManualReview = true,
-                    ConfidenceScore = 0,
-                    ProcessingError = "Imagen externa (URL remota) — revisión manual requerida.",
-                    OcrProvider = _ocrProvider,
-                    ProcessedAt = DateTime.UtcNow
-                });
+                // Download remote image (Discord CDN, etc.) to a temp file for OCR
+                var http = _httpFactory.CreateClient();
+                http.Timeout = TimeSpan.FromSeconds(30);
+                var bytes = await http.GetByteArrayAsync(imageUrl, ct);
+                tempFile = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid()}.jpg");
+                await File.WriteAllBytesAsync(tempFile, bytes, ct);
+                localPath = tempFile;
+            }
+            else
+            {
+                localPath = Path.Combine("wwwroot", imageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
             }
 
-            var localPath = Path.Combine("wwwroot", imageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(localPath))
             {
                 return Result.Success(new OcrResultDto
@@ -149,6 +156,11 @@ public class OcrService : IOcrService
                 ProcessedAt = DateTime.UtcNow,
                 OcrProvider = _ocrProvider
             });
+        }
+        finally
+        {
+            if (tempFile is not null && File.Exists(tempFile))
+                try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
         }
     }
 

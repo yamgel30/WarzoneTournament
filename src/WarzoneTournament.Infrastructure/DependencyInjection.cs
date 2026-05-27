@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
+        services.AddHttpClient();
         services.AddScoped<IOcrService, OcrService>();
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<ISignalRNotificationService, SignalRNotificationService>();

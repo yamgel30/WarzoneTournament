@@ -136,6 +136,9 @@
                                 <RadzenNumeric @bind-Value="_manualPlacement" Min="1" Max="150"
                                                TValue="int?" Style="width:110px;display:block;margin-top:4px"
                                                Placeholder="ej: 1" />
+                                <div style="font-size:0.78em;color:var(--rz-text-secondary-color);margin-top:3px">
+                                    Opcional — puede completarse cuando llegue la captura de posición.
+                                </div>
                             </div>
 
                             @* Per-player kills table *@
@@ -164,7 +167,7 @@
 
                             <RadzenButton Text="Guardar y aprobar" Icon="save"
                                          ButtonStyle="ButtonStyle.Warning"
-                                         Disabled="@(_reviewing || _manualPlacement is null)"
+                                         Disabled="@_reviewing"
                                          Click="@ApproveWithManualData" />
                         </div>
 

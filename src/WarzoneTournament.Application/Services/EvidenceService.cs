@@ -182,8 +182,6 @@ public class EvidenceService : IEvidenceService
     {
         var evidence = await _uow.MatchEvidences.GetByIdAsync(evidenceId, ct);
         if (evidence is null) return Result.Failure<EvidenceDto>("Evidence not found.");
-        if (evidence.Status == EvidenceStatus.Approved)
-            return Result.Failure<EvidenceDto>("Evidence is already approved.");
 
         // Total kills = sum of per-player kills if provided, otherwise the manual total
         int? totalKills = (playerKills is { Count: > 0 })
