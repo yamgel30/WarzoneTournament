@@ -13,7 +13,7 @@ public class LeaderboardEntryDto
     public int TotalBonusPoints { get; set; }
     public int MatchesPlayed { get; set; }
     public int BestPlacement { get; set; }
-    public int AverageKillsPerMatch => MatchesPlayed > 0 ? TotalKills / MatchesPlayed : 0;
+    public double AverageKillsPerMatch => MatchesPlayed > 0 ? Math.Round((double)TotalKills / MatchesPlayed, 1) : 0;
     public bool CheckedIn { get; set; }
     public bool IsEliminated { get; set; }
     public bool IsMatchPoint { get; set; }
