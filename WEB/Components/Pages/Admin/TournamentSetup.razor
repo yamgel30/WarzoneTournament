@@ -355,6 +355,43 @@ else
                     </div>
                 </RadzenTabsItem>
 
+                @* ══════════════════════════════════════════
+                   TAB 3: CONFIGURACIÓN
+                   ══════════════════════════════════════════ *@
+                <RadzenTabsItem Text="Configuración" Icon="settings">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:16px">Match Point</h3>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Umbral de puntos (Match Point Threshold)" />
+                                <RadzenNumeric @bind-Value="_configThreshold" Min="1" Max="9999"
+                                               TValue="int?" Style="width:180px;margin-top:6px" Placeholder="Ej: 120" />
+                                <small style="display:block;margin-top:6px;color:var(--rz-text-secondary-color)">
+                                    Cuando un equipo acumula este total de puntos entra en estado <strong>Match Point</strong>.
+                                    Para ganar el torneo debe además quedar en <strong>1er lugar</strong> en una partida posterior.
+                                    Deja vacío (null) para desactivar Match Point.
+                                </small>
+                            </div>
+                            <RadzenButton Text="Guardar configuración" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@SaveConfig" Disabled="@_busy" />
+                        </RadzenCard>
+
+                        <RadzenCard>
+                            <h3 style="margin-bottom:16px">Discord</h3>
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Discord Guild ID" />
+                                <RadzenTextBox @bind-Value="_configGuildId" Style="width:100%;margin-top:6px" Placeholder="ID del servidor Discord" />
+                            </div>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Discord Channel ID" />
+                                <RadzenTextBox @bind-Value="_configChannelId" Style="width:100%;margin-top:6px" Placeholder="ID del canal de anuncios" />
+                            </div>
+                            <RadzenButton Text="Guardar Discord" Icon="save" ButtonStyle="ButtonStyle.Light"
+                                          Click="@SaveConfig" Disabled="@_busy" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
             </Tabs>
         </RadzenTabs>
     </div>
@@ -370,6 +407,10 @@ else
     private List<RoundDto> _rounds = new();
     private string? _globalError;
     private string? _globalSuccess;
+
+    private int? _configThreshold;
+    private string? _configGuildId;
+    private string? _configChannelId;
 
     private CreateRoundDto _newRound = new();
     private CreateMatchDto _newMatch = new();
@@ -391,7 +432,10 @@ else
         if (_tournament != null)
         {
             _newRound.TournamentId = Id;
-            
+            _configThreshold = _tournament.MatchPointThreshold;
+            _configGuildId   = _tournament.DiscordGuildId;
+            _configChannelId = _tournament.DiscordChannelId;
+
             await LoadTeams();
             await LoadRounds();
         }
@@ -409,6 +453,27 @@ else
     {
         var result = await RoundService.GetRoundsByTournamentAsync(Id);
         if (result.IsSuccess) _rounds = result.Value.ToList();
+    }
+
+    // ── Config ─────────────────────────────────────────────────────────────
+
+    private async Task SaveConfig()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var dto = new UpdateTournamentDto
+        {
+            MatchPointThreshold = _configThreshold,
+            DiscordGuildId      = _configGuildId,
+            DiscordChannelId    = _configChannelId
+        };
+        var result = await TournamentService.UpdateTournamentAsync(Id, dto);
+        if (result.IsSuccess)
+        {
+            _tournament = result.Value;
+            _globalSuccess = "Configuración guardada.";
+        }
+        else _globalError = result.Error;
+        _busy = false;
     }
 
     // ── Teams ──────────────────────────────────────────────────────────────

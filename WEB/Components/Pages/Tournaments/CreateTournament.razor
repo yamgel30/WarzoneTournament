@@ -122,6 +122,14 @@
                                                Change="@((int value) => UpdatePlacementJson())" />
                                 <small class="field-hint">Points awarded per kill</small>
                             </div>
+                            <div class="form-field" style="margin-top:16px">
+                                <RadzenLabel Text="Match Point Threshold (opcional)" />
+                                <RadzenNumeric @bind-Value="_model.MatchPointThreshold" Min="1" Max="9999"
+                                               TValue="int?" Style="width:150px" Placeholder="Ej: 120" />
+                                <small class="field-hint">
+                                    Puntos necesarios para entrar en Match Point. El equipo debe además ganar (1er lugar) una partida posterior para ganar el torneo. Déjalo vacío para desactivar Match Point.
+                                </small>
+                            </div>
                             <h3>Placement Points</h3>
                             <div class="placement-grid">
                                 @for (int i = 1; i <= 20; i++)
