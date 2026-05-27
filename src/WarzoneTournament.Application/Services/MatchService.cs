@@ -147,8 +147,13 @@ public class MatchService : IMatchService
                 }, ct);
             }
 
-            // Insert player stats
-            foreach (var playerStat in dto.PlayerStats)
+            // Insert player stats — deduplicate by PlayerId (a player can only appear once per match)
+            var dedupedPlayerStats = dto.PlayerStats
+                .GroupBy(p => p.PlayerId)
+                .Select(g => g.First())
+                .ToList();
+
+            foreach (var playerStat in dedupedPlayerStats)
             {
                 await _uow.PlayerMatchStats.AddAsync(new PlayerMatchStats
                 {
