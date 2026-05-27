@@ -105,6 +105,17 @@ public class MatchService : IMatchService
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         if (tournament is null) return Result.Failure<MatchDto>("Tournament not found.");
 
+        // Validate placements
+        var teamCount  = dto.TeamResults.Count;
+        var placements = dto.TeamResults.Select(r => r.Placement).ToList();
+        if (placements.Any(p => p <= 0))
+            return Result.Failure<MatchDto>("All teams must have a placement greater than 0.");
+        if (placements.Any(p => p > teamCount))
+            return Result.Failure<MatchDto>($"Placement cannot exceed the number of teams ({teamCount}).");
+        var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Any())
+            return Result.Failure<MatchDto>($"Duplicate placement(s): {string.Join(", ", duplicates)}.");
+
         // Parse placement multipliers — formula: TotalPoints = Kills × Multiplier + BonusPoints
         var placementMultipliers = new Dictionary<int, double>();
         try

@@ -347,6 +347,14 @@
     private async Task SaveResults()
     {
         if (_editingMatch == null) return;
+
+        var validationError = ValidatePlacements();
+        if (validationError is not null)
+        {
+            _saveError = validationError;
+            return;
+        }
+
         _saving = true;
         _saveError = null;
         _saveSuccess = null;
@@ -408,6 +416,24 @@
             _saveError = result.Error;
         }
         _saving = false;
+    }
+
+    private string? ValidatePlacements()
+    {
+        var placements = _editTeams.Select(t => t.Placement).ToList();
+        int teamCount  = _editTeams.Count;
+
+        if (placements.Any(p => p <= 0))
+            return "Todos los equipos deben tener una posición mayor a 0.";
+
+        if (placements.Any(p => p > teamCount))
+            return $"La posición máxima es {teamCount} (número de equipos).";
+
+        var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Any())
+            return $"Posición duplicada: #{string.Join(", #", duplicates)}. Cada equipo debe tener una posición única.";
+
+        return null;
     }
 
     private double CalcPlayerPoints(EditTeam team, EditPlayer player)
