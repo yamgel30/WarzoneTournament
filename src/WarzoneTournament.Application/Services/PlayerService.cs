@@ -187,41 +187,44 @@ public class PlayerService : IPlayerService
 
         foreach (var tp in teamPlayers)
         {
-            var tt = await _uow.TournamentTeams.FirstOrDefaultAsync(x => x.TeamId == tp.TeamId, ct);
-            if (tt is null) continue;
+            var tournamentTeams = await _uow.TournamentTeams.FindAsNoTrackingAsync(
+                x => x.TeamId == tp.TeamId, ct);
 
-            var tournament = await _uow.Tournaments.GetByIdAsync(tt.TournamentId, ct);
-            if (tournament?.Status != TournamentStatus.InProgress) continue;
-
-            var team = await _uow.Teams.GetByIdAsync(tp.TeamId, ct);
-
-            var matches = await _uow.Matches.FindAsNoTrackingAsync(
-                m => m.TournamentId == tt.TournamentId &&
-                     (m.Status == Domain.Enums.MatchStatus.InProgress || m.Status == Domain.Enums.MatchStatus.Pending), ct);
-            var activeMatch = matches.OrderByDescending(m => m.MatchNumber).FirstOrDefault();
-
-            var allTeamPlayers = await _uow.TeamPlayers.FindAsNoTrackingAsync(
-                x => x.TeamId == tp.TeamId && x.IsActive, ct);
-            var playerSimples = new List<TeamPlayerSimpleDto>();
-            foreach (var p in allTeamPlayers)
+            foreach (var tt in tournamentTeams)
             {
-                var pl = await _uow.Players.GetByIdAsync(p.PlayerId, ct);
-                if (pl is not null)
-                    playerSimples.Add(new TeamPlayerSimpleDto { PlayerId = p.PlayerId, Username = pl.Username });
+                var tournament = await _uow.Tournaments.GetByIdAsync(tt.TournamentId, ct);
+                if (tournament?.Status != TournamentStatus.InProgress) continue;
+
+                var team = await _uow.Teams.GetByIdAsync(tp.TeamId, ct);
+
+                var matches = await _uow.Matches.FindAsNoTrackingAsync(
+                    m => m.TournamentId == tt.TournamentId &&
+                         (m.Status == Domain.Enums.MatchStatus.InProgress || m.Status == Domain.Enums.MatchStatus.Pending), ct);
+                var activeMatch = matches.OrderByDescending(m => m.MatchNumber).FirstOrDefault();
+
+                var allTeamPlayers = await _uow.TeamPlayers.FindAsNoTrackingAsync(
+                    x => x.TeamId == tp.TeamId && x.IsActive, ct);
+                var playerSimples = new List<TeamPlayerSimpleDto>();
+                foreach (var p in allTeamPlayers)
+                {
+                    var pl = await _uow.Players.GetByIdAsync(p.PlayerId, ct);
+                    if (pl is not null)
+                        playerSimples.Add(new TeamPlayerSimpleDto { PlayerId = p.PlayerId, Username = pl.Username });
+                }
+
+                return Result.Success(new PlayerContextDto
+                {
+                    PlayerId = playerId,
+                    PlayerName = player.Username,
+                    TeamId = tp.TeamId,
+                    TeamName = team?.Name ?? "Desconocido",
+                    TournamentId = tt.TournamentId,
+                    TournamentName = tournament.Name,
+                    ActiveMatchId = activeMatch?.Id,
+                    ActiveMatchNumber = activeMatch?.MatchNumber ?? 0,
+                    Players = playerSimples
+                });
             }
-
-            return Result.Success(new PlayerContextDto
-            {
-                PlayerId = playerId,
-                PlayerName = player.Username,
-                TeamId = tp.TeamId,
-                TeamName = team?.Name ?? "Desconocido",
-                TournamentId = tt.TournamentId,
-                TournamentName = tournament.Name,
-                ActiveMatchId = activeMatch?.Id,
-                ActiveMatchNumber = activeMatch?.MatchNumber ?? 0,
-                Players = playerSimples
-            });
         }
 
         return Result.Failure<PlayerContextDto>("Tu equipo no está participando en ningún torneo activo en este momento.");
