@@ -17,12 +17,12 @@
 
     <div class="filters-row">
         <RadzenDropDown @bind-Value="_statusFilter"
-                        Data="@_statusOptions" TextProperty="Label" ValueProperty="Value"
+                        Data="@_statusOptions" 
                         Placeholder="All Statuses" AllowClear="true"
                         Style="width:180px"
                         Change="@OnFilterChanged" />
         <RadzenDropDown @bind-Value="_typeFilter"
-                        Data="@_typeOptions" TextProperty="Label" ValueProperty="Value"
+                        Data="@_typeOptions" 
                         Placeholder="All Types" AllowClear="true"
                         Style="width:160px"
                         Change="@OnFilterChanged" />
@@ -110,11 +110,8 @@
     private TournamentStatus? _statusFilter;
     private TournamentType? _typeFilter;
 
-    private readonly List<(string Label, TournamentStatus Value)> _statusOptions = Enum.GetValues<TournamentStatus>()
-        .Select(s => (s.ToString(), s)).ToList();
-
-    private readonly List<(string Label, TournamentType Value)> _typeOptions = Enum.GetValues<TournamentType>()
-        .Select(t => (t.ToString(), t)).ToList();
+    private readonly TournamentStatus[] _statusOptions = Enum.GetValues<TournamentStatus>();
+    private readonly TournamentType[] _typeOptions = Enum.GetValues<TournamentType>();
 
     protected override async Task OnInitializedAsync()
     {

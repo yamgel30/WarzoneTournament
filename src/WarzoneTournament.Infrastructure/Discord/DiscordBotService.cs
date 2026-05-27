@@ -1,9 +1,9 @@
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
-using WarzoneTournament.Application.DTOs.Evidence;
 using WarzoneTournament.Domain.Interfaces;
 
 namespace WarzoneTournament.Infrastructure.Discord;
@@ -17,9 +17,6 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     private bool _isReady = false;
 
     private string BotToken => _config["Discord:BotToken"] ?? string.Empty;
-    private string GuildId => _config["Discord:GuildId"] ?? string.Empty;
-    private string EvidenceChannelId => _config["Discord:EvidenceChannelId"] ?? string.Empty;
-    private string AnnouncementChannelId => _config["Discord:AnnouncementChannelId"] ?? string.Empty;
 
     public DiscordBotService(IConfiguration config, ILogger<DiscordBotService> logger,
         IServiceProvider serviceProvider)
@@ -41,14 +38,15 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         _client.MessageReceived += OnMessageReceived;
     }
 
+    // ── Bot lifecycle ──────────────────────────────────────────────────────
+
     public async Task StartBotAsync(CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(BotToken))
         {
-            _logger.LogWarning("Discord bot token not configured. Bot will not start.");
+            _logger.LogWarning("Discord:BotToken not configured — bot will not start.");
             return;
         }
-
         await _client.LoginAsync(TokenType.Bot, BotToken);
         await _client.StartAsync();
         _logger.LogInformation("Discord bot started.");
@@ -60,174 +58,235 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         _logger.LogInformation("Discord bot stopped.");
     }
 
+    // ── Notifications ──────────────────────────────────────────────────────
+
     public async Task SendMatchResultsAsync(Guid matchId, CancellationToken ct = default)
     {
-        if (!_isReady || string.IsNullOrEmpty(AnnouncementChannelId)) return;
-
+        if (!_isReady) return;
         try
         {
-            if (ulong.TryParse(AnnouncementChannelId, out ulong channelId) &&
-                _client.GetChannel(channelId) is ITextChannel channel)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle("Match Results Posted")
-                    .WithDescription($"Match {matchId} results have been submitted for review.")
-                    .WithColor(Color.Orange)
-                    .WithCurrentTimestamp()
-                    .Build();
+            using var scope = _serviceProvider.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                await channel.SendMessageAsync(embed: embed);
+            var match = await uow.Matches.GetByIdAsync(matchId, ct);
+            if (match is null) return;
+
+            var channel = await GetTournamentChannelAsync(match.TournamentId, uow);
+            if (channel is null) return;
+
+            var tournament = await uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
+            var results = await uow.MatchTeamResults.FindAsync(r => r.MatchId == matchId, ct);
+            var sorted = results.OrderBy(r => r.Placement).ToList();
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"🗺️ Mapa #{match.MatchNumber} — Resultados")
+                .WithDescription(tournament?.Name ?? "Torneo")
+                .WithColor(Color.Orange)
+                .WithCurrentTimestamp();
+
+            foreach (var r in sorted.Take(10))
+            {
+                var team = await uow.Teams.GetByIdAsync(r.TeamId, ct);
+                var medal = r.Placement switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => $"#{r.Placement}" };
+                embed.AddField(
+                    $"{medal} {team?.Name ?? "Equipo"}",
+                    $"Kills: **{r.Kills}** · Puntos: **{r.TotalPoints}**",
+                    inline: true);
             }
+
+            await channel.SendMessageAsync(embed: embed.Build());
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send match results to Discord");
+            _logger.LogWarning("Discord: error enviando resultados del match {MatchId}: {Msg}", matchId, ex.Message);
         }
     }
 
     public async Task SendLeaderboardUpdateAsync(Guid tournamentId, CancellationToken ct = default)
     {
-        if (!_isReady || string.IsNullOrEmpty(AnnouncementChannelId)) return;
-
+        if (!_isReady) return;
         try
         {
-            if (ulong.TryParse(AnnouncementChannelId, out ulong channelId) &&
-                _client.GetChannel(channelId) is ITextChannel channel)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle("Leaderboard Updated")
-                    .WithDescription($"Tournament leaderboard has been updated!")
-                    .WithColor(Color.Green)
-                    .WithCurrentTimestamp()
-                    .Build();
+            using var scope = _serviceProvider.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var leaderboard = scope.ServiceProvider.GetRequiredService<ILeaderboardService>();
 
-                await channel.SendMessageAsync(embed: embed);
+            var channel = await GetTournamentChannelAsync(tournamentId, uow);
+            if (channel is null) return;
+
+            var tournament = await uow.Tournaments.GetByIdAsync(tournamentId, ct);
+            var lb = await leaderboard.GetTournamentLeaderboardAsync(tournamentId, ct);
+            if (!lb.IsSuccess || !lb.Value.Any()) return;
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"🏆 Leaderboard actualizado — {tournament?.Name}")
+                .WithColor(Color.Gold)
+                .WithCurrentTimestamp();
+
+            foreach (var entry in lb.Value.Take(5))
+            {
+                var medal = entry.Rank switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => $"#{entry.Rank}" };
+                embed.AddField(
+                    $"{medal} {entry.TeamName}",
+                    $"Pts: **{entry.TotalPoints}** · Kills: {entry.TotalKills} · Mapas: {entry.MatchesPlayed}",
+                    inline: false);
             }
+
+            await channel.SendMessageAsync(embed: embed.Build());
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send leaderboard update to Discord");
+            _logger.LogWarning("Discord: error enviando leaderboard del torneo {TournamentId}: {Msg}", tournamentId, ex.Message);
         }
     }
 
     public async Task NotifyTeamCheckInAsync(Guid teamId, Guid tournamentId, CancellationToken ct = default)
     {
-        if (!_isReady || string.IsNullOrEmpty(AnnouncementChannelId)) return;
-
+        if (!_isReady) return;
         try
         {
-            if (ulong.TryParse(AnnouncementChannelId, out ulong channelId) &&
-                _client.GetChannel(channelId) is ITextChannel channel)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle("Team Checked In")
-                    .WithDescription($"A team has checked in to the tournament.")
-                    .WithColor(Color.Blue)
-                    .WithCurrentTimestamp()
-                    .Build();
+            using var scope = _serviceProvider.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                await channel.SendMessageAsync(embed: embed);
-            }
+            var channel = await GetTournamentChannelAsync(tournamentId, uow);
+            if (channel is null) return;
+
+            var team = await uow.Teams.GetByIdAsync(teamId, ct);
+            var tournament = await uow.Tournaments.GetByIdAsync(tournamentId, ct);
+
+            var embed = new EmbedBuilder()
+                .WithTitle("✅ Check-In confirmado")
+                .WithDescription($"**{team?.Name ?? "Equipo"}** confirmó asistencia en **{tournament?.Name}**.")
+                .WithColor(Color.Blue)
+                .WithCurrentTimestamp()
+                .Build();
+
+            await channel.SendMessageAsync(embed: embed);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send team check-in notification to Discord");
+            _logger.LogWarning("Discord: error enviando check-in del equipo {TeamId}: {Msg}", teamId, ex.Message);
         }
     }
 
     public async Task SendEvidenceRejectionNotificationAsync(Guid evidenceId, string reason, CancellationToken ct = default)
     {
         if (!_isReady) return;
-
         try
         {
-            if (ulong.TryParse(AnnouncementChannelId, out ulong channelId) &&
-                _client.GetChannel(channelId) is ITextChannel channel)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle("Evidence Rejected")
-                    .WithDescription($"Evidence submission was rejected.")
-                    .AddField("Reason", reason)
-                    .WithColor(Color.Red)
-                    .WithCurrentTimestamp()
-                    .Build();
+            using var scope = _serviceProvider.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                await channel.SendMessageAsync(embed: embed);
-            }
+            var evidence = await uow.MatchEvidences.GetByIdAsync(evidenceId, ct);
+            if (evidence is null) return;
+
+            var match = await uow.Matches.GetByIdAsync(evidence.MatchId, ct);
+            if (match is null) return;
+
+            var channel = await GetTournamentChannelAsync(match.TournamentId, uow);
+            if (channel is null) return;
+
+            var embed = new EmbedBuilder()
+                .WithTitle("❌ Evidencia rechazada")
+                .WithDescription($"Una evidencia del Mapa #{match.MatchNumber} fue rechazada.")
+                .AddField("Razón", reason)
+                .WithColor(Color.Red)
+                .WithCurrentTimestamp()
+                .Build();
+
+            await channel.SendMessageAsync(embed: embed);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send evidence rejection to Discord");
+            _logger.LogWarning("Discord: error enviando rechazo de evidencia {EvidenceId}: {Msg}", evidenceId, ex.Message);
         }
     }
 
     public async Task SendTournamentAnnouncementAsync(Guid tournamentId, string message, CancellationToken ct = default)
     {
-        if (!_isReady || string.IsNullOrEmpty(AnnouncementChannelId)) return;
-
+        if (!_isReady) return;
         try
         {
-            if (ulong.TryParse(AnnouncementChannelId, out ulong channelId) &&
-                _client.GetChannel(channelId) is ITextChannel channel)
-            {
-                var embed = new EmbedBuilder()
-                    .WithTitle("Tournament Announcement")
-                    .WithDescription(message)
-                    .WithColor(Color.Gold)
-                    .WithCurrentTimestamp()
-                    .Build();
+            using var scope = _serviceProvider.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                await channel.SendMessageAsync(embed: embed);
-            }
+            var channel = await GetTournamentChannelAsync(tournamentId, uow);
+            if (channel is null) return;
+
+            var tournament = await uow.Tournaments.GetByIdAsync(tournamentId, ct);
+
+            var embed = new EmbedBuilder()
+                .WithTitle($"📢 {tournament?.Name}")
+                .WithDescription(message)
+                .WithColor(Color.Gold)
+                .WithCurrentTimestamp()
+                .Build();
+
+            await channel.SendMessageAsync(embed: embed);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send tournament announcement to Discord");
+            _logger.LogWarning("Discord: error enviando anuncio del torneo {TournamentId}: {Msg}", tournamentId, ex.Message);
         }
     }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    private async Task<ITextChannel?> GetTournamentChannelAsync(Guid tournamentId, IUnitOfWork uow)
+    {
+        var tournament = await uow.Tournaments.GetByIdAsync(tournamentId);
+        if (tournament is null || string.IsNullOrEmpty(tournament.DiscordChannelId))
+        {
+            _logger.LogDebug("Tournament {Id} has no Discord channel configured — skipping notification.", tournamentId);
+            return null;
+        }
+
+        if (!ulong.TryParse(tournament.DiscordChannelId, out var channelId))
+        {
+            _logger.LogWarning("Tournament {Id} has invalid DiscordChannelId '{Val}'.", tournamentId, tournament.DiscordChannelId);
+            return null;
+        }
+
+        return _client.GetChannel(channelId) as ITextChannel;
+    }
+
+    // ── Event handlers ─────────────────────────────────────────────────────
 
     private Task OnReady()
     {
         _isReady = true;
-        _logger.LogInformation("Discord bot is ready. Connected as {Username}#{Discriminator}",
-            _client.CurrentUser.Username, _client.CurrentUser.Discriminator);
+        _logger.LogInformation("Discord bot ready. Connected as {User}.", _client.CurrentUser.Username);
         return Task.CompletedTask;
     }
 
     private async Task OnMessageReceived(SocketMessage message)
     {
-        // Ignore bot messages
         if (message.Author.IsBot) return;
-        if (message.Channel is not ITextChannel textChannel) return;
+        if (message.Channel is not ITextChannel) return;
 
-        // Check if this is the evidence channel
-        if (message.Channel.Id.ToString() != EvidenceChannelId) return;
+        var channelIdStr = message.Channel.Id.ToString();
 
-        // Process image attachments as potential evidence
-        foreach (var attachment in message.Attachments.Where(a => IsImageAttachment(a)))
+        // Check if this channel belongs to any active tournament
+        using var scope = _serviceProvider.CreateScope();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var tournaments = await uow.Tournaments.FindAsync(t => t.DiscordChannelId == channelIdStr);
+        if (!tournaments.Any()) return;
+
+        // Process image attachments as evidence
+        var images = message.Attachments.Where(IsImageAttachment).ToList();
+        if (images.Any())
         {
-            _logger.LogInformation("Discord evidence image received from {Author} in channel {Channel}",
+            _logger.LogInformation("Discord evidence image from {Author} in channel {Channel}",
                 message.Author.Username, message.Channel.Name);
-
-            // Queue OCR processing for this image
-            // In production: resolve IEvidenceService from DI and call SubmitEvidenceFromDiscordAsync
-            // The match/team context would come from channel topic or bot slash commands
             await message.Channel.SendMessageAsync(
-                $"Evidence received from {message.Author.Mention}. Processing...");
-        }
-
-        // Slash command handling
-        if (message.Content.StartsWith("/checkin"))
-        {
-            await message.Channel.SendMessageAsync(
-                $"{message.Author.Mention} Check-in command received. Please use the web portal to check in.");
+                $"{message.Author.Mention} Screenshot recibido ✅. El admin lo revisará.");
         }
     }
 
-    private static bool IsImageAttachment(Attachment attachment)
+    private static bool IsImageAttachment(Attachment a)
     {
-        var imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
-        return imageExtensions.Any(ext => attachment.Filename.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+        var exts = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+        return exts.Any(e => a.Filename.EndsWith(e, StringComparison.OrdinalIgnoreCase));
     }
 
     private Task OnLog(LogMessage log)

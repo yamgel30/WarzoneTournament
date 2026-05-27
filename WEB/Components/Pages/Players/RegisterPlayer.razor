@@ -66,7 +66,7 @@
                 <div>
                     <RadzenLabel Text="Plataforma *" />
                     <RadzenDropDown @bind-Value="_model.Platform"
-                                   Data="@Enum.GetValues<Platform>()"
+                                   Data="@(Enum.GetValues<Platform>())"
                                    Style="width:100%" />
                 </div>
 

@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<IMatchService, MatchService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
         services.AddScoped<IEvidenceService, EvidenceService>();
+        services.AddScoped<IRoundService, RoundService>();
 
         return services;
     }

@@ -2,7 +2,7 @@ using Hangfire;
 using Radzen;
 using WarzoneTournament.Infrastructure;
 using WEB.Components;
-using WEB.Hubs;
+using WarzoneTournament.Infrastructure.Hubs;
 using WarzoneTournament.Application;
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +20,13 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
+
+// Apply pending EF Core migrations on startup
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<WarzoneTournament.Infrastructure.Data.AppDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

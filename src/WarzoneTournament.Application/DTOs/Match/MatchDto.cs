@@ -21,8 +21,16 @@ public class MatchDto
     public string? Notes { get; set; }
     public bool ResultsConfirmed { get; set; }
     public List<MatchTeamResultDto> TeamResults { get; set; } = new();
+    public List<MatchPlayerStatDto> PlayerStats { get; set; } = new();
     public int EvidenceCount { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+public class MatchPlayerStatDto
+{
+    public Guid PlayerId { get; set; }
+    public Guid TeamId { get; set; }
+    public int Kills { get; set; }
 }
 
 public class MatchTeamResultDto
@@ -35,9 +43,9 @@ public class MatchTeamResultDto
     public int Placement { get; set; }
     public int Kills { get; set; }
     public int Deaths { get; set; }
-    public int PlacementPoints { get; set; }
-    public int KillPoints { get; set; }
+    public double PlacementMultiplier { get; set; }
+    public double KillPoints { get; set; }
     public int BonusPoints { get; set; }
-    public int TotalPoints { get; set; }
+    public double TotalPoints { get; set; }
     public bool IsVerified { get; set; }
 }

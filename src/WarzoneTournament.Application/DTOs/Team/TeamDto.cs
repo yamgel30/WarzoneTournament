@@ -32,3 +32,23 @@ public class TeamPlayerDto
     public string? Role { get; set; }
     public DateTime JoinedAt { get; set; }
 }
+
+public class TournamentTeamStatusDto
+{
+    public Guid TeamId { get; set; }
+    public string TeamName { get; set; } = string.Empty;
+    public string? TeamTag { get; set; }
+    public string? LogoUrl { get; set; }
+    public int PlayerCount { get; set; }
+    public bool IsRegistered { get; set; }
+    public bool CheckedIn { get; set; }
+    public DateTime? CheckInTime { get; set; }
+    public bool IsMatchPoint { get; set; }
+    public List<TeamPlayerSimpleDto> Players { get; set; } = new();
+}
+
+public class TeamPlayerSimpleDto
+{
+    public Guid PlayerId { get; set; }
+    public string Username { get; set; } = string.Empty;
+}

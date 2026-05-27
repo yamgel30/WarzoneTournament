@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
-namespace WEB.Hubs;
+namespace WarzoneTournament.Infrastructure.Hubs;
 
 public class TournamentHub : Hub
 {

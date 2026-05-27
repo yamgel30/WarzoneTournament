@@ -27,4 +27,5 @@ public class UpdateTournamentDto
     public string? LobbyPassword { get; set; }
     public string? BannerImageUrl { get; set; }
     public string? OrganizerName { get; set; }
+    public int? MatchPointThreshold { get; set; }
 }

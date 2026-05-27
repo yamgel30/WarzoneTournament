@@ -15,14 +15,17 @@ public class TournamentService : ITournamentService
     private readonly IMapper _mapper;
     private readonly ILogger<TournamentService> _logger;
     private readonly ISignalRNotificationService _signalR;
+    private readonly IDiscordNotificationService _discord;
 
     public TournamentService(IUnitOfWork uow, IMapper mapper,
-        ILogger<TournamentService> logger, ISignalRNotificationService signalR)
+        ILogger<TournamentService> logger, ISignalRNotificationService signalR,
+        IDiscordNotificationService discord)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
+        _discord = discord;
     }
 
     public async Task<Result<TournamentDto>> CreateTournamentAsync(CreateTournamentDto dto, CancellationToken ct = default)
@@ -75,6 +78,7 @@ public class TournamentService : ITournamentService
         if (dto.LobbyPassword is not null) tournament.LobbyPassword = dto.LobbyPassword;
         if (dto.BannerImageUrl is not null) tournament.BannerImageUrl = dto.BannerImageUrl;
         if (dto.OrganizerName is not null) tournament.OrganizerName = dto.OrganizerName;
+        if (dto.MatchPointThreshold.HasValue) tournament.MatchPointThreshold = dto.MatchPointThreshold.Value;
 
         _uow.Tournaments.Update(tournament);
         await _uow.SaveChangesAsync(ct);
@@ -140,6 +144,24 @@ public class TournamentService : ITournamentService
         return Result.Success();
     }
 
+    public async Task<Result<TournamentDto>> OpenRegistrationAsync(Guid id, CancellationToken ct = default)
+    {
+        var tournament = await _uow.Tournaments.GetByIdAsync(id, ct);
+        if (tournament is null)
+            return Result.Failure<TournamentDto>("Tournament not found.");
+
+        if (tournament.Status != TournamentStatus.Draft)
+            return Result.Failure<TournamentDto>("Tournament must be in Draft to open registration.");
+
+        tournament.Status = TournamentStatus.Registration;
+        _uow.Tournaments.Update(tournament);
+        await _uow.SaveChangesAsync(ct);
+        await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.Registration.ToString(), ct);
+        await _discord.SendTournamentAnnouncementAsync(id, "📋 ¡Las inscripciones están abiertas! Regístrate ahora.", ct);
+
+        return Result.Success(_mapper.Map<TournamentDto>(tournament));
+    }
+
     public async Task<Result<TournamentDto>> StartCheckInAsync(Guid id, CancellationToken ct = default)
     {
         var tournament = await _uow.Tournaments.GetByIdAsync(id, ct);
@@ -153,6 +175,7 @@ public class TournamentService : ITournamentService
         _uow.Tournaments.Update(tournament);
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.CheckIn.ToString(), ct);
+        await _discord.SendTournamentAnnouncementAsync(id, "✅ ¡El check-in está abierto! Confirma tu asistencia.", ct);
 
         return Result.Success(_mapper.Map<TournamentDto>(tournament));
     }
@@ -175,6 +198,7 @@ public class TournamentService : ITournamentService
         _uow.Tournaments.Update(tournament);
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.InProgress.ToString(), ct);
+        await _discord.SendTournamentAnnouncementAsync(id, "🎮 ¡El torneo ha comenzado! ¡Buena suerte a todos!", ct);
 
         return Result.Success(_mapper.Map<TournamentDto>(tournament));
     }
@@ -193,6 +217,7 @@ public class TournamentService : ITournamentService
         _uow.Tournaments.Update(tournament);
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.Completed.ToString(), ct);
+        await _discord.SendTournamentAnnouncementAsync(id, "🏆 ¡El torneo ha finalizado! Gracias a todos los participantes.", ct);
 
         return Result.Success(_mapper.Map<TournamentDto>(tournament));
     }
@@ -210,6 +235,7 @@ public class TournamentService : ITournamentService
         _uow.Tournaments.Update(tournament);
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.Cancelled.ToString(), ct);
+        await _discord.SendTournamentAnnouncementAsync(id, "❌ El torneo ha sido cancelado.", ct);
 
         return Result.Success(_mapper.Map<TournamentDto>(tournament));
     }

@@ -122,18 +122,32 @@
                                                Change="@((int value) => UpdatePlacementJson())" />
                                 <small class="field-hint">Points awarded per kill</small>
                             </div>
-                            <h3>Placement Points</h3>
+                            <div class="form-field" style="margin-top:16px">
+                                <RadzenLabel Text="Match Point Threshold (opcional)" />
+                                <RadzenNumeric @bind-Value="_model.MatchPointThreshold" Min="1" Max="9999"
+                                               TValue="int?" Style="width:150px" Placeholder="Ej: 120" />
+                                <small class="field-hint">
+                                    Puntos necesarios para entrar en Match Point. El equipo debe además ganar (1er lugar) una partida posterior para ganar el torneo. Déjalo vacío para desactivar Match Point.
+                                </small>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px;margin-top:16px;margin-bottom:8px">
+                                <h3 style="margin:0">Multiplicadores por Posición</h3>
+                                <RadzenButton Text="Rebirth (default)" Icon="restart_alt"
+                                              ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                              Click="@ResetToRebirthDefaults" />
+                            </div>
                             <div class="placement-grid">
-                                @for (int i = 1; i <= 20; i++)
+                                @for (int i = 1; i <= 17; i++)
                                 {
                                     var pos = i;
                                     <div class="placement-row">
                                         <span class="placement-rank rank-@(pos <= 3 ? pos : 0)">#@pos</span>
-                                        <RadzenNumeric Value="@GetPlacementPoints(pos)"
-                                                       Min="0" Max="100"
-                                                       Change="@((int v) => SetPlacementPoints(pos, v))"
+                                        <RadzenNumeric TValue="double"
+                                                       Value="@GetPlacementPoints(pos)"
+                                                       Min="0" Max="99" Step="0.1"
+                                                       Change="@((double v) => SetPlacementPoints(pos, v))"
                                                        Style="width:90px" />
-                                        <span class="pts-label">pts</span>
+                                        <span class="pts-label">×</span>
                                     </div>
                                 }
                             </div>
@@ -178,20 +192,33 @@
 
 @code {
     private CreateTournamentDto _model = new();
-    private Dictionary<int, int> _placementPoints = new()
+    private Dictionary<int, double> _placementPoints = new()
     {
-        {1, 10}, {2, 6}, {3, 4}, {4, 3}, {5, 2}, {6, 1}
+        {1,1.6},{2,1.4},{3,1.4},{4,1.4},{5,1.4},
+        {6,1.2},{7,1.2},{8,1.2},{9,1.2},{10,1.2},
+        {11,1.0},{12,1.0},{13,1.0},{14,1.0},{15,1.0},{16,1.0},{17,1.0}
     };
     private bool _saving = false;
     private string? _errorMessage;
 
-    private int GetPlacementPoints(int position) =>
+    private double GetPlacementPoints(int position) =>
         _placementPoints.TryGetValue(position, out var pts) ? pts : 0;
 
-    private void SetPlacementPoints(int position, int value)
+    private void SetPlacementPoints(int position, double value)
     {
         if (value > 0) _placementPoints[position] = value;
         else _placementPoints.Remove(position);
+        UpdatePlacementJson();
+    }
+
+    private void ResetToRebirthDefaults()
+    {
+        _placementPoints = new()
+        {
+            {1,1.6},{2,1.4},{3,1.4},{4,1.4},{5,1.4},
+            {6,1.2},{7,1.2},{8,1.2},{9,1.2},{10,1.2},
+            {11,1.0},{12,1.0},{13,1.0},{14,1.0},{15,1.0},{16,1.0},{17,1.0}
+        };
         UpdatePlacementJson();
     }
 

@@ -10,6 +10,7 @@ public interface ITournamentService
     Task<Result<TournamentDto>> GetTournamentByIdAsync(Guid id, CancellationToken ct = default);
     Task<Result<PagedResult<TournamentListDto>>> GetTournamentsAsync(TournamentQueryDto query, CancellationToken ct = default);
     Task<Result> DeleteTournamentAsync(Guid id, CancellationToken ct = default);
+    Task<Result<TournamentDto>> OpenRegistrationAsync(Guid id, CancellationToken ct = default);
     Task<Result<TournamentDto>> StartCheckInAsync(Guid id, CancellationToken ct = default);
     Task<Result<TournamentDto>> StartTournamentAsync(Guid id, CancellationToken ct = default);
     Task<Result<TournamentDto>> CompleteTournamentAsync(Guid id, CancellationToken ct = default);

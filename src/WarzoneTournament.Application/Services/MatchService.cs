@@ -19,15 +19,18 @@ public class MatchService : IMatchService
     private readonly ILogger<MatchService> _logger;
     private readonly ISignalRNotificationService _signalR;
     private readonly ILeaderboardService _leaderboard;
+    private readonly IDiscordNotificationService _discord;
 
     public MatchService(IUnitOfWork uow, IMapper mapper, ILogger<MatchService> logger,
-        ISignalRNotificationService signalR, ILeaderboardService leaderboard)
+        ISignalRNotificationService signalR, ILeaderboardService leaderboard,
+        IDiscordNotificationService discord)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
         _leaderboard = leaderboard;
+        _discord = discord;
     }
 
     public async Task<Result<MatchDto>> CreateMatchAsync(CreateMatchDto dto, CancellationToken ct = default)
@@ -102,36 +105,44 @@ public class MatchService : IMatchService
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         if (tournament is null) return Result.Failure<MatchDto>("Tournament not found.");
 
-        // Parse placement points configuration
-        var placementPoints = new Dictionary<int, int>();
+        // Validate placements
+        var teamCount  = dto.TeamResults.Count;
+        var placements = dto.TeamResults.Select(r => r.Placement).ToList();
+        if (placements.Any(p => p <= 0))
+            return Result.Failure<MatchDto>("All teams must have a placement greater than 0.");
+        if (placements.Any(p => p > teamCount))
+            return Result.Failure<MatchDto>($"Placement cannot exceed the number of teams ({teamCount}).");
+        var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Any())
+            return Result.Failure<MatchDto>($"Duplicate placement(s): {string.Join(", ", duplicates)}.");
+
+        // Parse placement multipliers — formula: TotalPoints = Kills × Multiplier + BonusPoints
+        var placementMultipliers = new Dictionary<int, double>();
         try
         {
-            placementPoints = JsonSerializer.Deserialize<Dictionary<int, int>>(tournament.PlacementPointsJson)
-                ?? new Dictionary<int, int>();
+            placementMultipliers = JsonSerializer.Deserialize<Dictionary<int, double>>(tournament.PlacementPointsJson)
+                ?? new Dictionary<int, double>();
         }
-        catch
-        {
-            // Use default if parsing fails
-        }
+        catch { }
 
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // Remove existing results for re-submission
-            var existingResults = await _uow.MatchTeamResults.FindAsync(r => r.MatchId == id, ct);
-            _uow.MatchTeamResults.RemoveRange(existingResults);
+            // Hard-delete existing results so the unique index (MatchId, TeamId) doesn't block re-insertion
+            var existingResults = await _uow.MatchTeamResults.FindIncludingDeletedAsync(r => r.MatchId == id, ct);
+            _uow.MatchTeamResults.HardRemoveRange(existingResults);
 
-            var existingStats = await _uow.PlayerMatchStats.FindAsync(s => s.MatchId == id, ct);
-            _uow.PlayerMatchStats.RemoveRange(existingStats);
+            var existingStats = await _uow.PlayerMatchStats.FindIncludingDeletedAsync(s => s.MatchId == id, ct);
+            _uow.PlayerMatchStats.HardRemoveRange(existingStats);
 
             await _uow.SaveChangesAsync(ct);
 
             // Insert team results with calculated points
             foreach (var teamResult in dto.TeamResults)
             {
-                placementPoints.TryGetValue(teamResult.Placement, out int placePts);
-                var killPts = teamResult.Kills * tournament.KillPoints;
-                var totalPts = placePts + killPts + teamResult.BonusPoints;
+                var multiplier = placementMultipliers.TryGetValue(teamResult.Placement, out var m) ? m : 1.0;
+                var killPts = Math.Round(teamResult.Kills * multiplier, 2);
+                var totalPts = killPts + teamResult.BonusPoints;
 
                 await _uow.MatchTeamResults.AddAsync(new MatchTeamResult
                 {
@@ -140,15 +151,20 @@ public class MatchService : IMatchService
                     Placement = teamResult.Placement,
                     Kills = teamResult.Kills,
                     Deaths = teamResult.Deaths,
-                    PlacementPoints = placePts,
+                    PlacementMultiplier = multiplier,
                     KillPoints = killPts,
                     BonusPoints = teamResult.BonusPoints,
                     TotalPoints = totalPts
                 }, ct);
             }
 
-            // Insert player stats
-            foreach (var playerStat in dto.PlayerStats)
+            // Insert player stats — deduplicate by PlayerId (a player can only appear once per match)
+            var dedupedPlayerStats = dto.PlayerStats
+                .GroupBy(p => p.PlayerId)
+                .Select(g => g.First())
+                .ToList();
+
+            foreach (var playerStat in dedupedPlayerStats)
             {
                 await _uow.PlayerMatchStats.AddAsync(new PlayerMatchStats
                 {
@@ -172,9 +188,48 @@ public class MatchService : IMatchService
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitTransactionAsync(ct);
 
-            // Update tournament leaderboard
+            // Capture Match Point teams BEFORE recalculating so we can detect a victory
+            var preMatchMPIds = (await _uow.TournamentTeams.FindAsync(
+                tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct))
+                .Select(tt => tt.TeamId).ToHashSet();
+
+            // Update tournament leaderboard (also sets newly-reached IsMatchPoint flags)
             await _leaderboard.RecalculateLeaderboardAsync(match.TournamentId, ct);
             await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
+            await _discord.SendMatchResultsAsync(id, ct);
+            await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
+
+            // Match Point victory: a team that WAS already in Match Point placed 1st
+            var firstPlace = dto.TeamResults.FirstOrDefault(r => r.Placement == 1);
+            if (firstPlace != null && preMatchMPIds.Contains(firstPlace.TeamId))
+            {
+                var t = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
+                if (t is { Status: not Domain.Enums.TournamentStatus.Completed })
+                {
+                    t.Status = Domain.Enums.TournamentStatus.Completed;
+                    t.WinnerTeamId = firstPlace.TeamId;
+                    t.EndDate ??= DateTime.UtcNow;
+                    _uow.Tournaments.Update(t);
+                    await _uow.SaveChangesAsync(ct);
+                    var winnerTeam = await _uow.Teams.GetByIdAsync(firstPlace.TeamId, ct);
+                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
+                        $"🏆 ¡**{winnerTeam?.Name ?? "Un equipo"}** gana el torneo con Match Point!", ct);
+                    await _signalR.NotifyTournamentStatusChangedAsync(match.TournamentId, "Completed", ct);
+                }
+            }
+            else
+            {
+                // Notify teams that newly entered Match Point this match
+                var newlyMP = (await _uow.TournamentTeams.FindAsync(
+                    tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct))
+                    .Where(tt => !preMatchMPIds.Contains(tt.TeamId)).ToList();
+                foreach (var mpTeam in newlyMP)
+                {
+                    var team = await _uow.Teams.GetByIdAsync(mpTeam.TeamId, ct);
+                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
+                        $"⚠️ ¡**{team?.Name}** está en **Match Point**! Solo necesitan ganar 1 partida más para ser campeones.", ct);
+                }
+            }
 
             _logger.LogInformation("Results submitted for match {MatchId}", id);
             return Result.Success(await BuildMatchDtoAsync(match, ct));
@@ -209,6 +264,8 @@ public class MatchService : IMatchService
         await _signalR.NotifyMatchUpdatedAsync(id, "Completed", ct);
         await _leaderboard.RecalculateLeaderboardAsync(match.TournamentId, ct);
         await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
+        await _discord.SendMatchResultsAsync(id, ct);
+        await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
 
         return Result.Success(await BuildMatchDtoAsync(match, ct));
     }
@@ -230,7 +287,7 @@ public class MatchService : IMatchService
                 Placement = r.Placement,
                 Kills = r.Kills,
                 Deaths = r.Deaths,
-                PlacementPoints = r.PlacementPoints,
+                PlacementMultiplier = r.PlacementMultiplier,
                 KillPoints = r.KillPoints,
                 BonusPoints = r.BonusPoints,
                 TotalPoints = r.TotalPoints,
@@ -258,6 +315,7 @@ public class MatchService : IMatchService
         var round = await _uow.Rounds.GetByIdAsync(match.RoundId, ct);
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         var results = await GetMatchResultsAsync(match.Id, ct);
+        var playerStats = await _uow.PlayerMatchStats.FindAsync(s => s.MatchId == match.Id, ct);
         var evidenceCount = await _uow.MatchEvidences.CountAsync(e => e.MatchId == match.Id, ct);
 
         return new MatchDto
@@ -278,6 +336,12 @@ public class MatchService : IMatchService
             Notes = match.Notes,
             ResultsConfirmed = match.ResultsConfirmed,
             TeamResults = results.IsSuccess ? results.Value.ToList() : new(),
+            PlayerStats = playerStats.Select(s => new MatchPlayerStatDto
+            {
+                PlayerId = s.PlayerId,
+                TeamId   = s.TeamId,
+                Kills    = s.Kills
+            }).ToList(),
             EvidenceCount = evidenceCount,
             CreatedAt = match.CreatedAt
         };

@@ -57,13 +57,13 @@ public class LeaderboardService : ILeaderboardService
                 TeamLogoUrl = team.LogoUrl,
                 TotalPoints = teamResults.Sum(r => r.TotalPoints),
                 TotalKills = teamResults.Sum(r => r.Kills),
-                TotalPlacementPoints = teamResults.Sum(r => r.PlacementPoints),
                 TotalKillPoints = teamResults.Sum(r => r.KillPoints),
                 TotalBonusPoints = teamResults.Sum(r => r.BonusPoints),
                 MatchesPlayed = teamResults.Count(),
                 BestPlacement = teamResults.Any() ? teamResults.Min(r => r.Placement) : 0,
                 CheckedIn = tt.CheckedIn,
                 IsEliminated = tt.IsEliminated,
+                IsMatchPoint = tt.IsMatchPoint,
                 MatchScores = matchScores
             });
         }
@@ -108,13 +108,13 @@ public class LeaderboardService : ILeaderboardService
                 TeamLogoUrl = team.LogoUrl,
                 TotalPoints = teamResults.Sum(r => r.TotalPoints),
                 TotalKills = teamResults.Sum(r => r.Kills),
-                TotalPlacementPoints = teamResults.Sum(r => r.PlacementPoints),
                 TotalKillPoints = teamResults.Sum(r => r.KillPoints),
                 TotalBonusPoints = teamResults.Sum(r => r.BonusPoints),
                 MatchesPlayed = teamResults.Count(),
                 BestPlacement = teamResults.Min(r => r.Placement),
                 CheckedIn = tt.CheckedIn,
-                IsEliminated = tt.IsEliminated
+                IsEliminated = tt.IsEliminated,
+                IsMatchPoint = tt.IsMatchPoint
             });
         }
 
@@ -129,12 +129,48 @@ public class LeaderboardService : ILeaderboardService
         return Result.Success<IReadOnlyList<LeaderboardEntryDto>>(ranked);
     }
 
+    public async Task<Result<IReadOnlyList<PlayerLeaderboardEntryDto>>> GetPlayerLeaderboardAsync(
+        Guid tournamentId, CancellationToken ct = default)
+    {
+        var matches = await _uow.Matches.FindAsync(m => m.TournamentId == tournamentId, ct);
+        var matchIds = matches.Select(m => m.Id).ToHashSet();
+
+        var allStats = await _uow.PlayerMatchStats.FindAsync(s => matchIds.Contains(s.MatchId), ct);
+
+        var grouped = allStats
+            .GroupBy(s => s.PlayerId)
+            .Select(g => new { PlayerId = g.Key, TeamId = g.First().TeamId, TotalKills = g.Sum(x => x.Kills), MatchesPlayed = g.Select(x => x.MatchId).Distinct().Count() })
+            .OrderByDescending(x => x.TotalKills)
+            .ToList();
+
+        var result = new List<PlayerLeaderboardEntryDto>();
+        int rank = 1;
+        foreach (var g in grouped)
+        {
+            var player = await _uow.Players.GetByIdAsync(g.PlayerId, ct);
+            var team = await _uow.Teams.GetByIdAsync(g.TeamId, ct);
+            result.Add(new PlayerLeaderboardEntryDto
+            {
+                Rank         = rank++,
+                PlayerId     = g.PlayerId,
+                Username     = player?.Username ?? "Unknown",
+                TeamName     = team?.Name,
+                TeamTag      = team?.Tag,
+                TotalKills   = g.TotalKills,
+                MatchesPlayed = g.MatchesPlayed
+            });
+        }
+
+        return Result.Success<IReadOnlyList<PlayerLeaderboardEntryDto>>(result);
+    }
+
     public async Task<Result> RecalculateLeaderboardAsync(Guid tournamentId, CancellationToken ct = default)
     {
         var leaderboardResult = await GetTournamentLeaderboardAsync(tournamentId, ct);
         if (leaderboardResult.IsFailure)
             return Result.Failure(leaderboardResult.Error!);
 
+        var tournament = await _uow.Tournaments.GetByIdAsync(tournamentId, ct);
         var tournamentTeams = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
 
         foreach (var entry in leaderboardResult.Value)
@@ -145,6 +181,12 @@ public class LeaderboardService : ILeaderboardService
             tt.TotalPoints = entry.TotalPoints;
             tt.TotalKills = entry.TotalKills;
             tt.CurrentRank = entry.Rank;
+
+            // Once a team reaches the threshold it stays in Match Point
+            if (tournament?.MatchPointThreshold.HasValue == true
+                && entry.TotalPoints >= tournament.MatchPointThreshold.Value)
+                tt.IsMatchPoint = true;
+
             _uow.TournamentTeams.Update(tt);
         }
 

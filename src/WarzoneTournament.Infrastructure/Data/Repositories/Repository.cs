@@ -57,5 +57,12 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
         foreach (var entity in entities) Remove(entity);
     }
 
+    public void HardRemove(T entity) => _dbSet.Remove(entity);
+
+    public void HardRemoveRange(IEnumerable<T> entities) => _dbSet.RemoveRange(entities);
+
+    public async Task<IReadOnlyList<T>> FindIncludingDeletedAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
+        => await _dbSet.Where(predicate).ToListAsync(ct);
+
     public IQueryable<T> Query() => _dbSet.Where(e => !e.IsDeleted).AsQueryable();
 }

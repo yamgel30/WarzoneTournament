@@ -1,0 +1,657 @@
+@page "/admin/setup/{Id:guid}"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Team
+@using WarzoneTournament.Application.DTOs.Round
+@using WarzoneTournament.Application.DTOs.Match
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Domain.Enums
+@inject ITournamentService TournamentService
+@inject ITeamService TeamService
+@inject IRoundService RoundService
+@inject IMatchService MatchService
+@inject NavigationManager NavManager
+
+<PageTitle>Tournament Setup - Admin</PageTitle>
+
+@if (_loading)
+{
+    <div class="page-container">
+        <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate"
+                                   Size="ProgressBarCircularSize.Large" />
+    </div>
+}
+else if (_tournament == null)
+{
+    <div class="page-container">
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat">Tournament not found.</RadzenAlert>
+    </div>
+}
+else
+{
+    <div class="page-container">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Setup: @_tournament.Name</h1>
+                <small style="color:var(--rz-text-secondary-color)">
+                    Estado: <RadzenBadge Text="@_tournament.StatusName" BadgeStyle="@GetStatusBadge(_tournament.Status)" />
+                    &nbsp;·&nbsp; @_tournament.RegisteredTeamsCount / @_tournament.MaxTeams equipos inscritos
+                </small>
+            </div>
+            <div style="display:flex;gap:8px">
+                <RadzenButton Text="Ver torneo" Icon="visibility" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => NavManager.NavigateTo($"/tournaments/{Id}"))" />
+                <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => NavManager.NavigateTo("/admin"))" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_globalError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_globalError</RadzenAlert>
+        }
+        @if (!string.IsNullOrEmpty(_globalSuccess))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_globalSuccess</RadzenAlert>
+        }
+
+        <RadzenTabs>
+            <Tabs>
+
+                @* ══════════════════════════════════════════
+                   TAB 1: EQUIPOS
+                   ══════════════════════════════════════════ *@
+                <RadzenTabsItem Text="Equipos" Icon="groups">
+                    <div style="margin-top:16px">
+                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-3">
+                            Registra los equipos en el torneo y confirma su check-in. El torneo debe estar en
+                            <strong>Registration</strong> para inscribir y en <strong>CheckIn</strong> para confirmar asistencia.
+                        </RadzenAlert>
+
+                        <RadzenDataGrid Data="@_teamStatuses" TItem="TournamentTeamStatusDto"
+                                        AllowPaging="true" PageSize="15"
+                                        AllowSorting="true"
+                                        AllowFiltering="true"
+                                        FilterMode="FilterMode.Simple"
+                                        GridLines="DataGridGridLines.Horizontal">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Title="Equipo" Property="TeamName" Width="200px">
+                                    <Template Context="t">
+                                        <div style="display:flex;align-items:center;gap:10px">
+                                            @if (!string.IsNullOrEmpty(t.LogoUrl))
+                                            {
+                                                <img src="@t.LogoUrl" alt="@t.TeamName"
+                                                     style="width:32px;height:32px;border-radius:50%;object-fit:cover" />
+                                            }
+                                            else
+                                            {
+                                                <div style="width:32px;height:32px;border-radius:50%;background:var(--rz-primary);display:flex;align-items:center;justify-content:center;font-weight:700">
+                                                    @t.TeamName[0]
+                                                </div>
+                                            }
+                                            <div>
+                                                <strong>@t.TeamName</strong>
+                                                @if (!string.IsNullOrEmpty(t.TeamTag))
+                                                {<small style="color:var(--rz-text-secondary-color)"> [@t.TeamTag]</small>}
+                                            </div>
+                                        </div>
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Property="PlayerCount" Title="Jugadores" Width="100px" />
+
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Title="Inscrito" Width="110px" Sortable="false" Filterable="false">
+                                    <Template Context="t">
+                                        @if (t.IsRegistered)
+                                        {<RadzenBadge Text="Inscrito" BadgeStyle="BadgeStyle.Success" />}
+                                        else
+                                        {<RadzenBadge Text="No inscrito" BadgeStyle="BadgeStyle.Secondary" />}
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Title="Check-In" Width="130px" Sortable="false" Filterable="false">
+                                    <Template Context="t">
+                                        @if (!t.IsRegistered)
+                                        {<span style="color:var(--rz-text-disabled-color)">—</span>}
+                                        else if (t.CheckedIn)
+                                        {
+                                            <div>
+                                                <RadzenBadge Text="Confirmado" BadgeStyle="BadgeStyle.Success" />
+                                                @if (t.CheckInTime.HasValue)
+                                                {<small style="display:block;color:var(--rz-text-secondary-color)">@t.CheckInTime.Value.ToString("HH:mm")</small>}
+                                            </div>
+                                        }
+                                        else
+                                        {<RadzenBadge Text="Pendiente" BadgeStyle="BadgeStyle.Warning" />}
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Title="Acciones" Width="200px" Sortable="false" Filterable="false">
+                                    <Template Context="t">
+                                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                            @if (!t.IsRegistered)
+                                            {
+                                                <RadzenButton Text="Inscribir" Icon="how_to_reg"
+                                                              ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                                                              Click="@(() => RegisterTeam(t.TeamId))"
+                                                              Disabled="@(_busy || _tournament.Status != TournamentStatus.Registration)" />
+                                            }
+                                            else
+                                            {
+                                                @if (!t.CheckedIn)
+                                                {
+                                                    <RadzenButton Text="Check-In" Icon="check_circle"
+                                                                  ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                                                  Click="@(() => CheckInTeam(t.TeamId))"
+                                                                  Disabled="@(_busy || _tournament.Status != TournamentStatus.CheckIn)" />
+                                                }
+                                                <RadzenButton Icon="remove_circle" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                                              title="Quitar del torneo"
+                                                              Click="@(() => UnregisterTeam(t.TeamId))"
+                                                              Disabled="@(_busy || _tournament.Status == TournamentStatus.InProgress)" />
+                                            }
+                                        </div>
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ══════════════════════════════════════════
+                   TAB 2: RONDAS
+                   ══════════════════════════════════════════ *@
+                <RadzenTabsItem Text="Rondas" Icon="format_list_numbered">
+                    <div style="margin-top:16px">
+
+                        @* Creación rápida de varias rondas *@
+                        <RadzenCard class="mb-3">
+                            <h3 class="rz-mb-2">Creación rápida</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:12px">
+                                Crea varias rondas de golpe con nombres automáticos (Ronda 1, Ronda 2…).
+                            </small>
+                            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                                <div>
+                                    <RadzenLabel Text="Cuántas rondas" />
+                                    <RadzenNumeric @bind-Value="_bulkRoundCount" Min="1" Max="20" TValue="int" Style="width:80px" />
+                                </div>
+                                <RadzenButton Text="@($"Crear {_bulkRoundCount} ronda{(_bulkRoundCount > 1 ? "s" : "")}")"
+                                              Icon="add_circle" ButtonStyle="ButtonStyle.Primary"
+                                              Click="@CreateBulkRounds" Disabled="@_busy" />
+                            </div>
+                        </RadzenCard>
+
+                        @* Crear ronda individual *@
+                        <RadzenCard class="mb-3">
+                            <h3 class="rz-mb-3">Nueva Ronda (personalizada)</h3>
+                            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                                <div>
+                                    <RadzenLabel Text="Número *" />
+                                    <RadzenNumeric @bind-Value="_newRound.RoundNumber" Min="1" TValue="int" Style="width:80px" />
+                                </div>
+                                <div>
+                                    <RadzenLabel Text="Nombre *" />
+                                    <RadzenTextBox @bind-Value="_newRound.Name" Placeholder="ej: Ronda Clasificatoria"
+                                                   Style="width:220px" />
+                                </div>
+                                <div>
+                                    <RadzenLabel Text="Hora de inicio" />
+                                    <RadzenDatePicker @bind-Value="_newRound.StartTime" ShowTime="true"
+                                                      DateFormat="MM/dd/yyyy HH:mm" Style="width:200px" />
+                                </div>
+                                <RadzenButton Text="Crear Ronda" Icon="add_circle" ButtonStyle="ButtonStyle.Light"
+                                              Click="@CreateRound" Disabled="@_busy" />
+                            </div>
+                        </RadzenCard>
+
+                        @if (!_rounds.Any())
+                        {
+                            <p style="color:var(--rz-text-secondary-color)">No hay rondas creadas todavía.</p>
+                        }
+                        else
+                        {
+                            @foreach (var round in _rounds)
+                            {
+                                <RadzenCard class="mb-3">
+                                    <div class="page-header" style="margin-bottom:12px">
+                                        <div>
+                                            <h3 style="margin:0">Ronda @round.RoundNumber — @round.Name</h3>
+                                            @if (round.StartTime.HasValue)
+                                            {<small style="color:var(--rz-text-secondary-color)">@round.StartTime.Value.ToString("MMM dd, HH:mm")</small>}
+                                        </div>
+                                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                                      title="Eliminar ronda"
+                                                      Click="@(() => DeleteRound(round.Id))"
+                                                      Disabled="@(_busy || round.Matches.Any())" />
+                                    </div>
+
+                                    @* Matches de esta ronda *@
+                                    @if (round.Matches.Any())
+                                    {
+                                        <RadzenDataGrid Data="@round.Matches" TItem="MatchDto"
+                                                        AllowPaging="false" AllowSorting="false"
+                                                        GridLines="DataGridGridLines.Horizontal"
+                                                        class="mb-2">
+                                            <Columns>
+                                                <RadzenDataGridColumn TItem="MatchDto" Property="MatchNumber" Title="#" Width="55px" />
+                                                <RadzenDataGridColumn TItem="MatchDto" Title="Estado" Width="130px">
+                                                    <Template Context="m">
+                                                        <RadzenBadge Text="@m.StatusName" BadgeStyle="@GetMatchBadge(m.Status)" />
+                                                    </Template>
+                                                </RadzenDataGridColumn>
+                                                <RadzenDataGridColumn TItem="MatchDto" Property="ScheduledTime" Title="Hora" Width="140px" FormatString="{0:MMM dd, HH:mm}" />
+                                                <RadzenDataGridColumn TItem="MatchDto" Property="LobbyCode" Title="Lobby" Width="110px">
+                                                    <Template Context="m">
+                                                        <span style="font-family:monospace">@(m.LobbyCode ?? "—")</span>
+                                                        @if (!string.IsNullOrEmpty(m.LobbyPassword))
+                                                        {<small style="color:var(--rz-text-secondary-color)"> / @m.LobbyPassword</small>}
+                                                    </Template>
+                                                </RadzenDataGridColumn>
+                                                <RadzenDataGridColumn TItem="MatchDto" Property="MapName" Title="Mapa" Width="120px">
+                                                    <Template Context="m"><span>@(m.MapName ?? "—")</span></Template>
+                                                </RadzenDataGridColumn>
+                                                <RadzenDataGridColumn TItem="MatchDto" Title="Acciones" Width="240px" Sortable="false">
+                                                    <Template Context="m">
+                                                        <div style="display:flex;gap:4px;flex-wrap:wrap">
+                                                            @if (m.Status == WarzoneTournament.Domain.Enums.MatchStatus.Pending)
+                                                            {
+                                                                <RadzenButton Text="Iniciar" Icon="play_arrow" Size="ButtonSize.Small"
+                                                                              ButtonStyle="ButtonStyle.Success"
+                                                                              Click="@(() => ChangeMatchStatus(m.Id, WarzoneTournament.Application.Common.Interfaces.MatchStatus.InProgress))"
+                                                                              Disabled="@_busy" />
+                                                            }
+                                                            @if (m.Status == WarzoneTournament.Domain.Enums.MatchStatus.InProgress)
+                                                            {
+                                                                <RadzenButton Text="En espera" Icon="hourglass_empty" Size="ButtonSize.Small"
+                                                                              ButtonStyle="ButtonStyle.Warning"
+                                                                              Click="@(() => ChangeMatchStatus(m.Id, WarzoneTournament.Application.Common.Interfaces.MatchStatus.WaitingEvidence))"
+                                                                              Disabled="@_busy" />
+                                                            }
+                                                            @if (m.Status == WarzoneTournament.Domain.Enums.MatchStatus.WaitingEvidence ||
+                                                                 m.Status == WarzoneTournament.Domain.Enums.MatchStatus.UnderReview)
+                                                            {
+                                                                <RadzenButton Text="Confirmar" Icon="check" Size="ButtonSize.Small"
+                                                                              ButtonStyle="ButtonStyle.Info"
+                                                                              Click="@(() => ConfirmMatch(m.Id))"
+                                                                              Disabled="@_busy" />
+                                                            }
+                                                            @if (m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed &&
+                                                                 m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Cancelled)
+                                                            {
+                                                                <RadzenButton Icon="cancel" Size="ButtonSize.Small"
+                                                                              ButtonStyle="ButtonStyle.Secondary"
+                                                                              title="Cancelar match"
+                                                                              Click="@(() => ChangeMatchStatus(m.Id, WarzoneTournament.Application.Common.Interfaces.MatchStatus.Cancelled))"
+                                                                              Disabled="@_busy" />
+                                                            }
+                                                        </div>
+                                                    </Template>
+                                                </RadzenDataGridColumn>
+                                            </Columns>
+                                        </RadzenDataGrid>
+                                    }
+                                    else
+                                    {
+                                        <p style="color:var(--rz-text-secondary-color);font-size:0.9em;margin:0 0 12px">
+                                            Sin matches — créalos abajo.
+                                        </p>
+                                    }
+
+                                    @* Crear match en esta ronda *@
+                                    @if (_expandedRoundId == round.Id)
+                                    {
+                                        <div style="background:var(--rz-base-background-color);border-radius:4px;padding:12px;margin-top:8px">
+                                            <h4 style="margin:0 0 12px">Nuevo Match en @round.Name</h4>
+                                            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                                                <div>
+                                                    <RadzenLabel Text="Número *" />
+                                                    <RadzenNumeric @bind-Value="_newMatch.MatchNumber" Min="1" TValue="int" Style="width:70px" />
+                                                </div>
+                                                <div>
+                                                    <RadzenLabel Text="Hora programada" />
+                                                    <RadzenDatePicker @bind-Value="_newMatch.ScheduledTime" ShowTime="true"
+                                                                      DateFormat="MM/dd/yyyy HH:mm" Style="width:200px" />
+                                                </div>
+                                                <div>
+                                                    <RadzenLabel Text="Lobby Code" />
+                                                    <RadzenTextBox @bind-Value="_newMatch.LobbyCode" Placeholder="ej: WZ2026"
+                                                                   Style="width:120px" />
+                                                </div>
+                                                <div>
+                                                    <RadzenLabel Text="Password" />
+                                                    <RadzenTextBox @bind-Value="_newMatch.LobbyPassword" Placeholder="clave"
+                                                                   Style="width:100px" />
+                                                </div>
+                                                <div>
+                                                    <RadzenLabel Text="Mapa" />
+                                                    <RadzenTextBox @bind-Value="_newMatch.MapName" Placeholder="ej: Verdansk"
+                                                                   Style="width:130px" />
+                                                </div>
+                                                <div style="display:flex;gap:6px">
+                                                    <RadzenButton Text="Crear" Icon="add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                                                  Click="@(() => CreateMatch(round.Id))" Disabled="@_busy" />
+                                                    <RadzenButton Text="Cancelar" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                                                  Click="@(() => _expandedRoundId = null)" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                            <RadzenButton Text="+ Agregar Match" Icon="add_circle_outline"
+                                                          ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                                          Click="@(() => OpenNewMatch(round.Id))" />
+                                            <span style="color:var(--rz-text-secondary-color);font-size:0.85em">o crear</span>
+                                            <RadzenNumeric Value="@GetBulkMatchCount(round.Id)"
+                                                           ValueChanged="@((int v) => SetBulkMatchCount(round.Id, v))"
+                                                           Min="1" Max="20" TValue="int" Style="width:60px" />
+                                            <RadzenButton Text="de golpe" Icon="playlist_add" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
+                                                          Click="@(() => CreateBulkMatches(round.Id))" Disabled="@_busy" />
+                                        </div>
+                                    }
+                                </RadzenCard>
+                            }
+                        }
+                    </div>
+                </RadzenTabsItem>
+
+                @* ══════════════════════════════════════════
+                   TAB 3: CONFIGURACIÓN
+                   ══════════════════════════════════════════ *@
+                <RadzenTabsItem Text="Configuración" Icon="settings">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:16px">Match Point</h3>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Umbral de puntos (Match Point Threshold)" />
+                                <RadzenNumeric @bind-Value="_configThreshold" Min="1" Max="9999"
+                                               TValue="int?" Style="width:180px;margin-top:6px" Placeholder="Ej: 120" />
+                                <small style="display:block;margin-top:6px;color:var(--rz-text-secondary-color)">
+                                    Cuando un equipo acumula este total de puntos entra en estado <strong>Match Point</strong>.
+                                    Para ganar el torneo debe además quedar en <strong>1er lugar</strong> en una partida posterior.
+                                    Deja vacío (null) para desactivar Match Point.
+                                </small>
+                            </div>
+                            <RadzenButton Text="Guardar configuración" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@SaveConfig" Disabled="@_busy" />
+                        </RadzenCard>
+
+                        <RadzenCard>
+                            <h3 style="margin-bottom:16px">Discord</h3>
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Discord Guild ID" />
+                                <RadzenTextBox @bind-Value="_configGuildId" Style="width:100%;margin-top:6px" Placeholder="ID del servidor Discord" />
+                            </div>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Discord Channel ID" />
+                                <RadzenTextBox @bind-Value="_configChannelId" Style="width:100%;margin-top:6px" Placeholder="ID del canal de anuncios" />
+                            </div>
+                            <RadzenButton Text="Guardar Discord" Icon="save" ButtonStyle="ButtonStyle.Light"
+                                          Click="@SaveConfig" Disabled="@_busy" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+            </Tabs>
+        </RadzenTabs>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _busy = false;
+    private TournamentDto? _tournament;
+    private List<TournamentTeamStatusDto> _teamStatuses = new();
+    private List<RoundDto> _rounds = new();
+    private string? _globalError;
+    private string? _globalSuccess;
+
+    private int? _configThreshold;
+    private string? _configGuildId;
+    private string? _configChannelId;
+
+    private CreateRoundDto _newRound = new();
+    private CreateMatchDto _newMatch = new();
+    private Guid? _expandedRoundId;
+    private int _bulkRoundCount = 3;
+    private Dictionary<Guid, int> _bulkMatchCounts = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        _loading = true;
+        _globalError = null;
+        _globalSuccess = null;
+
+        var t = await TournamentService.GetTournamentByIdAsync(Id);
+        _tournament = t.IsSuccess ? t.Value : null;
+
+        if (_tournament != null)
+        {
+            _newRound.TournamentId = Id;
+            _configThreshold = _tournament.MatchPointThreshold;
+            _configGuildId   = _tournament.DiscordGuildId;
+            _configChannelId = _tournament.DiscordChannelId;
+
+            await LoadTeams();
+            await LoadRounds();
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadTeams()
+    {
+        var result = await TeamService.GetTeamsWithTournamentStatusAsync(Id);
+        if (result.IsSuccess) _teamStatuses = result.Value.ToList();
+    }
+
+    private async Task LoadRounds()
+    {
+        var result = await RoundService.GetRoundsByTournamentAsync(Id);
+        if (result.IsSuccess) _rounds = result.Value.ToList();
+    }
+
+    // ── Config ─────────────────────────────────────────────────────────────
+
+    private async Task SaveConfig()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var dto = new UpdateTournamentDto
+        {
+            MatchPointThreshold = _configThreshold,
+            DiscordGuildId      = _configGuildId,
+            DiscordChannelId    = _configChannelId
+        };
+        var result = await TournamentService.UpdateTournamentAsync(Id, dto);
+        if (result.IsSuccess)
+        {
+            _tournament = result.Value;
+            _globalSuccess = "Configuración guardada.";
+        }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    // ── Teams ──────────────────────────────────────────────────────────────
+
+    private async Task RegisterTeam(Guid teamId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TeamService.RegisterTeamForTournamentAsync(teamId, Id);
+        if (result.IsSuccess) { _globalSuccess = "Equipo inscrito correctamente."; await LoadTeams(); }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task CheckInTeam(Guid teamId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TeamService.CheckInTeamAsync(teamId, Id);
+        if (result.IsSuccess) { _globalSuccess = "Check-in confirmado."; await LoadTeams(); }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task UnregisterTeam(Guid teamId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TeamService.UnregisterTeamFromTournamentAsync(teamId, Id);
+        if (result.IsSuccess) { _globalSuccess = "Equipo eliminado del torneo."; await LoadTeams(); }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    // ── Rounds ─────────────────────────────────────────────────────────────
+
+    private async Task CreateBulkRounds()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        int start = _rounds.Count + 1;
+        int created = 0;
+        for (int i = 0; i < _bulkRoundCount; i++)
+        {
+            var r = await RoundService.CreateRoundAsync(new CreateRoundDto
+            {
+                TournamentId = Id,
+                RoundNumber  = start + i,
+                Name         = $"Ronda {start + i}"
+            });
+            if (r.IsSuccess) created++;
+            else { _globalError = r.Error; break; }
+        }
+        if (created > 0)
+        {
+            _globalSuccess = $"{created} ronda{(created > 1 ? "s" : "")} creada{(created > 1 ? "s" : "")} correctamente.";
+            _newRound = new CreateRoundDto { TournamentId = Id, RoundNumber = _rounds.Count + created + 1 };
+            await LoadRounds();
+        }
+        _busy = false;
+    }
+
+    private async Task CreateRound()
+    {
+        if (string.IsNullOrWhiteSpace(_newRound.Name)) { _globalError = "El nombre de la ronda es obligatorio."; return; }
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await RoundService.CreateRoundAsync(_newRound);
+        if (result.IsSuccess)
+        {
+            _globalSuccess = $"Ronda '{result.Value.Name}' creada.";
+            _newRound = new CreateRoundDto { TournamentId = Id, RoundNumber = _rounds.Count + 2 };
+            await LoadRounds();
+        }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task DeleteRound(Guid roundId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await RoundService.DeleteRoundAsync(roundId);
+        if (result.IsSuccess) { _globalSuccess = "Ronda eliminada."; await LoadRounds(); }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    // ── Matches ────────────────────────────────────────────────────────────
+
+    private int GetBulkMatchCount(Guid roundId) => _bulkMatchCounts.TryGetValue(roundId, out var v) ? v : 3;
+    private void SetBulkMatchCount(Guid roundId, int value) => _bulkMatchCounts[roundId] = value;
+
+    private async Task CreateBulkMatches(Guid roundId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var round = _rounds.FirstOrDefault(r => r.Id == roundId);
+        int start = (round?.Matches.Count ?? 0) + 1;
+        int count = GetBulkMatchCount(roundId);
+        int created = 0;
+        for (int i = 0; i < count; i++)
+        {
+            var r = await MatchService.CreateMatchAsync(new CreateMatchDto
+            {
+                RoundId      = roundId,
+                TournamentId = Id,
+                MatchNumber  = start + i
+            });
+            if (r.IsSuccess) created++;
+            else { _globalError = r.Error; break; }
+        }
+        if (created > 0)
+        {
+            _globalSuccess = $"{created} match{(created > 1 ? "es" : "")} creado{(created > 1 ? "s" : "")} en la ronda.";
+            await LoadRounds();
+        }
+        _busy = false;
+    }
+
+    private void OpenNewMatch(Guid roundId)
+    {
+        _expandedRoundId = roundId;
+        var round = _rounds.First(r => r.Id == roundId);
+        _newMatch = new CreateMatchDto
+        {
+            RoundId = roundId,
+            TournamentId = Id,
+            MatchNumber = round.Matches.Count + 1
+        };
+    }
+
+    private async Task CreateMatch(Guid roundId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        _newMatch.RoundId = roundId;
+        _newMatch.TournamentId = Id;
+        var result = await MatchService.CreateMatchAsync(_newMatch);
+        if (result.IsSuccess)
+        {
+            _globalSuccess = $"Match #{result.Value.MatchNumber} creado.";
+            _expandedRoundId = null;
+            await LoadRounds();
+        }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task ChangeMatchStatus(Guid matchId, WarzoneTournament.Application.Common.Interfaces.MatchStatus status)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await MatchService.UpdateMatchStatusAsync(matchId, status);
+        if (result.IsSuccess) { _globalSuccess = $"Match actualizado a {status}."; await LoadRounds(); }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task ConfirmMatch(Guid matchId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await MatchService.ConfirmMatchResultsAsync(matchId);
+        if (result.IsSuccess) { _globalSuccess = "Resultados confirmados. Leaderboard actualizado."; await LoadRounds(); }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    private BadgeStyle GetStatusBadge(TournamentStatus s) => s switch
+    {
+        TournamentStatus.InProgress  => BadgeStyle.Danger,
+        TournamentStatus.Registration => BadgeStyle.Success,
+        TournamentStatus.CheckIn     => BadgeStyle.Warning,
+        TournamentStatus.Completed   => BadgeStyle.Info,
+        _ => BadgeStyle.Secondary
+    };
+
+    private BadgeStyle GetMatchBadge(WarzoneTournament.Domain.Enums.MatchStatus s) => s switch
+    {
+        WarzoneTournament.Domain.Enums.MatchStatus.InProgress    => BadgeStyle.Danger,
+        WarzoneTournament.Domain.Enums.MatchStatus.Completed     => BadgeStyle.Success,
+        WarzoneTournament.Domain.Enums.MatchStatus.WaitingEvidence => BadgeStyle.Warning,
+        WarzoneTournament.Domain.Enums.MatchStatus.UnderReview   => BadgeStyle.Warning,
+        WarzoneTournament.Domain.Enums.MatchStatus.Disputed      => BadgeStyle.Danger,
+        WarzoneTournament.Domain.Enums.MatchStatus.Cancelled     => BadgeStyle.Secondary,
+        _ => BadgeStyle.Light
+    };
+}
