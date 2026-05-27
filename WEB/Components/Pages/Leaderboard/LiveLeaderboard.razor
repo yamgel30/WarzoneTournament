@@ -392,6 +392,7 @@
     private string _overlayTeamName = "";
     private HashSet<Guid> _prevMatchPointIds = new();
     private bool _prevWasCompleted = false;
+    private bool _isFirstLoad = true;
     private Queue<(string name, bool isWinner)> _overlayQueue = new();
     private CancellationTokenSource? _overlayDismissCts;
 
@@ -422,14 +423,23 @@
             var playerResult     = await LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
             var tournamentResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
 
+            // Resolve winner state before processing MP so we can suppress MP overlays when won
+            bool hasWinner = tournamentResult.IsSuccess && tournamentResult.Value.WinnerTeamId.HasValue;
+
             if (teamResult.IsSuccess)
             {
                 var newLb = teamResult.Value.ToList();
                 var newMp = newLb.Where(e => e.IsMatchPoint).Select(e => e.TeamId).ToHashSet();
-                foreach (var id in newMp.Except(_prevMatchPointIds))
+
+                // MP overlays: only for teams that entered MP *during this session*,
+                // never on first page load, and never when the tournament already has a winner
+                if (!_isFirstLoad && !hasWinner)
                 {
-                    var name = newLb.FirstOrDefault(e => e.TeamId == id)?.TeamName ?? "Equipo";
-                    _overlayQueue.Enqueue((name, false));
+                    foreach (var id in newMp.Except(_prevMatchPointIds))
+                    {
+                        var name = newLb.FirstOrDefault(e => e.TeamId == id)?.TeamName ?? "Equipo";
+                        _overlayQueue.Enqueue((name, false));
+                    }
                 }
                 _prevMatchPointIds = newMp;
                 _leaderboard = newLb;
@@ -448,6 +458,7 @@
                 }
             }
 
+            _isFirstLoad = false;
             await ProcessOverlayQueueAsync();
         }
         finally { _loading = false; }
@@ -536,6 +547,7 @@
     {
         _prevMatchPointIds.Clear();
         _prevWasCompleted = false;
+        _isFirstLoad = true;
         _overlayQueue.Clear();
         _showOverlay = false;
         if (_hubConnection?.State == HubConnectionState.Connected && _selectedTournamentId != Guid.Empty)
