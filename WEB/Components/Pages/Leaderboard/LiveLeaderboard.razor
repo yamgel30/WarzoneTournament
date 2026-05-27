@@ -46,6 +46,20 @@
     }
     else
     {
+        @* ── Winner banner ── *@
+        @if (_tournamentDto?.WinnerTeamId.HasValue == true)
+        {
+            var winner = _leaderboard.FirstOrDefault(e => e.TeamId == _tournamentDto.WinnerTeamId);
+            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border-radius:12px;padding:20px 28px;margin-bottom:16px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 24px rgba(245,158,11,0.35)">
+                <span style="font-size:2.5em">🏆</span>
+                <div>
+                    <div style="font-size:1.4em;font-weight:800">¡CAMPEÓN!</div>
+                    <div style="font-size:1.15em;font-weight:600;margin-top:2px">@(winner?.TeamName ?? "—")</div>
+                    <div style="font-size:0.85em;opacity:0.9;margin-top:2px">Ganó el torneo con Match Point</div>
+                </div>
+            </div>
+        }
+
         <RadzenTabs @bind-SelectedIndex="_tabIndex">
             <Tabs>
 
@@ -91,6 +105,10 @@
                                             @if (!string.IsNullOrEmpty(entry.TeamTag))
                                             {<span class="team-tag">[<span>@entry.TeamTag</span>]</span>}
                                             <span class="team-name">@entry.TeamName</span>
+                                            @if (entry.IsMatchPoint)
+                                            {
+                                                <span style="background:#ef4444;color:#fff;font-size:0.65em;font-weight:800;padding:2px 6px;border-radius:4px;letter-spacing:0.05em;margin-left:6px;vertical-align:middle">MATCH POINT</span>
+                                            }
                                         </div>
                                     </div>
                                     <div class="col-pts points-total">@entry.TotalPoints.ToString("0.##")</div>
@@ -172,6 +190,7 @@
     private List<PlayerLeaderboardEntryDto> _playerLeaderboard = new();
     private List<TournamentListDto> _tournaments = new();
     private Guid _selectedTournamentId;
+    private TournamentDto? _tournamentDto;
     private HubConnection? _hubConnection;
 
     protected override async Task OnInitializedAsync()
@@ -200,11 +219,13 @@
         _loading = true;
         try
         {
-            var teamResult   = await LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
-            var playerResult = await LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
+            var teamResult     = await LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
+            var playerResult   = await LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
+            var tournamentResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
 
-            if (teamResult.IsSuccess)   _leaderboard       = teamResult.Value.ToList();
-            if (playerResult.IsSuccess) _playerLeaderboard = playerResult.Value.ToList();
+            if (teamResult.IsSuccess)       _leaderboard       = teamResult.Value.ToList();
+            if (playerResult.IsSuccess)     _playerLeaderboard = playerResult.Value.ToList();
+            if (tournamentResult.IsSuccess) _tournamentDto     = tournamentResult.Value;
         }
         finally
         {

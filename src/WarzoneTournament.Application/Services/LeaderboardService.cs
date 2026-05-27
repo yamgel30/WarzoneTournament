@@ -63,6 +63,7 @@ public class LeaderboardService : ILeaderboardService
                 BestPlacement = teamResults.Any() ? teamResults.Min(r => r.Placement) : 0,
                 CheckedIn = tt.CheckedIn,
                 IsEliminated = tt.IsEliminated,
+                IsMatchPoint = tt.IsMatchPoint,
                 MatchScores = matchScores
             });
         }
@@ -112,7 +113,8 @@ public class LeaderboardService : ILeaderboardService
                 MatchesPlayed = teamResults.Count(),
                 BestPlacement = teamResults.Min(r => r.Placement),
                 CheckedIn = tt.CheckedIn,
-                IsEliminated = tt.IsEliminated
+                IsEliminated = tt.IsEliminated,
+                IsMatchPoint = tt.IsMatchPoint
             });
         }
 
@@ -168,6 +170,7 @@ public class LeaderboardService : ILeaderboardService
         if (leaderboardResult.IsFailure)
             return Result.Failure(leaderboardResult.Error!);
 
+        var tournament = await _uow.Tournaments.GetByIdAsync(tournamentId, ct);
         var tournamentTeams = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
 
         foreach (var entry in leaderboardResult.Value)
@@ -178,6 +181,12 @@ public class LeaderboardService : ILeaderboardService
             tt.TotalPoints = entry.TotalPoints;
             tt.TotalKills = entry.TotalKills;
             tt.CurrentRank = entry.Rank;
+
+            // Once a team reaches the threshold it stays in Match Point
+            if (tournament?.MatchPointThreshold.HasValue == true
+                && entry.TotalPoints >= tournament.MatchPointThreshold.Value)
+                tt.IsMatchPoint = true;
+
             _uow.TournamentTeams.Update(tt);
         }
 

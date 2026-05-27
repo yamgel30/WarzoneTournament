@@ -43,6 +43,7 @@ public class TournamentTeamStatusDto
     public bool IsRegistered { get; set; }
     public bool CheckedIn { get; set; }
     public DateTime? CheckInTime { get; set; }
+    public bool IsMatchPoint { get; set; }
     public List<TeamPlayerSimpleDto> Players { get; set; } = new();
 }
 

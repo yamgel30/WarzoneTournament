@@ -10,6 +10,7 @@ public class TournamentTeam : BaseEntity
     public bool CheckedIn { get; set; } = false;
     public DateTime? CheckInTime { get; set; }
     public bool IsEliminated { get; set; } = false;
+    public bool IsMatchPoint { get; set; } = false;
     public double TotalPoints { get; set; } = 0;
     public int TotalKills { get; set; } = 0;
     public int CurrentRank { get; set; } = 0;

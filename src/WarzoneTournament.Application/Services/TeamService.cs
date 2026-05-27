@@ -301,6 +301,7 @@ public class TeamService : ITeamService
                 IsRegistered = entry is not null,
                 CheckedIn = entry?.CheckedIn ?? false,
                 CheckInTime = entry?.CheckInTime,
+                IsMatchPoint = entry?.IsMatchPoint ?? false,
                 Players = playerDtos
             });
         }

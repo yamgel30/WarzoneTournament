@@ -37,6 +37,21 @@
         }
     </RadzenCard>
 
+    @* ── Winner banner ── *@
+    @if (_tournamentDetails?.WinnerTeamId.HasValue == true)
+    {
+        var winnerName = _editTeams.FirstOrDefault(t => t.TeamId == _tournamentDetails.WinnerTeamId)?.TeamName
+                         ?? _tournamentDetails.WinnerTeamId.ToString();
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border-radius:12px;padding:20px 28px;margin-bottom:16px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 24px rgba(245,158,11,0.35)">
+            <span style="font-size:2.5em">🏆</span>
+            <div>
+                <div style="font-size:1.4em;font-weight:800">¡TORNEO FINALIZADO!</div>
+                <div style="font-size:1.15em;font-weight:600;margin-top:2px">Campeón: @winnerName</div>
+                <div style="font-size:0.85em;opacity:0.9;margin-top:2px">Ganó con Match Point</div>
+            </div>
+        </div>
+    }
+
     @* ── Lista de mapas ── *@
     @if (_selectedTournamentId != Guid.Empty)
     {
@@ -124,6 +139,10 @@
                             <strong style="font-size:1.05em">@team.TeamName</strong>
                             @if (!string.IsNullOrEmpty(team.TeamTag))
                             {<small style="color:var(--rz-text-secondary-color)">[@team.TeamTag]</small>}
+                            @if (team.IsMatchPoint)
+                            {
+                                <span style="background:#ef4444;color:#fff;font-size:0.7em;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:0.05em">MATCH POINT</span>
+                            }
                             <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
                                 <span style="font-size:0.85em;color:var(--rz-text-secondary-color)">Posición:</span>
                                 <RadzenNumeric @bind-Value="team.Placement" Min="0" Max="150" TValue="int" Style="width:68px"
@@ -216,6 +235,7 @@
     private List<TournamentListDto> _tournaments = new();
     private List<MatchDto> _matches = new();
     private Guid _selectedTournamentId = Guid.Empty;
+    private TournamentDto? _tournamentDetails;
     private MatchDto? _editingMatch;
     private List<EditTeam> _editTeams = new();
     private Dictionary<int, double> _placementMap = new();
@@ -233,6 +253,7 @@
     private async Task OnTournamentSelected(object? _)
     {
         _editingMatch = null;
+        _tournamentDetails = null;
         _matches.Clear();
         _placementMap.Clear();
         if (_selectedTournamentId == Guid.Empty) return;
@@ -242,6 +263,7 @@
         var tResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
         if (tResult.IsSuccess)
         {
+            _tournamentDetails = tResult.Value;
             try { _placementMap = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, double>>(tResult.Value.PlacementPointsJson) ?? new(); }
             catch { _placementMap = new(); }
         }
@@ -324,13 +346,14 @@
                 var existing = match.TeamResults.FirstOrDefault(tr => tr.TeamId == t.TeamId);
                 return new EditTeam
                 {
-                    TeamId      = t.TeamId,
-                    TeamName    = t.TeamName,
-                    TeamTag     = t.TeamTag,
-                    Placement   = existing?.Placement ?? 0,
-                    BonusPoints = existing?.BonusPoints ?? 0,
-                    DirectKills = existing?.Kills ?? 0,
-                    Players     = t.Players.Select(p => new EditPlayer
+                    TeamId       = t.TeamId,
+                    TeamName     = t.TeamName,
+                    TeamTag      = t.TeamTag,
+                    Placement    = existing?.Placement ?? 0,
+                    BonusPoints  = existing?.BonusPoints ?? 0,
+                    DirectKills  = existing?.Kills ?? 0,
+                    IsMatchPoint = t.IsMatchPoint,
+                    Players      = t.Players.Select(p => new EditPlayer
                     {
                         PlayerId = p.PlayerId,
                         Username = p.Username,
@@ -457,6 +480,7 @@
         public int Placement     { get; set; } = 0;
         public int BonusPoints   { get; set; } = 0;
         public int DirectKills   { get; set; } = 0;
+        public bool IsMatchPoint { get; set; } = false;
         public List<EditPlayer> Players { get; set; } = new();
     }
 

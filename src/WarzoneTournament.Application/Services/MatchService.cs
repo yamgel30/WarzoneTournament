@@ -188,11 +188,48 @@ public class MatchService : IMatchService
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitTransactionAsync(ct);
 
-            // Update tournament leaderboard
+            // Capture Match Point teams BEFORE recalculating so we can detect a victory
+            var preMatchMPIds = (await _uow.TournamentTeams.FindAsync(
+                tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct))
+                .Select(tt => tt.TeamId).ToHashSet();
+
+            // Update tournament leaderboard (also sets newly-reached IsMatchPoint flags)
             await _leaderboard.RecalculateLeaderboardAsync(match.TournamentId, ct);
             await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
             await _discord.SendMatchResultsAsync(id, ct);
             await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
+
+            // Match Point victory: a team that WAS already in Match Point placed 1st
+            var firstPlace = dto.TeamResults.FirstOrDefault(r => r.Placement == 1);
+            if (firstPlace != null && preMatchMPIds.Contains(firstPlace.TeamId))
+            {
+                var t = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
+                if (t is { Status: not Domain.Enums.TournamentStatus.Completed })
+                {
+                    t.Status = Domain.Enums.TournamentStatus.Completed;
+                    t.WinnerTeamId = firstPlace.TeamId;
+                    t.EndDate ??= DateTime.UtcNow;
+                    _uow.Tournaments.Update(t);
+                    await _uow.SaveChangesAsync(ct);
+                    var winnerTeam = await _uow.Teams.GetByIdAsync(firstPlace.TeamId, ct);
+                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
+                        $"🏆 ¡**{winnerTeam?.Name ?? "Un equipo"}** gana el torneo con Match Point!", ct);
+                    await _signalR.NotifyTournamentStatusChangedAsync(match.TournamentId, "Completed", ct);
+                }
+            }
+            else
+            {
+                // Notify teams that newly entered Match Point this match
+                var newlyMP = (await _uow.TournamentTeams.FindAsync(
+                    tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct))
+                    .Where(tt => !preMatchMPIds.Contains(tt.TeamId)).ToList();
+                foreach (var mpTeam in newlyMP)
+                {
+                    var team = await _uow.Teams.GetByIdAsync(mpTeam.TeamId, ct);
+                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
+                        $"⚠️ ¡**{team?.Name}** está en **Match Point**! Solo necesitan ganar 1 partida más para ser campeones.", ct);
+                }
+            }
 
             _logger.LogInformation("Results submitted for match {MatchId}", id);
             return Result.Success(await BuildMatchDtoAsync(match, ct));

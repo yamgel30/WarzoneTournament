@@ -16,6 +16,7 @@ public class LeaderboardEntryDto
     public int AverageKillsPerMatch => MatchesPlayed > 0 ? TotalKills / MatchesPlayed : 0;
     public bool CheckedIn { get; set; }
     public bool IsEliminated { get; set; }
+    public bool IsMatchPoint { get; set; }
     public List<MatchScoreDto> MatchScores { get; set; } = new();
 }
 

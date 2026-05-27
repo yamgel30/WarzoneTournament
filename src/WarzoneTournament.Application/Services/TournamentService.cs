@@ -78,6 +78,7 @@ public class TournamentService : ITournamentService
         if (dto.LobbyPassword is not null) tournament.LobbyPassword = dto.LobbyPassword;
         if (dto.BannerImageUrl is not null) tournament.BannerImageUrl = dto.BannerImageUrl;
         if (dto.OrganizerName is not null) tournament.OrganizerName = dto.OrganizerName;
+        if (dto.MatchPointThreshold.HasValue) tournament.MatchPointThreshold = dto.MatchPointThreshold.Value;
 
         _uow.Tournaments.Update(tournament);
         await _uow.SaveChangesAsync(ct);
