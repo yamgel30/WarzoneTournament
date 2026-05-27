@@ -31,6 +31,17 @@ public class OcrService : IOcrService
         _tessdataPath = config["Ocr:TesseractDataPath"] ?? "tessdata";
 
         var engFile = Path.Combine(_tessdataPath, "eng.traineddata");
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+        // Always log these so you can diagnose where to put the files
+        _logger.LogInformation("OCR diagnostics — BaseDirectory (DLL search path): {Base}", baseDir);
+        _logger.LogInformation("OCR diagnostics — CurrentDirectory: {Cur}", Directory.GetCurrentDirectory());
+        _logger.LogInformation("OCR diagnostics — tessdata full path: {Path}", Path.GetFullPath(_tessdataPath));
+        _logger.LogInformation("OCR diagnostics — eng.traineddata exists: {Exists}", File.Exists(engFile));
+        _logger.LogInformation("OCR diagnostics — leptonica-1.82.0.dll in BaseDir: {Exists}", File.Exists(Path.Combine(baseDir, "leptonica-1.82.0.dll")));
+        _logger.LogInformation("OCR diagnostics — tesseract50.dll in BaseDir: {Exists}", File.Exists(Path.Combine(baseDir, "tesseract50.dll")));
+        _logger.LogInformation("OCR diagnostics — leptonica in x64 subdir: {Exists}", File.Exists(Path.Combine(baseDir, "x64", "leptonica-1.82.0.dll")));
+
         _ocrEnabled = Directory.Exists(_tessdataPath) && File.Exists(engFile);
 
         if (_ocrEnabled)
