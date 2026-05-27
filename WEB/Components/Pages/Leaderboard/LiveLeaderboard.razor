@@ -200,12 +200,11 @@
         _loading = true;
         try
         {
-            var teamTask   = LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
-            var playerTask = LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
-            await Task.WhenAll(teamTask, playerTask);
+            var teamResult   = await LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
+            var playerResult = await LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
 
-            if (teamTask.Result.IsSuccess)   _leaderboard = teamTask.Result.Value.ToList();
-            if (playerTask.Result.IsSuccess) _playerLeaderboard = playerTask.Result.Value.ToList();
+            if (teamResult.IsSuccess)   _leaderboard       = teamResult.Value.ToList();
+            if (playerResult.IsSuccess) _playerLeaderboard = playerResult.Value.ToList();
         }
         finally
         {
