@@ -25,6 +25,9 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
     public async Task<IReadOnlyList<T>> FindAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
         => await _dbSet.Where(e => !e.IsDeleted).Where(predicate).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<T>> FindAsNoTrackingAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
+        => await _dbSet.AsNoTracking().Where(e => !e.IsDeleted).Where(predicate).ToListAsync(ct);
+
     public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
         => await _dbSet.Where(e => !e.IsDeleted).FirstOrDefaultAsync(predicate, ct);
 

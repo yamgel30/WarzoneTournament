@@ -21,8 +21,8 @@ public class LeaderboardService : ILeaderboardService
     public async Task<Result<IReadOnlyList<LeaderboardEntryDto>>> GetTournamentLeaderboardAsync(
         Guid tournamentId, CancellationToken ct = default)
     {
-        var tournamentTeams = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
-        var matches = await _uow.Matches.FindAsync(m => m.TournamentId == tournamentId, ct);
+        var tournamentTeams = await _uow.TournamentTeams.FindAsNoTrackingAsync(tt => tt.TournamentId == tournamentId, ct);
+        var matches = await _uow.Matches.FindAsNoTrackingAsync(m => m.TournamentId == tournamentId, ct);
         var matchIds = matches.Select(m => m.Id).ToHashSet();
 
         var entries = new List<LeaderboardEntryDto>();
@@ -32,7 +32,7 @@ public class LeaderboardService : ILeaderboardService
             var team = await _uow.Teams.GetByIdAsync(tt.TeamId, ct);
             if (team is null) continue;
 
-            var teamResults = await _uow.MatchTeamResults.FindAsync(
+            var teamResults = await _uow.MatchTeamResults.FindAsNoTrackingAsync(
                 r => r.TeamId == tt.TeamId && matchIds.Contains(r.MatchId), ct);
 
             var matchScores = new List<MatchScoreDto>();
@@ -132,10 +132,10 @@ public class LeaderboardService : ILeaderboardService
     public async Task<Result<IReadOnlyList<PlayerLeaderboardEntryDto>>> GetPlayerLeaderboardAsync(
         Guid tournamentId, CancellationToken ct = default)
     {
-        var matches = await _uow.Matches.FindAsync(m => m.TournamentId == tournamentId, ct);
+        var matches = await _uow.Matches.FindAsNoTrackingAsync(m => m.TournamentId == tournamentId, ct);
         var matchIds = matches.Select(m => m.Id).ToHashSet();
 
-        var allStats = await _uow.PlayerMatchStats.FindAsync(s => matchIds.Contains(s.MatchId), ct);
+        var allStats = await _uow.PlayerMatchStats.FindAsNoTrackingAsync(s => matchIds.Contains(s.MatchId), ct);
 
         var grouped = allStats
             .GroupBy(s => s.PlayerId)
