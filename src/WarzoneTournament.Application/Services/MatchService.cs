@@ -19,15 +19,18 @@ public class MatchService : IMatchService
     private readonly ILogger<MatchService> _logger;
     private readonly ISignalRNotificationService _signalR;
     private readonly ILeaderboardService _leaderboard;
+    private readonly IDiscordNotificationService _discord;
 
     public MatchService(IUnitOfWork uow, IMapper mapper, ILogger<MatchService> logger,
-        ISignalRNotificationService signalR, ILeaderboardService leaderboard)
+        ISignalRNotificationService signalR, ILeaderboardService leaderboard,
+        IDiscordNotificationService discord)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
         _leaderboard = leaderboard;
+        _discord = discord;
     }
 
     public async Task<Result<MatchDto>> CreateMatchAsync(CreateMatchDto dto, CancellationToken ct = default)
@@ -180,6 +183,8 @@ public class MatchService : IMatchService
             // Update tournament leaderboard
             await _leaderboard.RecalculateLeaderboardAsync(match.TournamentId, ct);
             await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
+            await _discord.SendMatchResultsAsync(id, ct);
+            await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
 
             _logger.LogInformation("Results submitted for match {MatchId}", id);
             return Result.Success(await BuildMatchDtoAsync(match, ct));
@@ -214,6 +219,8 @@ public class MatchService : IMatchService
         await _signalR.NotifyMatchUpdatedAsync(id, "Completed", ct);
         await _leaderboard.RecalculateLeaderboardAsync(match.TournamentId, ct);
         await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
+        await _discord.SendMatchResultsAsync(id, ct);
+        await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
 
         return Result.Success(await BuildMatchDtoAsync(match, ct));
     }
