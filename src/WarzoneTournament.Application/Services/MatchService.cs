@@ -117,12 +117,12 @@ public class MatchService : IMatchService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // Remove existing results for re-submission
-            var existingResults = await _uow.MatchTeamResults.FindAsync(r => r.MatchId == id, ct);
-            _uow.MatchTeamResults.RemoveRange(existingResults);
+            // Hard-delete existing results so the unique index (MatchId, TeamId) doesn't block re-insertion
+            var existingResults = await _uow.MatchTeamResults.FindIncludingDeletedAsync(r => r.MatchId == id, ct);
+            _uow.MatchTeamResults.HardRemoveRange(existingResults);
 
-            var existingStats = await _uow.PlayerMatchStats.FindAsync(s => s.MatchId == id, ct);
-            _uow.PlayerMatchStats.RemoveRange(existingStats);
+            var existingStats = await _uow.PlayerMatchStats.FindIncludingDeletedAsync(s => s.MatchId == id, ct);
+            _uow.PlayerMatchStats.HardRemoveRange(existingStats);
 
             await _uow.SaveChangesAsync(ct);
 

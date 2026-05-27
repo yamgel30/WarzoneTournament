@@ -163,9 +163,26 @@ else
                 <RadzenTabsItem Text="Rondas" Icon="format_list_numbered">
                     <div style="margin-top:16px">
 
-                        @* Crear ronda *@
+                        @* Creación rápida de varias rondas *@
                         <RadzenCard class="mb-3">
-                            <h3 class="rz-mb-3">Nueva Ronda</h3>
+                            <h3 class="rz-mb-2">Creación rápida</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:12px">
+                                Crea varias rondas de golpe con nombres automáticos (Ronda 1, Ronda 2…).
+                            </small>
+                            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                                <div>
+                                    <RadzenLabel Text="Cuántas rondas" />
+                                    <RadzenNumeric @bind-Value="_bulkRoundCount" Min="1" Max="20" TValue="int" Style="width:80px" />
+                                </div>
+                                <RadzenButton Text="@($"Crear {_bulkRoundCount} ronda{(_bulkRoundCount > 1 ? "s" : "")}")"
+                                              Icon="add_circle" ButtonStyle="ButtonStyle.Primary"
+                                              Click="@CreateBulkRounds" Disabled="@_busy" />
+                            </div>
+                        </RadzenCard>
+
+                        @* Crear ronda individual *@
+                        <RadzenCard class="mb-3">
+                            <h3 class="rz-mb-3">Nueva Ronda (personalizada)</h3>
                             <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
                                 <div>
                                     <RadzenLabel Text="Número *" />
@@ -181,7 +198,7 @@ else
                                     <RadzenDatePicker @bind-Value="_newRound.StartTime" ShowTime="true"
                                                       DateFormat="MM/dd/yyyy HH:mm" Style="width:200px" />
                                 </div>
-                                <RadzenButton Text="Crear Ronda" Icon="add_circle" ButtonStyle="ButtonStyle.Primary"
+                                <RadzenButton Text="Crear Ronda" Icon="add_circle" ButtonStyle="ButtonStyle.Light"
                                               Click="@CreateRound" Disabled="@_busy" />
                             </div>
                         </RadzenCard>
@@ -349,6 +366,7 @@ else
     private CreateRoundDto _newRound = new();
     private CreateMatchDto _newMatch = new();
     private Guid? _expandedRoundId;
+    private int _bulkRoundCount = 3;
 
     protected override async Task OnInitializedAsync() => await LoadAll();
 
@@ -414,6 +432,31 @@ else
     }
 
     // ── Rounds ─────────────────────────────────────────────────────────────
+
+    private async Task CreateBulkRounds()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        int start = _rounds.Count + 1;
+        int created = 0;
+        for (int i = 0; i < _bulkRoundCount; i++)
+        {
+            var r = await RoundService.CreateRoundAsync(new CreateRoundDto
+            {
+                TournamentId = Id,
+                RoundNumber  = start + i,
+                Name         = $"Ronda {start + i}"
+            });
+            if (r.IsSuccess) created++;
+            else { _globalError = r.Error; break; }
+        }
+        if (created > 0)
+        {
+            _globalSuccess = $"{created} ronda{(created > 1 ? "s" : "")} creada{(created > 1 ? "s" : "")} correctamente.";
+            _newRound = new CreateRoundDto { TournamentId = Id, RoundNumber = _rounds.Count + created + 1 };
+            await LoadRounds();
+        }
+        _busy = false;
+    }
 
     private async Task CreateRound()
     {

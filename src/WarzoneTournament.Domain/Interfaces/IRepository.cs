@@ -16,5 +16,8 @@ public interface IRepository<T> where T : BaseEntity
     void Update(T entity);
     void Remove(T entity);
     void RemoveRange(IEnumerable<T> entities);
+    void HardRemove(T entity);
+    void HardRemoveRange(IEnumerable<T> entities);
+    Task<IReadOnlyList<T>> FindIncludingDeletedAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
     IQueryable<T> Query();
 }
