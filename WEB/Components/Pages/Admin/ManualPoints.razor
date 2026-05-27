@@ -150,7 +150,7 @@
             }
             else
             {
-                @foreach (var team in _editTeams.OrderBy(t => t.Placement == 0 ? 999 : t.Placement))
+                @foreach (var team in _editTeams)
                 {
                     <div style="margin-bottom:16px;border:1px solid var(--rz-grid-header-border-color);border-radius:8px;overflow:hidden">
                         @* Cabecera del equipo *@
@@ -383,6 +383,9 @@
                     }).ToList()
                 };
             }).ToList();
+
+            // Sort once on load: by existing placement if set, otherwise alphabetically
+            SortEditTeams();
         }
 
         _loadingTeams = false;
@@ -435,6 +438,7 @@
             if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
             _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado.";
+            SortEditTeams();
         }
         else
         {
@@ -480,12 +484,22 @@
             var tResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
             if (tResult.IsSuccess)
                 _tournamentDetails = tResult.Value;
+
+            SortEditTeams();
         }
         else
         {
             _saveError = result.Error;
         }
         _saving = false;
+    }
+
+    private void SortEditTeams()
+    {
+        _editTeams = _editTeams
+            .OrderBy(t => t.Placement == 0 ? 999 : t.Placement)
+            .ThenBy(t => t.TeamName)
+            .ToList();
     }
 
     private string? ValidatePlacements()
