@@ -177,19 +177,25 @@ public class EvidenceService : IEvidenceService
     }
 
     public async Task<Result<EvidenceDto>> ApproveWithVerifiedDataAsync(
-        Guid evidenceId, string reviewedBy, int? placement, int? kills, string? notes, CancellationToken ct = default)
+        Guid evidenceId, string reviewedBy, int? placement, int? kills, string? notes,
+        Dictionary<Guid, int>? playerKills = null, CancellationToken ct = default)
     {
         var evidence = await _uow.MatchEvidences.GetByIdAsync(evidenceId, ct);
         if (evidence is null) return Result.Failure<EvidenceDto>("Evidence not found.");
         if (evidence.Status == EvidenceStatus.Approved)
             return Result.Failure<EvidenceDto>("Evidence is already approved.");
 
+        // Total kills = sum of per-player kills if provided, otherwise the manual total
+        int? totalKills = (playerKills is { Count: > 0 })
+            ? playerKills.Values.Sum()
+            : kills;
+
         // Save manually verified extraction data
         var existing = await _uow.OCRExtractionResults.FirstOrDefaultAsync(o => o.EvidenceId == evidenceId, ct);
         if (existing is not null)
         {
             if (placement.HasValue) existing.ExtractedPlacement = placement;
-            if (kills.HasValue) existing.ExtractedKills = kills;
+            if (totalKills.HasValue) existing.ExtractedKills = totalKills;
             existing.RequiresManualReview = false;
             existing.ConfidenceScore = 1.0m;
             existing.OcrProvider = "Manual";
@@ -202,12 +208,40 @@ public class EvidenceService : IEvidenceService
                 EvidenceId = evidenceId,
                 RawText = "Revisión manual por administrador",
                 ExtractedPlacement = placement,
-                ExtractedKills = kills,
+                ExtractedKills = totalKills,
                 ConfidenceScore = 1.0m,
                 RequiresManualReview = false,
                 ProcessedAt = DateTime.UtcNow,
                 OcrProvider = "Manual"
             }, ct);
+        }
+
+        // Save per-player kills to PlayerMatchStats
+        if (playerKills is { Count: > 0 })
+        {
+            var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);
+            foreach (var (playerId, playerKillCount) in playerKills)
+            {
+                var stat = await _uow.PlayerMatchStats.FirstOrDefaultAsync(
+                    s => s.MatchId == evidence.MatchId && s.PlayerId == playerId, ct);
+
+                if (stat is not null)
+                {
+                    stat.Kills = playerKillCount;
+                    _uow.PlayerMatchStats.Update(stat);
+                }
+                else
+                {
+                    await _uow.PlayerMatchStats.AddAsync(new Domain.Entities.PlayerMatchStats
+                    {
+                        MatchId = evidence.MatchId,
+                        PlayerId = playerId,
+                        TeamId = evidence.SubmittedByTeamId,
+                        Kills = playerKillCount,
+                        IsVerified = true
+                    }, ct);
+                }
+            }
         }
 
         evidence.Status = EvidenceStatus.Approved;

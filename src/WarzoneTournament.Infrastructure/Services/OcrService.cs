@@ -88,6 +88,20 @@ public class OcrService : IOcrService
 
         try
         {
+            // Discord CDN and other external URLs cannot be read as local files
+            if (imageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result.Success(new OcrResultDto
+                {
+                    RequiresManualReview = true,
+                    ConfidenceScore = 0,
+                    ProcessingError = "Imagen externa (URL remota) — revisión manual requerida.",
+                    OcrProvider = _ocrProvider,
+                    ProcessedAt = DateTime.UtcNow
+                });
+            }
+
             var localPath = Path.Combine("wwwroot", imageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(localPath))
             {

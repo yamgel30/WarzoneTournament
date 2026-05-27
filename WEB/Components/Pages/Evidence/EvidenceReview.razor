@@ -2,9 +2,11 @@
 @rendermode InteractiveServer
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Evidence
+@using WarzoneTournament.Application.DTOs.Team
 @using WarzoneTournament.Domain.Enums
 @using Microsoft.AspNetCore.SignalR.Client
 @inject IEvidenceService EvidenceService
+@inject ITeamService TeamService
 @inject NavigationManager NavManager
 @implements IAsyncDisposable
 
@@ -94,10 +96,7 @@
                             }
                         </div>
 
-                        @* ── OCR / Manual entry panel ─────────────────────────── *@
-                        @{ bool needsManualEntry = _selectedEvidence.OcrResult is null ||
-                               _selectedEvidence.OcrResult.RequiresManualReview; }
-
+                        @* ── OCR results panel ────────────────────────────────── *@
                         @if (_selectedEvidence.OcrResult is not null &&
                              _selectedEvidence.OcrResult.OcrProvider != "Fallback")
                         {
@@ -115,40 +114,59 @@
                                 @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ExtractedTeamName))
                                 {<div class="ocr-field"><strong>Equipo detectado:</strong> @_selectedEvidence.OcrResult.ExtractedTeamName</div>}
                                 @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ProcessingError))
-                                {<div style="color:var(--rz-danger);font-size:0.85em">Error: @_selectedEvidence.OcrResult.ProcessingError</div>}
+                                {<div style="color:var(--rz-danger);font-size:0.85em">Error OCR: @_selectedEvidence.OcrResult.ProcessingError</div>}
                             </div>
                         }
 
-                        @* ── Manual data entry (shown when OCR not available or low confidence) *@
-                        @if (needsManualEntry)
-                        {
-                            <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-warning);border-radius:6px;padding:14px;margin-bottom:12px">
-                                <h4 style="margin:0 0 12px;color:var(--rz-warning-darker)">
-                                    ✏️ Ingreso manual de datos
-                                </h4>
-                                <p style="font-size:0.85em;color:var(--rz-text-secondary-color);margin-bottom:12px">
-                                    El OCR no pudo extraer los datos automáticamente. Revisa la imagen y completa los campos.
-                                </p>
-                                <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">
-                                    <div>
-                                        <RadzenLabel Text="Posición del equipo" />
-                                        <RadzenNumeric @bind-Value="_manualPlacement" Min="1" Max="150"
-                                                       TValue="int?" Style="width:100px;margin-top:4px"
-                                                       Placeholder="ej: 1" />
+                        @* ── Manual data entry ────────────────────────────────── *@
+                        @{ bool needsManualEntry = _selectedEvidence.OcrResult is null ||
+                               _selectedEvidence.OcrResult.RequiresManualReview; }
+
+                        <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-warning);border-radius:6px;padding:14px;margin-bottom:12px">
+                            <h4 style="margin:0 0 4px;color:var(--rz-warning-darker)">
+                                ✏️ Datos del mapa
+                            </h4>
+                            <p style="font-size:0.83em;color:var(--rz-text-secondary-color);margin-bottom:12px">
+                                Revisa la imagen y completa los campos. Los kills por jugador se guardan en las estadísticas individuales.
+                            </p>
+
+                            @* Placement *@
+                            <div style="margin-bottom:14px">
+                                <RadzenLabel Text="Posición del equipo" />
+                                <RadzenNumeric @bind-Value="_manualPlacement" Min="1" Max="150"
+                                               TValue="int?" Style="width:110px;display:block;margin-top:4px"
+                                               Placeholder="ej: 1" />
+                            </div>
+
+                            @* Per-player kills table *@
+                            @if (_teamPlayers.Any())
+                            {
+                                <div style="margin-bottom:14px">
+                                    <RadzenLabel Text="Kills por jugador" />
+                                    <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">
+                                        @foreach (var p in _teamPlayers)
+                                        {
+                                            <div style="display:flex;align-items:center;gap:10px">
+                                                <span style="min-width:130px;font-size:0.9em">@p.Username</span>
+                                                <RadzenNumeric TValue="int"
+                                                               Value="@(_playerKills.TryGetValue(p.PlayerId, out var k) ? k : 0)"
+                                                               ValueChanged="@(v => _playerKills[p.PlayerId] = v)"
+                                                               Min="0" Max="50"
+                                                               Style="width:80px" />
+                                            </div>
+                                        }
                                     </div>
-                                    <div>
-                                        <RadzenLabel Text="Kills totales del equipo" />
-                                        <RadzenNumeric @bind-Value="_manualKills" Min="0" Max="200"
-                                                       TValue="int?" Style="width:100px;margin-top:4px"
-                                                       Placeholder="ej: 8" />
+                                    <div style="font-size:0.82em;color:var(--rz-text-secondary-color);margin-top:6px">
+                                        Total: <strong>@_playerKills.Values.Sum()</strong> kills
                                     </div>
                                 </div>
-                                <RadzenButton Text="Guardar datos y aprobar" Icon="save"
-                                             ButtonStyle="ButtonStyle.Warning"
-                                             Disabled="@(_reviewing || _manualPlacement is null)"
-                                             Click="@ApproveWithManualData" />
-                            </div>
-                        }
+                            }
+
+                            <RadzenButton Text="Guardar y aprobar" Icon="save"
+                                         ButtonStyle="ButtonStyle.Warning"
+                                         Disabled="@(_reviewing || _manualPlacement is null)"
+                                         Click="@ApproveWithManualData" />
+                        </div>
 
                         <div class="review-actions">
                             <h4>Decisión</h4>
@@ -213,7 +231,8 @@
     private int _pendingCount = 0;
     private HubConnection? _hubConnection;
     private int? _manualPlacement;
-    private int? _manualKills;
+    private List<TeamPlayerDto> _teamPlayers = new();
+    private Dictionary<Guid, int> _playerKills = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -239,13 +258,23 @@
         }
     }
 
-    private void SelectEvidence(EvidenceDto evidence)
+    private async Task SelectEvidence(EvidenceDto evidence)
     {
         _selectedEvidence = evidence;
         _reviewNotes = null;
         _actionError = null;
         _manualPlacement = evidence.OcrResult?.ExtractedPlacement;
-        _manualKills = evidence.OcrResult?.ExtractedKills;
+        _teamPlayers = new();
+        _playerKills = new();
+
+        var teamResult = await TeamService.GetTeamByIdAsync(evidence.SubmittedByTeamId);
+        if (teamResult.IsSuccess)
+        {
+            _teamPlayers = teamResult.Value.Players;
+            // Pre-fill zero kills for each player
+            foreach (var p in _teamPlayers)
+                _playerKills[p.PlayerId] = 0;
+        }
     }
 
     private async Task ApproveEvidence()
@@ -282,8 +311,13 @@
         _actionError = null;
         try
         {
+            var killsDict = _playerKills.Where(kv => kv.Value > 0)
+                                        .ToDictionary(kv => kv.Key, kv => kv.Value);
+
             var result = await EvidenceService.ApproveWithVerifiedDataAsync(
-                _selectedEvidence.Id, "Admin", _manualPlacement, _manualKills, _reviewNotes);
+                _selectedEvidence.Id, "Admin", _manualPlacement,
+                killsDict.Any() ? (int?)killsDict.Values.Sum() : null,
+                _reviewNotes, killsDict);
 
             if (result.IsSuccess)
             {
