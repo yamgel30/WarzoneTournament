@@ -136,9 +136,11 @@ public class OcrService : IOcrService
             }
 
             // Run Tesseract in a thread-pool thread — TesseractEngine is synchronous and CPU-bound
+            // Use absolute tessdata path and LstmOnly mode (Default requires legacy data that may be absent)
+            var absData = Path.GetFullPath(_tessdataPath);
             var rawText = await Task.Run(() =>
             {
-                using var engine = new TesseractEngine(_tessdataPath, "eng", EngineMode.Default);
+                using var engine = new TesseractEngine(absData, "eng", EngineMode.LstmOnly);
                 using var img = Pix.LoadFromFile(localPath);
                 using var page = engine.Process(img);
                 return page.GetText();
@@ -176,13 +178,15 @@ public class OcrService : IOcrService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "OCR processing failed for {ImageUrl}", imageUrl);
+            // Unwrap TargetInvocationException so we see the real cause
+            var inner = ex is System.Reflection.TargetInvocationException tie ? tie.InnerException ?? ex : ex;
+            _logger.LogError(inner, "OCR processing failed for {ImageUrl} — real cause: {Message}", imageUrl, inner.Message);
             return Result.Success(new OcrResultDto
             {
                 RawText = string.Empty,
                 RequiresManualReview = true,
                 ConfidenceScore = 0,
-                ProcessingError = ex.Message,
+                ProcessingError = inner.Message,
                 ProcessedAt = DateTime.UtcNow,
                 OcrProvider = _ocrProvider
             });
