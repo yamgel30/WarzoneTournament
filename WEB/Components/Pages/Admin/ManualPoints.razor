@@ -118,6 +118,25 @@
                 Posición = lugar del equipo (1 = 1er lugar). Puedes guardar parcialmente.
             </small>
 
+            @* ── Match Point finalization confirmation ── *@
+            @if (_showMpWinConfirm)
+            {
+                <div style="background:linear-gradient(135deg,#1a0505,#3b0000);border:2px solid #ef4444;border-radius:12px;padding:20px 24px;margin:12px 0;box-shadow:0 0 24px rgba(239,68,68,0.3)">
+                    <div style="font-size:1.05em;font-weight:700;color:#ef4444;margin-bottom:10px">⚡ MATCH POINT — CONFIRMACIÓN FINAL</div>
+                    <div style="margin-bottom:16px;line-height:1.55">
+                        El equipo <strong>@_mpWinnerName</strong> está en <strong>Match Point</strong> y obtuvo el <strong>1er lugar</strong> en este mapa.
+                        Al confirmar, el torneo quedará <strong>finalizado</strong> y este equipo será declarado campeón.
+                        ¿Estás seguro?
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <RadzenButton Text="Sí, finalizar torneo" Icon="emoji_events" ButtonStyle="ButtonStyle.Danger"
+                                      Click="@ExecuteConfirmResults" Disabled="@_saving" />
+                        <RadzenButton Text="Cancelar" Icon="close" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => _showMpWinConfirm = false)" Disabled="@_saving" />
+                    </div>
+                </div>
+            }
+
             @if (_loadingTeams)
             {
                 <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
@@ -241,6 +260,8 @@
     private Dictionary<int, double> _placementMap = new();
     private string? _saveError;
     private string? _saveSuccess;
+    private bool _showMpWinConfirm = false;
+    private string _mpWinnerName = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -425,7 +446,27 @@
     private async Task ConfirmResults()
     {
         if (_editingMatch == null) return;
+
+        // If a Match Point team placed 1st, warn before finalizing tournament
+        var mpWinner = _editTeams.FirstOrDefault(t => t.IsMatchPoint && t.Placement == 1);
+        if (mpWinner != null)
+        {
+            _mpWinnerName = mpWinner.TeamName;
+            _showMpWinConfirm = true;
+            return;
+        }
+
+        await ExecuteConfirmResults();
+    }
+
+    private async Task ExecuteConfirmResults()
+    {
+        if (_editingMatch == null) return;
+        _showMpWinConfirm = false;
         _saving = true;
+        _saveError = null;
+        _saveSuccess = null;
+
         var result = await MatchService.ConfirmMatchResultsAsync(_editingMatch.Id);
         if (result.IsSuccess)
         {
@@ -433,6 +474,11 @@
             if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
             _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} confirmado.";
+
+            // Reload tournament so winner banner appears immediately
+            var tResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
+            if (tResult.IsSuccess)
+                _tournamentDetails = tResult.Value;
         }
         else
         {
