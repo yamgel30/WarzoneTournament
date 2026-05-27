@@ -35,9 +35,9 @@ public class MatchTeamResultDto
     public int Placement { get; set; }
     public int Kills { get; set; }
     public int Deaths { get; set; }
-    public int PlacementPoints { get; set; }
-    public int KillPoints { get; set; }
+    public double PlacementMultiplier { get; set; }
+    public double KillPoints { get; set; }
     public int BonusPoints { get; set; }
-    public int TotalPoints { get; set; }
+    public double TotalPoints { get; set; }
     public bool IsVerified { get; set; }
 }

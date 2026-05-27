@@ -105,17 +105,14 @@ public class MatchService : IMatchService
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         if (tournament is null) return Result.Failure<MatchDto>("Tournament not found.");
 
-        // Parse placement points configuration
-        var placementPoints = new Dictionary<int, int>();
+        // Parse placement multipliers — formula: TotalPoints = Kills × Multiplier + BonusPoints
+        var placementMultipliers = new Dictionary<int, double>();
         try
         {
-            placementPoints = JsonSerializer.Deserialize<Dictionary<int, int>>(tournament.PlacementPointsJson)
-                ?? new Dictionary<int, int>();
+            placementMultipliers = JsonSerializer.Deserialize<Dictionary<int, double>>(tournament.PlacementPointsJson)
+                ?? new Dictionary<int, double>();
         }
-        catch
-        {
-            // Use default if parsing fails
-        }
+        catch { }
 
         await _uow.BeginTransactionAsync(ct);
         try
@@ -132,9 +129,9 @@ public class MatchService : IMatchService
             // Insert team results with calculated points
             foreach (var teamResult in dto.TeamResults)
             {
-                placementPoints.TryGetValue(teamResult.Placement, out int placePts);
-                var killPts = teamResult.Kills * tournament.KillPoints;
-                var totalPts = placePts + killPts + teamResult.BonusPoints;
+                var multiplier = placementMultipliers.TryGetValue(teamResult.Placement, out var m) ? m : 1.0;
+                var killPts = Math.Round(teamResult.Kills * multiplier, 2);
+                var totalPts = killPts + teamResult.BonusPoints;
 
                 await _uow.MatchTeamResults.AddAsync(new MatchTeamResult
                 {
@@ -143,7 +140,7 @@ public class MatchService : IMatchService
                     Placement = teamResult.Placement,
                     Kills = teamResult.Kills,
                     Deaths = teamResult.Deaths,
-                    PlacementPoints = placePts,
+                    PlacementMultiplier = multiplier,
                     KillPoints = killPts,
                     BonusPoints = teamResult.BonusPoints,
                     TotalPoints = totalPts
@@ -242,7 +239,7 @@ public class MatchService : IMatchService
                 Placement = r.Placement,
                 Kills = r.Kills,
                 Deaths = r.Deaths,
-                PlacementPoints = r.PlacementPoints,
+                PlacementMultiplier = r.PlacementMultiplier,
                 KillPoints = r.KillPoints,
                 BonusPoints = r.BonusPoints,
                 TotalPoints = r.TotalPoints,

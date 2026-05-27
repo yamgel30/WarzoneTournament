@@ -182,7 +182,7 @@
                 }
 
                 <small style="color:var(--rz-text-secondary-color);display:block;margin-top:4px">
-                    Pts = pts por posición + (kills × @_killPoints) + bonus.
+                    Pts = kills × multiplicador por posición + bonus.
                 </small>
 
                 @if (!string.IsNullOrEmpty(_saveError))
@@ -218,8 +218,7 @@
     private Guid _selectedTournamentId = Guid.Empty;
     private MatchDto? _editingMatch;
     private List<EditTeam> _editTeams = new();
-    private Dictionary<int, int> _placementMap = new();
-    private int _killPoints = 1;
+    private Dictionary<int, double> _placementMap = new();
     private string? _saveError;
     private string? _saveSuccess;
 
@@ -243,8 +242,7 @@
         var tResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
         if (tResult.IsSuccess)
         {
-            _killPoints = tResult.Value.KillPoints;
-            try { _placementMap = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, int>>(tResult.Value.PlacementPointsJson) ?? new(); }
+            try { _placementMap = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, double>>(tResult.Value.PlacementPointsJson) ?? new(); }
             catch { _placementMap = new(); }
         }
 
@@ -431,18 +429,17 @@
         _saving = false;
     }
 
-    private int CalcPlayerPoints(EditTeam team, EditPlayer player)
+    private double CalcPlayerPoints(EditTeam team, EditPlayer player)
     {
-        var pp = _placementMap.TryGetValue(team.Placement, out var v) ? v : 0;
-        return pp + player.Kills * _killPoints;
+        var mult = _placementMap.TryGetValue(team.Placement, out var v) ? v : 1.0;
+        return Math.Round(player.Kills * mult, 2);
     }
 
-    private int CalcTeamPoints(EditTeam team)
+    private double CalcTeamPoints(EditTeam team)
     {
-        var pp = _placementMap.TryGetValue(team.Placement, out var v) ? v : 0;
-        if (team.Players.Any())
-            return pp + team.Players.Sum(p => p.Kills) * _killPoints + team.BonusPoints;
-        return pp + team.DirectKills * _killPoints + team.BonusPoints;
+        var mult = _placementMap.TryGetValue(team.Placement, out var v) ? v : 1.0;
+        var kills = team.Players.Any() ? team.Players.Sum(p => p.Kills) : team.DirectKills;
+        return Math.Round(kills * mult + team.BonusPoints, 2);
     }
 
     private class EditTeam

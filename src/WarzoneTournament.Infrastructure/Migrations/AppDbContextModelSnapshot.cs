@@ -268,8 +268,8 @@ namespace WarzoneTournament.Infrastructure.Migrations
                     b.Property<bool>("IsVerified")
                         .HasColumnType("bit");
 
-                    b.Property<int>("KillPoints")
-                        .HasColumnType("int");
+                    b.Property<double>("KillPoints")
+                        .HasColumnType("float");
 
                     b.Property<int>("Kills")
                         .HasColumnType("int");
@@ -280,14 +280,14 @@ namespace WarzoneTournament.Infrastructure.Migrations
                     b.Property<int>("Placement")
                         .HasColumnType("int");
 
-                    b.Property<int>("PlacementPoints")
-                        .HasColumnType("int");
+                    b.Property<double>("PlacementMultiplier")
+                        .HasColumnType("float");
 
                     b.Property<Guid>("TeamId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("TotalPoints")
-                        .HasColumnType("int");
+                    b.Property<double>("TotalPoints")
+                        .HasColumnType("float");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");

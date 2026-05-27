@@ -7,10 +7,9 @@ public class LeaderboardEntryDto
     public string TeamName { get; set; } = string.Empty;
     public string? TeamTag { get; set; }
     public string? TeamLogoUrl { get; set; }
-    public int TotalPoints { get; set; }
+    public double TotalPoints { get; set; }
     public int TotalKills { get; set; }
-    public int TotalPlacementPoints { get; set; }
-    public int TotalKillPoints { get; set; }
+    public double TotalKillPoints { get; set; }
     public int TotalBonusPoints { get; set; }
     public int MatchesPlayed { get; set; }
     public int BestPlacement { get; set; }
@@ -26,7 +25,7 @@ public class MatchScoreDto
     public int MatchNumber { get; set; }
     public int Placement { get; set; }
     public int Kills { get; set; }
-    public int Points { get; set; }
+    public double Points { get; set; }
 }
 
 public class PlayerLeaderboardEntryDto
