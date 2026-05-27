@@ -14,12 +14,15 @@ public class TeamService : ITeamService
     private readonly IUnitOfWork _uow;
     private readonly IMapper _mapper;
     private readonly ILogger<TeamService> _logger;
+    private readonly IDiscordNotificationService _discord;
 
-    public TeamService(IUnitOfWork uow, IMapper mapper, ILogger<TeamService> logger)
+    public TeamService(IUnitOfWork uow, IMapper mapper, ILogger<TeamService> logger,
+        IDiscordNotificationService discord)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
+        _discord = discord;
     }
 
     public async Task<Result<TeamDto>> CreateTeamAsync(CreateTeamDto dto, CancellationToken ct = default)
@@ -213,6 +216,7 @@ public class TeamService : ITeamService
         tournamentTeam.CheckInTime = DateTime.UtcNow;
         _uow.TournamentTeams.Update(tournamentTeam);
         await _uow.SaveChangesAsync(ct);
+        await _discord.NotifyTeamCheckInAsync(teamId, tournamentId, ct);
 
         return Result.Success();
     }

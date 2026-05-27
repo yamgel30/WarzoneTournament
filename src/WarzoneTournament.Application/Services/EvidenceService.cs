@@ -15,14 +15,17 @@ public class EvidenceService : IEvidenceService
     private readonly IMapper _mapper;
     private readonly ILogger<EvidenceService> _logger;
     private readonly ISignalRNotificationService _signalR;
+    private readonly IDiscordNotificationService _discord;
 
     public EvidenceService(IUnitOfWork uow, IMapper mapper,
-        ILogger<EvidenceService> logger, ISignalRNotificationService signalR)
+        ILogger<EvidenceService> logger, ISignalRNotificationService signalR,
+        IDiscordNotificationService discord)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
+        _discord = discord;
     }
 
     public async Task<Result<EvidenceDto>> SubmitEvidenceAsync(SubmitEvidenceDto dto, CancellationToken ct = default)
@@ -135,6 +138,7 @@ public class EvidenceService : IEvidenceService
 
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyEvidenceReviewedAsync(id, "Rejected", ct);
+        await _discord.SendEvidenceRejectionNotificationAsync(id, reason, ct);
 
         _logger.LogInformation("Evidence {EvidenceId} rejected by {ReviewedBy}: {Reason}", id, reviewedBy, reason);
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
