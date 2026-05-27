@@ -96,6 +96,10 @@ public class UnitOfWork : IUnitOfWork
             await _transaction.DisposeAsync();
             _transaction = null;
         }
+        // Detach all tracked entities so stale Added/Modified/Deleted state
+        // from the failed transaction doesn't bleed into the next SaveChangesAsync.
+        foreach (var entry in _context.ChangeTracker.Entries().ToList())
+            entry.State = Microsoft.EntityFrameworkCore.EntityState.Detached;
     }
 
     public void Dispose()
