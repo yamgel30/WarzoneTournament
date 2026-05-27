@@ -12,6 +12,9 @@ namespace WarzoneTournament.Infrastructure.Services;
 
 public class OcrService : IOcrService
 {
+    // Static so one DllNotFoundException disables OCR for all subsequent requests in the process
+    private static volatile bool _nativeDllsMissing = false;
+
     private readonly IUnitOfWork _uow;
     private readonly ILogger<OcrService> _logger;
     private readonly IHttpClientFactory _httpFactory;
@@ -76,8 +79,7 @@ public class OcrService : IOcrService
 
     public async Task<Result<OcrResultDto>> ExtractTextFromImageAsync(string imageUrl, CancellationToken ct = default)
     {
-        // If tessdata not found → immediate fallback to manual review (no error)
-        if (!_ocrEnabled)
+        if (!_ocrEnabled || _nativeDllsMissing)
         {
             return Result.Success(new OcrResultDto
             {
@@ -144,6 +146,23 @@ public class OcrService : IOcrService
                 OcrProvider = _ocrProvider
             });
         }
+        catch (Exception ex) when (IsDllNotFound(ex))
+        {
+            _nativeDllsMissing = true;
+            _logger.LogWarning(
+                "Tesseract native DLLs not found (leptonica-1.82.0.dll / tesseract50.dll). " +
+                "Copy them from %USERPROFILE%\\.nuget\\packages\\tesseract\\5.2.0\\runtimes\\win-x64\\native\\ " +
+                "to the application output directory. OCR disabled until restart.");
+            return Result.Success(new OcrResultDto
+            {
+                RawText = string.Empty,
+                RequiresManualReview = true,
+                ConfidenceScore = 0,
+                ProcessingError = "Librerías nativas de OCR no encontradas — revisión manual requerida.",
+                ProcessedAt = DateTime.UtcNow,
+                OcrProvider = _ocrProvider
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "OCR processing failed for {ImageUrl}", imageUrl);
@@ -163,6 +182,10 @@ public class OcrService : IOcrService
                 try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
         }
     }
+
+    private static bool IsDllNotFound(Exception ex) =>
+        ex is DllNotFoundException ||
+        (ex is System.Reflection.TargetInvocationException { InnerException: DllNotFoundException });
 
     private static (int? Placement, int? Kills, string? TeamName, decimal Confidence) ParseWarzoneScoreboard(string text)
     {
