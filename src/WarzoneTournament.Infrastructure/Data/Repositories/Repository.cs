@@ -46,13 +46,13 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
     public async Task AddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
         => await _dbSet.AddRangeAsync(entities, ct);
 
-    public void Update(T entity) => _dbSet.Update(entity);
+    public void Update(T entity) => AttachOrUpdate(entity);
 
     public void Remove(T entity)
     {
         entity.IsDeleted = true;
         entity.DeletedAt = DateTime.UtcNow;
-        _dbSet.Update(entity);
+        AttachOrUpdate(entity);
     }
 
     public void RemoveRange(IEnumerable<T> entities)
@@ -61,6 +61,20 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
     }
 
     public void HardRemove(T entity) => _dbSet.Remove(entity);
+
+    // In Blazor Server the DbContext lives for the duration of the circuit. When
+    // GetByIdAsync returns an AsNoTracking copy and the caller mutates + saves it,
+    // _dbSet.Update() tries to attach the new copy but a tracked instance with the
+    // same key may already exist → InvalidOperationException. Use SetValues instead.
+    private void AttachOrUpdate(T entity)
+    {
+        var tracked = _context.ChangeTracker.Entries<T>()
+            .FirstOrDefault(e => e.Entity.Id == entity.Id);
+        if (tracked != null)
+            tracked.CurrentValues.SetValues(entity);
+        else
+            _dbSet.Update(entity);
+    }
 
     public void HardRemoveRange(IEnumerable<T> entities) => _dbSet.RemoveRange(entities);
 
