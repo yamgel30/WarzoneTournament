@@ -3,9 +3,8 @@ using Radzen;
 using WarzoneTournament.Application;
 using WarzoneTournament.Infrastructure;
 using WarzoneTournament.Infrastructure.Data;
-
+using WarzoneTournament.Infrastructure.Hubs;
 using WarzoneTournament.Web.Components;
-using WarzoneTournament.Web.Hubs;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
