@@ -988,8 +988,8 @@ namespace WarzoneTournament.Infrastructure.Migrations
                     b.Property<int>("TotalKills")
                         .HasColumnType("int");
 
-                    b.Property<int>("TotalPoints")
-                        .HasColumnType("int");
+                    b.Property<double>("TotalPoints")
+                        .HasColumnType("float");
 
                     b.Property<Guid>("TournamentId")
                         .HasColumnType("uniqueidentifier");

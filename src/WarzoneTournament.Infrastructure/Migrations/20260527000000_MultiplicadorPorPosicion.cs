@@ -48,6 +48,17 @@ namespace WarzoneTournament.Infrastructure.Migrations
                 oldClrType: typeof(int),
                 oldType: "int",
                 oldDefaultValue: 0);
+
+            // Change TournamentTeams.TotalPoints from int to float
+            migrationBuilder.AlterColumn<double>(
+                name: "TotalPoints",
+                table: "TournamentTeams",
+                type: "float",
+                nullable: false,
+                defaultValue: 0.0,
+                oldClrType: typeof(int),
+                oldType: "int",
+                oldDefaultValue: 0);
         }
 
         /// <inheritdoc />
@@ -87,6 +98,16 @@ namespace WarzoneTournament.Infrastructure.Migrations
                 name: "PlacementMultiplier",
                 table: "MatchTeamResults",
                 newName: "PlacementPoints");
+
+            migrationBuilder.AlterColumn<int>(
+                name: "TotalPoints",
+                table: "TournamentTeams",
+                type: "int",
+                nullable: false,
+                defaultValue: 0,
+                oldClrType: typeof(double),
+                oldType: "float",
+                oldDefaultValue: 0.0);
         }
     }
 }
