@@ -59,7 +59,7 @@
             {
                 <div style="text-align:center;padding:24px;color:var(--rz-text-secondary-color)">
                     <div style="font-size:2em;margin-bottom:8px">🗺️</div>
-                    <div>Sin mapas. Pulsa <strong>Agregar Mapa</strong> para empezar el primer mapa.</div>
+                    <div>Sin mapas. Pulsa <strong>Agregar Mapa</strong> para empezar.</div>
                 </div>
             }
             else
@@ -81,12 +81,12 @@
         </RadzenCard>
     }
 
-    @* ── Formulario de kills ── *@
+    @* ── Formulario de kills por jugador ── *@
     @if (_editingMatch != null)
     {
         <RadzenCard>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-                <h3 style="margin:0">Mapa @_editingMatch.MatchNumber — Ingresar Kills</h3>
+                <h3 style="margin:0">Mapa @_editingMatch.MatchNumber — Kills por Jugador</h3>
                 <div style="display:flex;gap:8px">
                     @if (!_editingMatch.ResultsConfirmed && _editingMatch.TeamResults.Any())
                     {
@@ -99,14 +99,15 @@
             </div>
 
             <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
-                Posición = lugar final del equipo en este mapa (1 = ganador). Puedes guardar parcialmente.
+                Ingresa las kills de cada jugador según el screenshot de Discord.
+                Posición = lugar del equipo (1 = 1er lugar). Puedes guardar parcialmente.
             </small>
 
             @if (_loadingTeams)
             {
                 <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
             }
-            else if (!_editRows.Any())
+            else if (!_editTeams.Any())
             {
                 <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat">
                     No hay equipos inscritos en este torneo.
@@ -115,53 +116,73 @@
             }
             else
             {
-                <div style="overflow-x:auto">
-                    <table style="width:100%;border-collapse:collapse;min-width:440px">
-                        <thead>
-                            <tr style="background:var(--rz-base-background-color)">
-                                <th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--rz-grid-header-border-color)">Equipo</th>
-                                <th style="text-align:center;padding:10px 8px;width:90px;border-bottom:2px solid var(--rz-grid-header-border-color)">
-                                    Posición
-                                    <div style="font-weight:400;font-size:0.75em;color:var(--rz-text-secondary-color)">(1=1er lugar)</div>
-                                </th>
-                                <th style="text-align:center;padding:10px 8px;width:90px;border-bottom:2px solid var(--rz-grid-header-border-color)">
-                                    Kills
-                                </th>
-                                <th style="text-align:center;padding:10px 8px;width:90px;border-bottom:2px solid var(--rz-grid-header-border-color);color:var(--rz-primary)">
-                                    Puntos
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in _editRows.OrderBy(r => r.Placement == 0 ? 999 : r.Placement))
-                            {
-                                <tr style="border-bottom:1px solid var(--rz-grid-header-border-color)">
-                                    <td style="padding:8px 12px">
-                                        <strong>@row.TeamName</strong>
-                                        @if (!string.IsNullOrEmpty(row.TeamTag))
-                                        {<small style="color:var(--rz-text-secondary-color)"> [@row.TeamTag]</small>}
-                                    </td>
-                                    <td style="padding:4px 8px;text-align:center">
-                                        <RadzenNumeric @bind-Value="row.Placement" Min="0" Max="150"
-                                                       TValue="int" Style="width:68px"
-                                                       Change="@(_ => StateHasChanged())" />
-                                    </td>
-                                    <td style="padding:4px 8px;text-align:center">
-                                        <RadzenNumeric @bind-Value="row.Kills" Min="0"
-                                                       TValue="int" Style="width:68px"
-                                                       Change="@(_ => StateHasChanged())" />
-                                    </td>
-                                    <td style="text-align:center;padding:8px 12px;font-weight:700;font-size:1.1em;color:var(--rz-primary)">
-                                        @CalcPoints(row)
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                @foreach (var team in _editTeams.OrderBy(t => t.Placement == 0 ? 999 : t.Placement))
+                {
+                    <div style="margin-bottom:16px;border:1px solid var(--rz-grid-header-border-color);border-radius:8px;overflow:hidden">
+                        @* Cabecera del equipo *@
+                        <div style="background:var(--rz-base-background-color);padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                            <strong style="font-size:1.05em">@team.TeamName</strong>
+                            @if (!string.IsNullOrEmpty(team.TeamTag))
+                            {<small style="color:var(--rz-text-secondary-color)">[@team.TeamTag]</small>}
+                            <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                                <span style="font-size:0.85em;color:var(--rz-text-secondary-color)">Posición:</span>
+                                <RadzenNumeric @bind-Value="team.Placement" Min="0" Max="150" TValue="int" Style="width:68px"
+                                               Change="@(_ => StateHasChanged())" />
+                                <span style="font-size:0.85em;color:var(--rz-text-secondary-color);margin-left:8px">Bonus:</span>
+                                <RadzenNumeric @bind-Value="team.BonusPoints" Min="-999" Max="999" TValue="int" Style="width:68px"
+                                               Change="@(_ => StateHasChanged())" />
+                            </div>
+                        </div>
 
-                <small style="color:var(--rz-text-secondary-color);display:block;margin-top:8px">
-                    Puntos = pts por posición + (kills × @_killPoints) + bonus.
+                        @* Filas de jugadores *@
+                        @if (team.Players.Any())
+                        {
+                            <table style="width:100%;border-collapse:collapse">
+                                <thead>
+                                    <tr style="background:var(--rz-base-background-color)">
+                                        <th style="text-align:left;padding:6px 14px;font-size:0.85em;color:var(--rz-text-secondary-color);font-weight:400;border-bottom:1px solid var(--rz-grid-header-border-color)">Jugador</th>
+                                        <th style="text-align:center;padding:6px 8px;width:90px;font-size:0.85em;color:var(--rz-text-secondary-color);font-weight:400;border-bottom:1px solid var(--rz-grid-header-border-color)">Kills</th>
+                                        <th style="text-align:center;padding:6px 8px;width:90px;font-size:0.85em;color:var(--rz-primary);font-weight:400;border-bottom:1px solid var(--rz-grid-header-border-color)">Pts</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in team.Players)
+                                    {
+                                        <tr style="border-bottom:1px solid var(--rz-grid-header-border-color)">
+                                            <td style="padding:6px 14px">@p.Username</td>
+                                            <td style="padding:4px 8px;text-align:center">
+                                                <RadzenNumeric @bind-Value="p.Kills" Min="0" TValue="int" Style="width:68px"
+                                                               Change="@(_ => StateHasChanged())" />
+                                            </td>
+                                            <td style="text-align:center;padding:6px 8px;font-weight:600;color:var(--rz-primary)">
+                                                @CalcPlayerPoints(team, p)
+                                            </td>
+                                        </tr>
+                                    }
+                                    @* Total del equipo *@
+                                    <tr style="background:var(--rz-base-background-color)">
+                                        <td style="padding:6px 14px;font-weight:600">Total equipo</td>
+                                        <td style="text-align:center;padding:6px 8px;font-weight:600">@team.Players.Sum(p => p.Kills)</td>
+                                        <td style="text-align:center;padding:6px 8px;font-weight:700;color:var(--rz-primary)">@CalcTeamPoints(team)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            @* Sin jugadores registrados → entrada directa por equipo *@
+                            <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;flex-wrap:wrap">
+                                <span style="color:var(--rz-text-secondary-color);font-size:0.85em">Sin jugadores registrados. Kills del equipo:</span>
+                                <RadzenNumeric @bind-Value="team.DirectKills" Min="0" TValue="int" Style="width:68px"
+                                               Change="@(_ => StateHasChanged())" />
+                                <span style="font-weight:700;color:var(--rz-primary)">= @CalcTeamPoints(team) pts</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <small style="color:var(--rz-text-secondary-color);display:block;margin-top:4px">
+                    Pts = pts por posición + (kills × @_killPoints) + bonus.
                 </small>
 
                 @if (!string.IsNullOrEmpty(_saveError))
@@ -196,7 +217,7 @@
     private List<MatchDto> _matches = new();
     private Guid _selectedTournamentId = Guid.Empty;
     private MatchDto? _editingMatch;
-    private List<EditRow> _editRows = new();
+    private List<EditTeam> _editTeams = new();
     private Dictionary<int, int> _placementMap = new();
     private int _killPoints = 1;
     private string? _saveError;
@@ -267,9 +288,9 @@
 
         var matchResult = await MatchService.CreateMatchAsync(new CreateMatchDto
         {
-            RoundId       = roundId,
-            TournamentId  = _selectedTournamentId,
-            MatchNumber   = nextNumber
+            RoundId      = roundId,
+            TournamentId = _selectedTournamentId,
+            MatchNumber  = nextNumber
         });
 
         if (matchResult.IsSuccess)
@@ -291,32 +312,57 @@
         _editingMatch = match;
         _saveError = null;
         _saveSuccess = null;
+        _loadingTeams = true;
+        StateHasChanged();
 
-        if (match.TeamResults.Any())
+        // Load all registered teams with their players
+        var teamsResult = await TeamService.GetTeamsWithTournamentStatusAsync(_selectedTournamentId);
+        if (teamsResult.IsSuccess)
         {
-            _editRows = match.TeamResults.Select(tr => new EditRow
+            var registeredTeams = teamsResult.Value.Where(t => t.IsRegistered).ToList();
+
+            if (match.TeamResults.Any())
             {
-                TeamId    = tr.TeamId,
-                TeamName  = tr.TeamName,
-                TeamTag   = tr.TeamTag,
-                Placement = tr.Placement,
-                Kills     = tr.Kills,
-            }).ToList();
-        }
-        else
-        {
-            _loadingTeams = true;
-            StateHasChanged();
-            var teamsResult = await TeamService.GetTeamsWithTournamentStatusAsync(_selectedTournamentId);
-            if (teamsResult.IsSuccess)
-            {
-                _editRows = teamsResult.Value
-                    .Where(t => t.IsRegistered)
-                    .Select(t => new EditRow { TeamId = t.TeamId, TeamName = t.TeamName, TeamTag = t.TeamTag })
-                    .ToList();
+                // Re-load existing results
+                _editTeams = registeredTeams.Select(t =>
+                {
+                    var existing = match.TeamResults.FirstOrDefault(tr => tr.TeamId == t.TeamId);
+                    var team = new EditTeam
+                    {
+                        TeamId      = t.TeamId,
+                        TeamName    = t.TeamName,
+                        TeamTag     = t.TeamTag,
+                        Placement   = existing?.Placement ?? 0,
+                        BonusPoints = existing?.BonusPoints ?? 0,
+                        DirectKills = existing?.Kills ?? 0,
+                        Players     = t.Players.Select(p => new EditPlayer
+                        {
+                            PlayerId = p.PlayerId,
+                            Username = p.Username,
+                            Kills    = 0
+                        }).ToList()
+                    };
+                    // Distribute kills back to players proportionally (best effort) if no player stats
+                    return team;
+                }).ToList();
             }
-            _loadingTeams = false;
+            else
+            {
+                _editTeams = registeredTeams.Select(t => new EditTeam
+                {
+                    TeamId   = t.TeamId,
+                    TeamName = t.TeamName,
+                    TeamTag  = t.TeamTag,
+                    Players  = t.Players.Select(p => new EditPlayer
+                    {
+                        PlayerId = p.PlayerId,
+                        Username = p.Username
+                    }).ToList()
+                }).ToList();
+            }
         }
+
+        _loadingTeams = false;
     }
 
     private async Task SaveResults()
@@ -326,17 +372,29 @@
         _saveError = null;
         _saveSuccess = null;
 
+        var teamResults = _editTeams.Select(t => new TeamResultDto
+        {
+            TeamId      = t.TeamId,
+            Placement   = t.Placement > 0 ? t.Placement : 1,
+            Kills       = t.Players.Any() ? t.Players.Sum(p => p.Kills) : t.DirectKills,
+            Deaths      = 0,
+            BonusPoints = t.BonusPoints,
+        }).ToList();
+
+        var playerStats = _editTeams
+            .Where(t => t.Players.Any())
+            .SelectMany(t => t.Players.Select(p => new PlayerStatSubmitDto
+            {
+                PlayerId = p.PlayerId,
+                TeamId   = t.TeamId,
+                Kills    = p.Kills,
+                Deaths   = 0
+            })).ToList();
+
         var dto = new SubmitMatchResultsDto
         {
-            TeamResults = _editRows.Select(r => new TeamResultDto
-            {
-                TeamId      = r.TeamId,
-                Placement   = r.Placement > 0 ? r.Placement : 1,
-                Kills       = r.Kills,
-                Deaths      = 0,
-                BonusPoints = r.BonusPoints,
-            }).ToList(),
-            PlayerStats = new()
+            TeamResults = teamResults,
+            PlayerStats = playerStats
         };
 
         var result = await MatchService.SubmitMatchResultsAsync(_editingMatch.Id, dto);
@@ -346,14 +404,6 @@
             if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
             _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado.";
-            _editRows = result.Value.TeamResults.Select(tr => new EditRow
-            {
-                TeamId    = tr.TeamId,
-                TeamName  = tr.TeamName,
-                TeamTag   = tr.TeamTag,
-                Placement = tr.Placement,
-                Kills     = tr.Kills,
-            }).ToList();
         }
         else
         {
@@ -381,19 +431,35 @@
         _saving = false;
     }
 
-    private int CalcPoints(EditRow row)
+    private int CalcPlayerPoints(EditTeam team, EditPlayer player)
     {
-        var pp = _placementMap.TryGetValue(row.Placement, out var v) ? v : 0;
-        return pp + row.Kills * _killPoints + row.BonusPoints;
+        var pp = _placementMap.TryGetValue(team.Placement, out var v) ? v : 0;
+        return pp + player.Kills * _killPoints;
     }
 
-    private class EditRow
+    private int CalcTeamPoints(EditTeam team)
     {
-        public Guid TeamId      { get; set; }
-        public string TeamName  { get; set; } = string.Empty;
-        public string? TeamTag  { get; set; }
-        public int Placement    { get; set; } = 0;
-        public int Kills        { get; set; } = 0;
-        public int BonusPoints  { get; set; } = 0;
+        var pp = _placementMap.TryGetValue(team.Placement, out var v) ? v : 0;
+        if (team.Players.Any())
+            return pp + team.Players.Sum(p => p.Kills) * _killPoints + team.BonusPoints;
+        return pp + team.DirectKills * _killPoints + team.BonusPoints;
+    }
+
+    private class EditTeam
+    {
+        public Guid TeamId       { get; set; }
+        public string TeamName   { get; set; } = string.Empty;
+        public string? TeamTag   { get; set; }
+        public int Placement     { get; set; } = 0;
+        public int BonusPoints   { get; set; } = 0;
+        public int DirectKills   { get; set; } = 0;
+        public List<EditPlayer> Players { get; set; } = new();
+    }
+
+    private class EditPlayer
+    {
+        public Guid PlayerId     { get; set; }
+        public string Username   { get; set; } = string.Empty;
+        public int Kills         { get; set; } = 0;
     }
 }

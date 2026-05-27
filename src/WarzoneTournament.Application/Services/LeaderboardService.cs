@@ -129,6 +129,41 @@ public class LeaderboardService : ILeaderboardService
         return Result.Success<IReadOnlyList<LeaderboardEntryDto>>(ranked);
     }
 
+    public async Task<Result<IReadOnlyList<PlayerLeaderboardEntryDto>>> GetPlayerLeaderboardAsync(
+        Guid tournamentId, CancellationToken ct = default)
+    {
+        var matches = await _uow.Matches.FindAsync(m => m.TournamentId == tournamentId, ct);
+        var matchIds = matches.Select(m => m.Id).ToHashSet();
+
+        var allStats = await _uow.PlayerMatchStats.FindAsync(s => matchIds.Contains(s.MatchId), ct);
+
+        var grouped = allStats
+            .GroupBy(s => s.PlayerId)
+            .Select(g => new { PlayerId = g.Key, TeamId = g.First().TeamId, TotalKills = g.Sum(x => x.Kills), MatchesPlayed = g.Select(x => x.MatchId).Distinct().Count() })
+            .OrderByDescending(x => x.TotalKills)
+            .ToList();
+
+        var result = new List<PlayerLeaderboardEntryDto>();
+        int rank = 1;
+        foreach (var g in grouped)
+        {
+            var player = await _uow.Players.GetByIdAsync(g.PlayerId, ct);
+            var team = await _uow.Teams.GetByIdAsync(g.TeamId, ct);
+            result.Add(new PlayerLeaderboardEntryDto
+            {
+                Rank         = rank++,
+                PlayerId     = g.PlayerId,
+                Username     = player?.Username ?? "Unknown",
+                TeamName     = team?.Name,
+                TeamTag      = team?.Tag,
+                TotalKills   = g.TotalKills,
+                MatchesPlayed = g.MatchesPlayed
+            });
+        }
+
+        return Result.Success<IReadOnlyList<PlayerLeaderboardEntryDto>>(result);
+    }
+
     public async Task<Result> RecalculateLeaderboardAsync(Guid tournamentId, CancellationToken ct = default)
     {
         var leaderboardResult = await GetTournamentLeaderboardAsync(tournamentId, ct);

@@ -1,18 +1,18 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
-using WarzoneTournament.Application.DTOs.Leaderboard;
+using WarzoneTournament.Infrastructure.Hubs;
 
 namespace WarzoneTournament.Infrastructure.Services;
 
 public class SignalRNotificationService : ISignalRNotificationService
 {
-    private readonly IHubContext<Microsoft.AspNetCore.SignalR.Hub> _hubContext;
+    private readonly IHubContext<TournamentHub> _hubContext;
     private readonly ILogger<SignalRNotificationService> _logger;
     private readonly ILeaderboardService _leaderboard;
 
     public SignalRNotificationService(
-        IHubContext<Microsoft.AspNetCore.SignalR.Hub> hubContext,
+        IHubContext<TournamentHub> hubContext,
         ILogger<SignalRNotificationService> logger,
         ILeaderboardService leaderboard)
     {

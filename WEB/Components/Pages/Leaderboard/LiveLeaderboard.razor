@@ -24,7 +24,7 @@
             <RadzenDropDown @bind-Value="_selectedTournamentId"
                             Data="@_tournaments"
                             TextProperty="Name" ValueProperty="Id"
-                            Placeholder="Select Tournament..."
+                            Placeholder="Selecciona torneo..."
                             Style="width:280px"
                             Change="@OnTournamentChanged" />
             <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light"
@@ -36,86 +36,129 @@
     {
         <div class="empty-state">
             <div class="empty-state__icon">🏆</div>
-            <h3>Select a Tournament</h3>
-            <p>Choose a tournament from the dropdown to view its live leaderboard.</p>
+            <h3>Selecciona un Torneo</h3>
+            <p>Elige un torneo para ver el leaderboard en vivo.</p>
         </div>
     }
     else if (_loading)
     {
         <LoadingSpinner />
     }
-    else if (!_leaderboard.Any())
-    {
-        <div class="empty-state">
-            <div class="empty-state__icon">📊</div>
-            <h3>No Results Yet</h3>
-            <p>Matches haven't started or no results have been submitted.</p>
-        </div>
-    }
     else
     {
-        <div class="leaderboard-container">
-            <div class="leaderboard-table-header">
-                <span class="col-rank">Rank</span>
-                <span class="col-team">Team</span>
-                <span class="col-pts">Total Pts</span>
-                <span class="col-kills">Kills</span>
-                <span class="col-place-pts">Placement Pts</span>
-                <span class="col-kill-pts">Kill Pts</span>
-                <span class="col-matches">Matches</span>
-                <span class="col-best">Best Place</span>
-            </div>
+        <RadzenTabs @bind-SelectedIndex="_tabIndex">
+            <Tabs>
 
-            @foreach (var entry in _leaderboard)
-            {
-                <div class="leaderboard-row @GetRowClass(entry.Rank)">
-                    <div class="col-rank">
-                        <div class="rank-badge rank-@(entry.Rank <= 3 ? entry.Rank.ToString() : "other")">
-                            @if (entry.Rank == 1) { <span>🥇</span> }
-                            else if (entry.Rank == 2) { <span>🥈</span> }
-                            else if (entry.Rank == 3) { <span>🥉</span> }
-                            else { <span>@entry.Rank</span> }
+                @* ── Tab: Equipos ── *@
+                <RadzenTabsItem Text="Equipos" Icon="groups">
+                    @if (!_leaderboard.Any())
+                    {
+                        <div class="empty-state" style="margin-top:24px">
+                            <div class="empty-state__icon">📊</div>
+                            <h3>Sin resultados aún</h3>
+                            <p>Los matches no han comenzado o no hay resultados ingresados.</p>
                         </div>
-                    </div>
-                    <div class="col-team">
-                        @if (!string.IsNullOrEmpty(entry.TeamLogoUrl))
-                        {
-                            <img src="@entry.TeamLogoUrl" alt="@entry.TeamName" class="team-logo-xs" />
-                        }
-                        <div class="team-name-info">
-                            @if (!string.IsNullOrEmpty(entry.TeamTag))
+                    }
+                    else
+                    {
+                        <div class="leaderboard-container" style="margin-top:16px">
+                            <div class="leaderboard-table-header">
+                                <span class="col-rank">#</span>
+                                <span class="col-team">Equipo</span>
+                                <span class="col-pts">Puntos</span>
+                                <span class="col-kills">Kills</span>
+                                <span class="col-matches">Mapas</span>
+                                <span class="col-best">Mejor Pos.</span>
+                            </div>
+
+                            @foreach (var entry in _leaderboard)
                             {
-                                <span class="team-tag">[<span>@entry.TeamTag</span>]</span>
+                                <div class="leaderboard-row @GetRowClass(entry.Rank)">
+                                    <div class="col-rank">
+                                        <div class="rank-badge rank-@(entry.Rank <= 3 ? entry.Rank.ToString() : "other")">
+                                            @if (entry.Rank == 1)      {<span>🥇</span>}
+                                            else if (entry.Rank == 2)  {<span>🥈</span>}
+                                            else if (entry.Rank == 3)  {<span>🥉</span>}
+                                            else                        {<span>@entry.Rank</span>}
+                                        </div>
+                                    </div>
+                                    <div class="col-team">
+                                        @if (!string.IsNullOrEmpty(entry.TeamLogoUrl))
+                                        {
+                                            <img src="@entry.TeamLogoUrl" alt="@entry.TeamName" class="team-logo-xs" />
+                                        }
+                                        <div class="team-name-info">
+                                            @if (!string.IsNullOrEmpty(entry.TeamTag))
+                                            {<span class="team-tag">[<span>@entry.TeamTag</span>]</span>}
+                                            <span class="team-name">@entry.TeamName</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-pts points-total">@entry.TotalPoints</div>
+                                    <div class="col-kills">@entry.TotalKills</div>
+                                    <div class="col-matches">@entry.MatchesPlayed</div>
+                                    <div class="col-best">
+                                        @if (entry.BestPlacement > 0)
+                                        {<span class="placement-value">#@entry.BestPlacement</span>}
+                                        else {<span>—</span>}
+                                    </div>
+                                </div>
                             }
-                            <span class="team-name">@entry.TeamName</span>
                         </div>
-                        @if (entry.IsEliminated)
-                        {
-                            <RadzenBadge Text="OUT" BadgeStyle="BadgeStyle.Danger" />
-                        }
-                        else if (entry.CheckedIn)
-                        {
-                            <RadzenBadge Text="✓" BadgeStyle="BadgeStyle.Success" />
-                        }
-                    </div>
-                    <div class="col-pts points-total">@entry.TotalPoints</div>
-                    <div class="col-kills">@entry.TotalKills</div>
-                    <div class="col-place-pts">@entry.TotalPlacementPoints</div>
-                    <div class="col-kill-pts">@entry.TotalKillPoints</div>
-                    <div class="col-matches">@entry.MatchesPlayed</div>
-                    <div class="col-best">
-                        @if (entry.BestPlacement > 0)
-                        {
-                            <span class="placement-value">#@entry.BestPlacement</span>
-                        }
-                        else
-                        {
-                            <span>—</span>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
+                    }
+                </RadzenTabsItem>
+
+                @* ── Tab: Jugadores ── *@
+                <RadzenTabsItem Text="Jugadores" Icon="person">
+                    @if (!_playerLeaderboard.Any())
+                    {
+                        <div class="empty-state" style="margin-top:24px">
+                            <div class="empty-state__icon">🎮</div>
+                            <h3>Sin estadísticas de jugadores</h3>
+                            <p>Ingresa kills por jugador en cada mapa para ver este ranking.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="leaderboard-container" style="margin-top:16px">
+                            <div class="leaderboard-table-header">
+                                <span class="col-rank">#</span>
+                                <span class="col-team" style="min-width:160px">Jugador</span>
+                                <span class="col-team">Equipo</span>
+                                <span class="col-kills">Kills</span>
+                                <span class="col-matches">Mapas</span>
+                                <span class="col-best">K/Mapa</span>
+                            </div>
+
+                            @foreach (var entry in _playerLeaderboard)
+                            {
+                                <div class="leaderboard-row @(entry.Rank <= 3 ? GetRowClass(entry.Rank) : "")">
+                                    <div class="col-rank">
+                                        <div class="rank-badge rank-@(entry.Rank <= 3 ? entry.Rank.ToString() : "other")">
+                                            @if (entry.Rank == 1)      {<span>🥇</span>}
+                                            else if (entry.Rank == 2)  {<span>🥈</span>}
+                                            else if (entry.Rank == 3)  {<span>🥉</span>}
+                                            else                        {<span>@entry.Rank</span>}
+                                        </div>
+                                    </div>
+                                    <div class="col-team" style="min-width:160px">
+                                        <span class="team-name">@entry.Username</span>
+                                    </div>
+                                    <div class="col-team">
+                                        @if (!string.IsNullOrEmpty(entry.TeamTag))
+                                        {<small style="color:var(--rz-text-secondary-color)">[@entry.TeamTag]</small>}
+                                        <span>@(entry.TeamName ?? "—")</span>
+                                    </div>
+                                    <div class="col-kills points-total">@entry.TotalKills</div>
+                                    <div class="col-matches">@entry.MatchesPlayed</div>
+                                    <div class="col-best">@entry.KillsPerMatch</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </RadzenTabsItem>
+
+            </Tabs>
+        </RadzenTabs>
     }
 </div>
 
@@ -124,7 +167,9 @@
 
     private bool _loading = false;
     private bool _isConnected = false;
+    private int _tabIndex = 0;
     private List<LeaderboardEntryDto> _leaderboard = new();
+    private List<PlayerLeaderboardEntryDto> _playerLeaderboard = new();
     private List<TournamentListDto> _tournaments = new();
     private Guid _selectedTournamentId;
     private HubConnection? _hubConnection;
@@ -155,9 +200,12 @@
         _loading = true;
         try
         {
-            var result = await LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
-            if (result.IsSuccess)
-                _leaderboard = result.Value.ToList();
+            var teamTask   = LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
+            var playerTask = LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
+            await Task.WhenAll(teamTask, playerTask);
+
+            if (teamTask.Result.IsSuccess)   _leaderboard = teamTask.Result.Value.ToList();
+            if (playerTask.Result.IsSuccess) _playerLeaderboard = playerTask.Result.Value.ToList();
         }
         finally
         {
@@ -172,7 +220,7 @@
             .WithAutomaticReconnect()
             .Build();
 
-        _hubConnection.On<Guid, object>("LeaderboardUpdated", async (tournamentId, leaderboard) =>
+        _hubConnection.On<Guid, object>("LeaderboardUpdated", async (tournamentId, _) =>
         {
             if (tournamentId == _selectedTournamentId)
             {
@@ -182,7 +230,7 @@
         });
 
         _hubConnection.Reconnecting += _ => { _isConnected = false; InvokeAsync(StateHasChanged); return Task.CompletedTask; };
-        _hubConnection.Reconnected += _ => { _isConnected = true; InvokeAsync(StateHasChanged); return Task.CompletedTask; };
+        _hubConnection.Reconnected  += _ => { _isConnected = true;  InvokeAsync(StateHasChanged); return Task.CompletedTask; };
 
         try
         {
@@ -204,10 +252,7 @@
         await LoadLeaderboardAsync();
     }
 
-    private async Task RefreshLeaderboard()
-    {
-        await LoadLeaderboardAsync();
-    }
+    private async Task RefreshLeaderboard() => await LoadLeaderboardAsync();
 
     private string GetRowClass(int rank) => rank switch
     {

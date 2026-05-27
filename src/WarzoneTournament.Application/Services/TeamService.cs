@@ -279,17 +279,25 @@ public class TeamService : ITeamService
         foreach (var team in allTeams.OrderBy(t => t.Name))
         {
             registeredMap.TryGetValue(team.Id, out var entry);
-            var playerCount = await _uow.TeamPlayers.CountAsync(tp => tp.TeamId == team.Id && tp.IsActive, ct);
+            var teamPlayers = await _uow.TeamPlayers.FindAsync(tp => tp.TeamId == team.Id && tp.IsActive, ct);
+            var playerDtos = new List<TeamPlayerSimpleDto>();
+            foreach (var tp in teamPlayers)
+            {
+                var player = await _uow.Players.GetByIdAsync(tp.PlayerId, ct);
+                if (player is not null)
+                    playerDtos.Add(new TeamPlayerSimpleDto { PlayerId = player.Id, Username = player.Username });
+            }
             result.Add(new TournamentTeamStatusDto
             {
                 TeamId = team.Id,
                 TeamName = team.Name,
                 TeamTag = team.Tag,
                 LogoUrl = team.LogoUrl,
-                PlayerCount = playerCount,
+                PlayerCount = teamPlayers.Count,
                 IsRegistered = entry is not null,
                 CheckedIn = entry?.CheckedIn ?? false,
-                CheckInTime = entry?.CheckInTime
+                CheckInTime = entry?.CheckInTime,
+                Players = playerDtos
             });
         }
 

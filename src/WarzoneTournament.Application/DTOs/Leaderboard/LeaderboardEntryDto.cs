@@ -28,3 +28,15 @@ public class MatchScoreDto
     public int Kills { get; set; }
     public int Points { get; set; }
 }
+
+public class PlayerLeaderboardEntryDto
+{
+    public int Rank { get; set; }
+    public Guid PlayerId { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string? TeamName { get; set; }
+    public string? TeamTag { get; set; }
+    public int TotalKills { get; set; }
+    public int MatchesPlayed { get; set; }
+    public double KillsPerMatch => MatchesPlayed > 0 ? Math.Round((double)TotalKills / MatchesPlayed, 1) : 0;
+}

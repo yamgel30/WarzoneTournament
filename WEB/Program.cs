@@ -2,7 +2,7 @@ using Hangfire;
 using Radzen;
 using WarzoneTournament.Infrastructure;
 using WEB.Components;
-using WEB.Hubs;
+using WarzoneTournament.Infrastructure.Hubs;
 using WarzoneTournament.Application;
 var builder = WebApplication.CreateBuilder(args);
 

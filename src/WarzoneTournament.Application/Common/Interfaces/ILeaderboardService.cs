@@ -7,5 +7,6 @@ public interface ILeaderboardService
 {
     Task<Result<IReadOnlyList<LeaderboardEntryDto>>> GetTournamentLeaderboardAsync(Guid tournamentId, CancellationToken ct = default);
     Task<Result<IReadOnlyList<LeaderboardEntryDto>>> GetRoundLeaderboardAsync(Guid tournamentId, Guid roundId, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<PlayerLeaderboardEntryDto>>> GetPlayerLeaderboardAsync(Guid tournamentId, CancellationToken ct = default);
     Task<Result> RecalculateLeaderboardAsync(Guid tournamentId, CancellationToken ct = default);
 }

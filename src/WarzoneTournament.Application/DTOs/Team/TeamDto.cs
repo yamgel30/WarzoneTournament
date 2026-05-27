@@ -43,4 +43,11 @@ public class TournamentTeamStatusDto
     public bool IsRegistered { get; set; }
     public bool CheckedIn { get; set; }
     public DateTime? CheckInTime { get; set; }
+    public List<TeamPlayerSimpleDto> Players { get; set; } = new();
+}
+
+public class TeamPlayerSimpleDto
+{
+    public Guid PlayerId { get; set; }
+    public string Username { get; set; } = string.Empty;
 }

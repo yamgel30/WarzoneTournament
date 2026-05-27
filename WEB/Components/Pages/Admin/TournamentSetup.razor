@@ -337,9 +337,17 @@ else
                                     }
                                     else
                                     {
-                                        <RadzenButton Text="+ Agregar Match" Icon="add_circle_outline"
-                                                      ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                                                      Click="@(() => OpenNewMatch(round.Id))" />
+                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                            <RadzenButton Text="+ Agregar Match" Icon="add_circle_outline"
+                                                          ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                                          Click="@(() => OpenNewMatch(round.Id))" />
+                                            <span style="color:var(--rz-text-secondary-color);font-size:0.85em">o crear</span>
+                                            <RadzenNumeric Value="@GetBulkMatchCount(round.Id)"
+                                                           ValueChanged="@((int v) => SetBulkMatchCount(round.Id, v))"
+                                                           Min="1" Max="20" TValue="int" Style="width:60px" />
+                                            <RadzenButton Text="de golpe" Icon="playlist_add" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
+                                                          Click="@(() => CreateBulkMatches(round.Id))" Disabled="@_busy" />
+                                        </div>
                                     }
                                 </RadzenCard>
                             }
@@ -367,6 +375,7 @@ else
     private CreateMatchDto _newMatch = new();
     private Guid? _expandedRoundId;
     private int _bulkRoundCount = 3;
+    private Dictionary<Guid, int> _bulkMatchCounts = new();
 
     protected override async Task OnInitializedAsync() => await LoadAll();
 
@@ -483,6 +492,35 @@ else
     }
 
     // ── Matches ────────────────────────────────────────────────────────────
+
+    private int GetBulkMatchCount(Guid roundId) => _bulkMatchCounts.TryGetValue(roundId, out var v) ? v : 3;
+    private void SetBulkMatchCount(Guid roundId, int value) => _bulkMatchCounts[roundId] = value;
+
+    private async Task CreateBulkMatches(Guid roundId)
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var round = _rounds.FirstOrDefault(r => r.Id == roundId);
+        int start = (round?.Matches.Count ?? 0) + 1;
+        int count = GetBulkMatchCount(roundId);
+        int created = 0;
+        for (int i = 0; i < count; i++)
+        {
+            var r = await MatchService.CreateMatchAsync(new CreateMatchDto
+            {
+                RoundId      = roundId,
+                TournamentId = Id,
+                MatchNumber  = start + i
+            });
+            if (r.IsSuccess) created++;
+            else { _globalError = r.Error; break; }
+        }
+        if (created > 0)
+        {
+            _globalSuccess = $"{created} match{(created > 1 ? "es" : "")} creado{(created > 1 ? "s" : "")} en la ronda.";
+            await LoadRounds();
+        }
+        _busy = false;
+    }
 
     private void OpenNewMatch(Guid roundId)
     {
