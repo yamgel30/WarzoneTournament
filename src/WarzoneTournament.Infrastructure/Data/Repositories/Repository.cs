@@ -17,10 +17,10 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
     }
 
     public async Task<T?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => await _dbSet.FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct);
+        => await _dbSet.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, ct);
 
     public async Task<IReadOnlyList<T>> GetAllAsync(CancellationToken ct = default)
-        => await _dbSet.Where(e => !e.IsDeleted).ToListAsync(ct);
+        => await _dbSet.AsNoTracking().Where(e => !e.IsDeleted).ToListAsync(ct);
 
     public async Task<IReadOnlyList<T>> FindAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default)
         => await _dbSet.Where(e => !e.IsDeleted).Where(predicate).ToListAsync(ct);
