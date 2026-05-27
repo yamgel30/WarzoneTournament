@@ -267,6 +267,7 @@ public class MatchService : IMatchService
         var round = await _uow.Rounds.GetByIdAsync(match.RoundId, ct);
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         var results = await GetMatchResultsAsync(match.Id, ct);
+        var playerStats = await _uow.PlayerMatchStats.FindAsync(s => s.MatchId == match.Id, ct);
         var evidenceCount = await _uow.MatchEvidences.CountAsync(e => e.MatchId == match.Id, ct);
 
         return new MatchDto
@@ -287,6 +288,12 @@ public class MatchService : IMatchService
             Notes = match.Notes,
             ResultsConfirmed = match.ResultsConfirmed,
             TeamResults = results.IsSuccess ? results.Value.ToList() : new(),
+            PlayerStats = playerStats.Select(s => new MatchPlayerStatDto
+            {
+                PlayerId = s.PlayerId,
+                TeamId   = s.TeamId,
+                Kills    = s.Kills
+            }).ToList(),
             EvidenceCount = evidenceCount,
             CreatedAt = match.CreatedAt
         };

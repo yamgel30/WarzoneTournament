@@ -319,45 +319,26 @@
         {
             var registeredTeams = teamsResult.Value.Where(t => t.IsRegistered).ToList();
 
-            if (match.TeamResults.Any())
+            _editTeams = registeredTeams.Select(t =>
             {
-                // Re-load existing results
-                _editTeams = registeredTeams.Select(t =>
+                var existing = match.TeamResults.FirstOrDefault(tr => tr.TeamId == t.TeamId);
+                return new EditTeam
                 {
-                    var existing = match.TeamResults.FirstOrDefault(tr => tr.TeamId == t.TeamId);
-                    var team = new EditTeam
-                    {
-                        TeamId      = t.TeamId,
-                        TeamName    = t.TeamName,
-                        TeamTag     = t.TeamTag,
-                        Placement   = existing?.Placement ?? 0,
-                        BonusPoints = existing?.BonusPoints ?? 0,
-                        DirectKills = existing?.Kills ?? 0,
-                        Players     = t.Players.Select(p => new EditPlayer
-                        {
-                            PlayerId = p.PlayerId,
-                            Username = p.Username,
-                            Kills    = 0
-                        }).ToList()
-                    };
-                    // Distribute kills back to players proportionally (best effort) if no player stats
-                    return team;
-                }).ToList();
-            }
-            else
-            {
-                _editTeams = registeredTeams.Select(t => new EditTeam
-                {
-                    TeamId   = t.TeamId,
-                    TeamName = t.TeamName,
-                    TeamTag  = t.TeamTag,
-                    Players  = t.Players.Select(p => new EditPlayer
+                    TeamId      = t.TeamId,
+                    TeamName    = t.TeamName,
+                    TeamTag     = t.TeamTag,
+                    Placement   = existing?.Placement ?? 0,
+                    BonusPoints = existing?.BonusPoints ?? 0,
+                    DirectKills = existing?.Kills ?? 0,
+                    Players     = t.Players.Select(p => new EditPlayer
                     {
                         PlayerId = p.PlayerId,
-                        Username = p.Username
+                        Username = p.Username,
+                        Kills    = match.PlayerStats
+                                       .FirstOrDefault(ps => ps.PlayerId == p.PlayerId)?.Kills ?? 0
                     }).ToList()
-                }).ToList();
-            }
+                };
+            }).ToList();
         }
 
         _loadingTeams = false;
