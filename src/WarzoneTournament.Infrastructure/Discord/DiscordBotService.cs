@@ -254,7 +254,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
 
     private void LogDiscordException(Exception ex, string context)
     {
-        if (ex is Discord.Net.HttpException { HttpCode: System.Net.HttpStatusCode.Forbidden } httpEx
+        if (ex is global::Discord.Net.HttpException { HttpCode: System.Net.HttpStatusCode.Forbidden } httpEx
             && (int)httpEx.DiscordCode == 50013)
         {
             _logger.LogWarning(
