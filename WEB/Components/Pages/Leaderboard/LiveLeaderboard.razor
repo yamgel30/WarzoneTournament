@@ -404,7 +404,12 @@
             _selectedTournamentId = TournamentId;
             await LoadLeaderboardAsync();
         }
-        await ConnectToSignalRAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await ConnectToSignalRAsync();
     }
 
     private async Task LoadTournamentsAsync()
@@ -531,7 +536,13 @@
         });
 
         _hubConnection.Reconnecting += _ => { _isConnected = false; InvokeAsync(StateHasChanged); return Task.CompletedTask; };
-        _hubConnection.Reconnected  += _ => { _isConnected = true;  InvokeAsync(StateHasChanged); return Task.CompletedTask; };
+        _hubConnection.Reconnected  += async _ =>
+        {
+            _isConnected = true;
+            if (_selectedTournamentId != Guid.Empty)
+                await _hubConnection.SendAsync("JoinTournamentGroup", _selectedTournamentId.ToString());
+            await InvokeAsync(StateHasChanged);
+        };
 
         try
         {
