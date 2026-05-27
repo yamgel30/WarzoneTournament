@@ -1,10 +1,14 @@
 using Discord;
 using Discord.WebSocket;
+using Hangfire;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
+using WarzoneTournament.Application.DTOs.Evidence;
+using WarzoneTournament.Domain.Enums;
 using WarzoneTournament.Domain.Interfaces;
+using WarzoneTournament.Infrastructure.BackgroundJobs;
 
 namespace WarzoneTournament.Infrastructure.Discord;
 
@@ -264,22 +268,108 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         if (message.Author.IsBot) return;
         if (message.Channel is not ITextChannel) return;
 
-        var channelIdStr = message.Channel.Id.ToString();
+        var images = message.Attachments.Where(IsImageAttachment).ToList();
+        if (!images.Any()) return;
 
-        // Check if this channel belongs to any active tournament
+        var channelIdStr = message.Channel.Id.ToString();
+        var authorDiscordId = message.Author.Id.ToString();
+
         using var scope = _serviceProvider.CreateScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var tournaments = await uow.Tournaments.FindAsync(t => t.DiscordChannelId == channelIdStr);
-        if (!tournaments.Any()) return;
 
-        // Process image attachments as evidence
-        var images = message.Attachments.Where(IsImageAttachment).ToList();
-        if (images.Any())
+        // Accept evidence from: (a) global evidence channel, or (b) any tournament-specific channel
+        var globalEvidenceChannelId = _config["Discord:EvidenceChannelId"];
+        bool isEvidenceChannel = channelIdStr == globalEvidenceChannelId;
+
+        if (!isEvidenceChannel)
         {
-            _logger.LogInformation("Discord evidence image from {Author} in channel {Channel}",
-                message.Author.Username, message.Channel.Name);
+            var tournament = await uow.Tournaments.FirstOrDefaultAsync(
+                t => t.DiscordChannelId == channelIdStr && t.Status == TournamentStatus.InProgress);
+            isEvidenceChannel = tournament is not null;
+        }
+
+        if (!isEvidenceChannel) return;
+
+        _logger.LogInformation("Discord: {Count} imagen(es) de evidencia de {Author} en #{Channel}",
+            images.Count, message.Author.Username, message.Channel.Name);
+
+        // Identify player by Discord ID
+        var playerService = scope.ServiceProvider.GetRequiredService<IPlayerService>();
+        var playerResult = await playerService.GetPlayerByDiscordIdAsync(authorDiscordId);
+
+        if (playerResult.IsFailure)
+        {
             await message.Channel.SendMessageAsync(
-                $"{message.Author.Mention} Screenshot recibido ✅. El admin lo revisará.");
+                $"{message.Author.Mention} ❌ No encontré tu jugador registrado (Discord ID: `{authorDiscordId}`). " +
+                $"Pide al administrador que te registre en el sistema.");
+            return;
+        }
+
+        // Resolve active tournament + match for this player
+        var contextResult = await playerService.GetPlayerTournamentContextAsync(playerResult.Value.Id);
+        if (contextResult.IsFailure)
+        {
+            await message.Channel.SendMessageAsync(
+                $"{message.Author.Mention} ⚠️ {contextResult.Error}");
+            return;
+        }
+
+        var ctx = contextResult.Value;
+        if (ctx.ActiveMatchId is null)
+        {
+            await message.Channel.SendMessageAsync(
+                $"{message.Author.Mention} ⚠️ No hay mapa activo para el equipo **{ctx.TeamName}** en este momento.");
+            return;
+        }
+
+        // Submit each image as a separate evidence record
+        var evidenceService = scope.ServiceProvider.GetRequiredService<IEvidenceService>();
+        int submitted = 0;
+
+        foreach (var img in images)
+        {
+            // Use "{messageId}_{attachmentId}" so multiple images in one message each get a unique key
+            var attachmentKey = $"{message.Id}_{img.Id}";
+
+            var dto = new DiscordEvidenceDto
+            {
+                MatchId            = ctx.ActiveMatchId.Value,
+                SubmittedByTeamId  = ctx.TeamId,
+                SubmittedByPlayerId = ctx.PlayerId,
+                ImageUrl           = img.Url,
+                DiscordMessageId   = attachmentKey,
+                DiscordChannelId   = channelIdStr,
+                DiscordUsername    = message.Author.Username,
+                OriginalFileName   = img.Filename,
+                FileSizeBytes      = img.Size
+            };
+
+            var result = await evidenceService.SubmitEvidenceFromDiscordAsync(dto);
+            if (result.IsSuccess)
+            {
+                submitted++;
+                try
+                {
+                    var bgJobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
+                    bgJobs.Enqueue<OcrBackgroundJob>(job =>
+                        job.ProcessEvidenceOcrAsync(result.Value.Id, ctx.ActiveMatchId.Value));
+                }
+                catch { /* Hangfire not available — OCR skipped */ }
+            }
+            else
+            {
+                _logger.LogWarning("Discord evidence submit failed for {Author}: {Error}",
+                    message.Author.Username, result.Error);
+            }
+        }
+
+        if (submitted > 0)
+        {
+            var word = submitted == 1 ? "imagen registrada" : "imágenes registradas";
+            await message.Channel.SendMessageAsync(
+                $"{message.Author.Mention} ✅ **{submitted} {word}** para el " +
+                $"**Mapa #{ctx.ActiveMatchNumber}** — equipo **{ctx.TeamName}**.\n" +
+                $"El administrador revisará la evidencia y confirmará los resultados.");
         }
     }
 

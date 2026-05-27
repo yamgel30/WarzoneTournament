@@ -155,6 +155,7 @@ public class EvidenceService : IEvidenceService
         {
             MatchId = dto.MatchId,
             SubmittedByTeamId = dto.SubmittedByTeamId,
+            SubmittedByPlayerId = dto.SubmittedByPlayerId,
             ImageUrl = dto.ImageUrl,
             DiscordMessageId = dto.DiscordMessageId,
             DiscordChannelId = dto.DiscordChannelId,
