@@ -28,10 +28,10 @@ public class MatchEvidenceConfiguration : IEntityTypeConfiguration<MatchEvidence
             .HasDefaultValue(EvidenceSourceType.ManualUpload);
 
         builder.Property(e => e.DiscordMessageId)
-            .HasMaxLength(30);
+            .HasMaxLength(50);
 
         builder.Property(e => e.DiscordChannelId)
-            .HasMaxLength(30);
+            .HasMaxLength(50);
 
         builder.Property(e => e.OriginalFileName)
             .HasMaxLength(255);
