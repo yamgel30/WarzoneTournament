@@ -12,4 +12,5 @@ public interface IEvidenceService
     Task<Result<EvidenceDto>> ApproveEvidenceAsync(Guid id, string reviewedBy, string? notes = null, CancellationToken ct = default);
     Task<Result<EvidenceDto>> RejectEvidenceAsync(Guid id, string reviewedBy, string reason, CancellationToken ct = default);
     Task<Result<EvidenceDto>> SubmitEvidenceFromDiscordAsync(DiscordEvidenceDto dto, CancellationToken ct = default);
+    Task<Result<EvidenceDto>> ApproveWithVerifiedDataAsync(Guid evidenceId, string reviewedBy, int? placement, int? kills, string? notes, CancellationToken ct = default);
 }

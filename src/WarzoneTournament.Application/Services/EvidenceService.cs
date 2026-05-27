@@ -175,6 +175,59 @@ public class EvidenceService : IEvidenceService
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
     }
 
+    public async Task<Result<EvidenceDto>> ApproveWithVerifiedDataAsync(
+        Guid evidenceId, string reviewedBy, int? placement, int? kills, string? notes, CancellationToken ct = default)
+    {
+        var evidence = await _uow.MatchEvidences.GetByIdAsync(evidenceId, ct);
+        if (evidence is null) return Result.Failure<EvidenceDto>("Evidence not found.");
+        if (evidence.Status == EvidenceStatus.Approved)
+            return Result.Failure<EvidenceDto>("Evidence is already approved.");
+
+        // Save manually verified extraction data
+        var existing = await _uow.OCRExtractionResults.FirstOrDefaultAsync(o => o.EvidenceId == evidenceId, ct);
+        if (existing is not null)
+        {
+            if (placement.HasValue) existing.ExtractedPlacement = placement;
+            if (kills.HasValue) existing.ExtractedKills = kills;
+            existing.RequiresManualReview = false;
+            existing.ConfidenceScore = 1.0m;
+            existing.OcrProvider = "Manual";
+            _uow.OCRExtractionResults.Update(existing);
+        }
+        else
+        {
+            await _uow.OCRExtractionResults.AddAsync(new Domain.Entities.OCRExtractionResult
+            {
+                EvidenceId = evidenceId,
+                RawText = "Revisión manual por administrador",
+                ExtractedPlacement = placement,
+                ExtractedKills = kills,
+                ConfidenceScore = 1.0m,
+                RequiresManualReview = false,
+                ProcessedAt = DateTime.UtcNow,
+                OcrProvider = "Manual"
+            }, ct);
+        }
+
+        evidence.Status = EvidenceStatus.Approved;
+        evidence.OcrProcessed = true;
+        _uow.MatchEvidences.Update(evidence);
+
+        await _uow.EvidenceReviews.AddAsync(new EvidenceReview
+        {
+            EvidenceId = evidenceId,
+            ReviewedBy = reviewedBy,
+            Decision = EvidenceStatus.Approved,
+            Notes = notes ?? "Revisión manual",
+            ReviewedAt = DateTime.UtcNow
+        }, ct);
+
+        await _uow.SaveChangesAsync(ct);
+        await _signalR.NotifyEvidenceReviewedAsync(evidenceId, "Approved", ct);
+        _logger.LogInformation("Evidence {EvidenceId} approved with manual data by {ReviewedBy}", evidenceId, reviewedBy);
+        return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
+    }
+
     private async Task<EvidenceDto> BuildEvidenceDtoAsync(MatchEvidence evidence, CancellationToken ct)
     {
         var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);

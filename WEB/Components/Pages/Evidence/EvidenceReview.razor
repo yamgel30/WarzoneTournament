@@ -1,4 +1,5 @@
 @page "/admin/evidence"
+@rendermode InteractiveServer
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Evidence
 @using WarzoneTournament.Domain.Enums
@@ -93,61 +94,84 @@
                             }
                         </div>
 
-                        @if (_selectedEvidence.OcrResult is not null)
+                        @* ── OCR / Manual entry panel ─────────────────────────── *@
+                        @{ bool needsManualEntry = _selectedEvidence.OcrResult is null ||
+                               _selectedEvidence.OcrResult.RequiresManualReview; }
+
+                        @if (_selectedEvidence.OcrResult is not null &&
+                             _selectedEvidence.OcrResult.OcrProvider != "Fallback")
                         {
                             <div class="ocr-results">
-                                <h4>OCR Results (@(_selectedEvidence.OcrResult.OcrProvider))</h4>
-                                <div class="ocr-confidence">
-                                    <span>Confidence: </span>
+                                <h4>OCR — @_selectedEvidence.OcrResult.OcrProvider</h4>
+                                <div class="ocr-confidence" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                                    <span style="font-size:0.9em">Confianza:</span>
                                     <RadzenProgressBar Value="@((double)_selectedEvidence.OcrResult.ConfidenceScore * 100)"
-                                                       ShowValue="true" Style="width:150px" />
+                                                       ShowValue="true" Style="width:140px" />
                                 </div>
                                 @if (_selectedEvidence.OcrResult.ExtractedPlacement.HasValue)
-                                {
-                                    <div class="ocr-field">
-                                        <strong>Placement:</strong> #@_selectedEvidence.OcrResult.ExtractedPlacement.Value
-                                    </div>
-                                }
+                                {<div class="ocr-field"><strong>Posición:</strong> #@_selectedEvidence.OcrResult.ExtractedPlacement.Value</div>}
                                 @if (_selectedEvidence.OcrResult.ExtractedKills.HasValue)
-                                {
-                                    <div class="ocr-field">
-                                        <strong>Kills:</strong> @_selectedEvidence.OcrResult.ExtractedKills.Value
-                                    </div>
-                                }
+                                {<div class="ocr-field"><strong>Kills totales:</strong> @_selectedEvidence.OcrResult.ExtractedKills.Value</div>}
                                 @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ExtractedTeamName))
-                                {
-                                    <div class="ocr-field">
-                                        <strong>Team:</strong> @_selectedEvidence.OcrResult.ExtractedTeamName
+                                {<div class="ocr-field"><strong>Equipo detectado:</strong> @_selectedEvidence.OcrResult.ExtractedTeamName</div>}
+                                @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ProcessingError))
+                                {<div style="color:var(--rz-danger);font-size:0.85em">Error: @_selectedEvidence.OcrResult.ProcessingError</div>}
+                            </div>
+                        }
+
+                        @* ── Manual data entry (shown when OCR not available or low confidence) *@
+                        @if (needsManualEntry)
+                        {
+                            <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-warning);border-radius:6px;padding:14px;margin-bottom:12px">
+                                <h4 style="margin:0 0 12px;color:var(--rz-warning-darker)">
+                                    ✏️ Ingreso manual de datos
+                                </h4>
+                                <p style="font-size:0.85em;color:var(--rz-text-secondary-color);margin-bottom:12px">
+                                    El OCR no pudo extraer los datos automáticamente. Revisa la imagen y completa los campos.
+                                </p>
+                                <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+                                    <div>
+                                        <RadzenLabel Text="Posición del equipo" />
+                                        <RadzenNumeric @bind-Value="_manualPlacement" Min="1" Max="150"
+                                                       TValue="int?" Style="width:100px;margin-top:4px"
+                                                       Placeholder="ej: 1" />
                                     </div>
-                                }
-                                @if (_selectedEvidence.OcrResult.RequiresManualReview)
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
-                                        Low confidence — manual review recommended.
-                                    </RadzenAlert>
-                                }
+                                    <div>
+                                        <RadzenLabel Text="Kills totales del equipo" />
+                                        <RadzenNumeric @bind-Value="_manualKills" Min="0" Max="200"
+                                                       TValue="int?" Style="width:100px;margin-top:4px"
+                                                       Placeholder="ej: 8" />
+                                    </div>
+                                </div>
+                                <RadzenButton Text="Guardar datos y aprobar" Icon="save"
+                                             ButtonStyle="ButtonStyle.Warning"
+                                             Disabled="@(_reviewing || _manualPlacement is null)"
+                                             Click="@ApproveWithManualData" />
                             </div>
                         }
 
                         <div class="review-actions">
-                            <h4>Admin Decision</h4>
+                            <h4>Decisión</h4>
                             <div class="form-field">
-                                <RadzenLabel Text="Notes" />
-                                <RadzenTextArea @bind-Value="_reviewNotes" Rows="3"
-                                                Placeholder="Add notes (optional for approval, required for rejection)"
+                                <RadzenLabel Text="Notas" />
+                                <RadzenTextArea @bind-Value="_reviewNotes" Rows="2"
+                                                Placeholder="Notas (opcional para aprobar, requerido para rechazar)"
                                                 Style="width:100%" />
                             </div>
                             <div class="action-buttons">
-                                <RadzenButton Text="Approve" Icon="check_circle"
-                                             ButtonStyle="ButtonStyle.Success"
-                                             Disabled="@_reviewing"
-                                             Click="@ApproveEvidence" />
-                                <RadzenButton Text="Reject" Icon="cancel"
+                                @if (!needsManualEntry)
+                                {
+                                    <RadzenButton Text="Aprobar" Icon="check_circle"
+                                                 ButtonStyle="ButtonStyle.Success"
+                                                 Disabled="@_reviewing"
+                                                 Click="@ApproveEvidence" />
+                                }
+                                <RadzenButton Text="Rechazar" Icon="cancel"
                                              ButtonStyle="ButtonStyle.Danger"
                                              Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
                                              Click="@RejectEvidence" />
-                                <RadzenButton Text="Request Resubmission" Icon="redo"
-                                             ButtonStyle="ButtonStyle.Warning"
+                                <RadzenButton Text="Pedir reenvío" Icon="redo"
+                                             ButtonStyle="ButtonStyle.Secondary"
                                              Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
                                              Click="@RejectEvidence" />
                             </div>
@@ -188,6 +212,8 @@
     private string? _actionError;
     private int _pendingCount = 0;
     private HubConnection? _hubConnection;
+    private int? _manualPlacement;
+    private int? _manualKills;
 
     protected override async Task OnInitializedAsync()
     {
@@ -218,6 +244,8 @@
         _selectedEvidence = evidence;
         _reviewNotes = null;
         _actionError = null;
+        _manualPlacement = evidence.OcrResult?.ExtractedPlacement;
+        _manualKills = evidence.OcrResult?.ExtractedKills;
     }
 
     private async Task ApproveEvidence()
@@ -245,6 +273,27 @@
         {
             _reviewing = false;
         }
+    }
+
+    private async Task ApproveWithManualData()
+    {
+        if (_selectedEvidence is null) return;
+        _reviewing = true;
+        _actionError = null;
+        try
+        {
+            var result = await EvidenceService.ApproveWithVerifiedDataAsync(
+                _selectedEvidence.Id, "Admin", _manualPlacement, _manualKills, _reviewNotes);
+
+            if (result.IsSuccess)
+            {
+                _pendingEvidence.RemoveAll(e => e.Id == _selectedEvidence.Id);
+                _selectedEvidence = null;
+                _pendingCount = _pendingEvidence.Count;
+            }
+            else _actionError = result.Error;
+        }
+        finally { _reviewing = false; }
     }
 
     private async Task RejectEvidence()
