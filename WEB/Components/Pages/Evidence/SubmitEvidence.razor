@@ -127,7 +127,7 @@
                 }
 
                 <RadzenButton Text="Enviar evidencia" Icon="send" ButtonStyle="ButtonStyle.Primary"
-                              Click="@SubmitEvidence"
+                              Click="@HandleSubmit"
                               Disabled="@(_busy || _files[0] == null || _files[1] == null)" />
                 @if (_busy)
                 {
@@ -219,7 +219,7 @@
         _files[slot] = file;
     }
 
-    private async Task SubmitEvidence()
+    private async Task HandleSubmit()
     {
         if (_context?.ActiveMatchId is null || _files[0] is null || _files[1] is null) return;
 
