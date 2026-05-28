@@ -1,9 +1,13 @@
 @page "/tournaments/create"
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Application.DTOs.Discord
+@using WarzoneTournament.Application.DTOs.Settings
 @using WarzoneTournament.Domain.Enums
 @using System.Text.Json
 @inject ITournamentService TournamentService
+@inject ISiteSettingsService SettingsService
+@inject IDiscordNotificationService DiscordService
 @inject NavigationManager NavManager
 
 <PageTitle>Create Tournament - Warzone</PageTitle>
@@ -155,14 +159,56 @@
                     </RadzenTabsItem>
 
                     <RadzenTabsItem Text="Discord" Icon="chat">
-                        <div class="form-grid">
-                            <div class="form-field">
-                                <RadzenLabel Text="Discord Guild ID" />
-                                <RadzenTextBox @bind-Value="_model.DiscordGuildId" Placeholder="Discord server ID" Style="width:100%" />
+                        <div style="margin-top:12px;max-width:500px">
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Discord Guild ID (ID del servidor)" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_model.DiscordGuildId" Style="flex:1"
+                                                   Placeholder="Ej: 123456789012345678" />
+                                    <RadzenButton Text="Buscar canales" Icon="search"
+                                                  ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                                  Click="@LoadDiscordChannelsAsync"
+                                                  Disabled="@(_loadingChannels || string.IsNullOrWhiteSpace(_model.DiscordGuildId))" />
+                                </div>
+                                @if (_channelError is not null)
+                                {
+                                    <small style="color:var(--rz-danger);display:block;margin-top:4px">@_channelError</small>
+                                }
                             </div>
-                            <div class="form-field">
-                                <RadzenLabel Text="Discord Channel ID" />
-                                <RadzenTextBox @bind-Value="_model.DiscordChannelId" Placeholder="Announcement channel ID" Style="width:100%" />
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Canal de anuncios" />
+                                @if (_discordChannels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_model.DiscordChannelId"
+                                                    Data="@_discordChannels" TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal..." Style="width:100%;margin-top:6px"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_model.DiscordChannelId"
+                                                   Style="width:100%;margin-top:6px"
+                                                   Placeholder="ID del canal o busca arriba" />
+                                }
+                            </div>
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Canal de evidencia" />
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:4px">
+                                    Canal donde los jugadores subirán sus capturas de pantalla.
+                                </small>
+                                @if (_discordChannels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_model.DiscordEvidenceChannelId"
+                                                    Data="@_discordChannels" TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal..." Style="width:100%"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_model.DiscordEvidenceChannelId"
+                                                   Style="width:100%"
+                                                   Placeholder="ID del canal o busca arriba" />
+                                }
                             </div>
                         </div>
                     </RadzenTabsItem>
@@ -200,6 +246,60 @@
     };
     private bool _saving = false;
     private string? _errorMessage;
+
+    private List<DiscordChannelDto> _discordChannels = new();
+    private bool _loadingChannels = false;
+    private string? _channelError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await SettingsService.GetAsync();
+
+        if (!string.IsNullOrEmpty(settings.DefaultDiscordGuildId))
+            _model.DiscordGuildId = settings.DefaultDiscordGuildId;
+
+        if (!string.IsNullOrEmpty(settings.DefaultDiscordAnnouncementChannelId))
+            _model.DiscordChannelId = settings.DefaultDiscordAnnouncementChannelId;
+
+        if (!string.IsNullOrEmpty(settings.DefaultDiscordEvidenceChannelId))
+            _model.DiscordEvidenceChannelId = settings.DefaultDiscordEvidenceChannelId;
+
+        if (!string.IsNullOrEmpty(settings.DefaultLogoUrl))
+            _model.LogoUrl = settings.DefaultLogoUrl;
+
+        if (!string.IsNullOrEmpty(settings.DefaultBannerUrl))
+            _model.BannerImageUrl = settings.DefaultBannerUrl;
+
+        if (settings.DefaultMatchPointThreshold.HasValue)
+            _model.MatchPointThreshold = settings.DefaultMatchPointThreshold;
+
+        if (!string.IsNullOrEmpty(settings.DefaultPlacementPointsJson))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, double>>(settings.DefaultPlacementPointsJson);
+                if (parsed is not null && parsed.Count > 0)
+                {
+                    _placementPoints = parsed.ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value);
+                    UpdatePlacementJson();
+                }
+            }
+            catch { /* keep defaults */ }
+        }
+
+        if (!string.IsNullOrWhiteSpace(_model.DiscordGuildId))
+            await LoadDiscordChannelsAsync();
+    }
+
+    private async Task LoadDiscordChannelsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_model.DiscordGuildId)) return;
+        _loadingChannels = true; _channelError = null;
+        var result = await DiscordService.GetGuildChannelsAsync(_model.DiscordGuildId);
+        if (result.IsSuccess) _discordChannels = result.Value.ToList();
+        else _channelError = result.Error;
+        _loadingChannels = false;
+    }
 
     private double GetPlacementPoints(int position) =>
         _placementPoints.TryGetValue(position, out var pts) ? pts : 0;
