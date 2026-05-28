@@ -255,16 +255,55 @@ public class TeamService : ITeamService
         var team = await _uow.Teams.GetByIdAsync(teamId, ct);
         if (team is null) return Result.Failure("Team not found.");
 
-        if (team.CaptainId == playerId)
-            return Result.Failure("Cannot remove the captain from the team. Transfer captaincy first.");
-
         var teamPlayer = await _uow.TeamPlayers.FirstOrDefaultAsync(
             tp => tp.TeamId == teamId && tp.PlayerId == playerId && tp.IsActive, ct);
         if (teamPlayer is null) return Result.Failure("Player is not a member of this team.");
 
+        // If removing the captain, clear the captain slot
+        if (team.CaptainId == playerId)
+        {
+            team.CaptainId = Guid.Empty;
+            _uow.Teams.Update(team);
+        }
+
         teamPlayer.IsActive = false;
         teamPlayer.LeftAt = DateTime.UtcNow;
         _uow.TeamPlayers.Update(teamPlayer);
+        await _uow.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    public async Task<Result> SetCaptainAsync(Guid teamId, Guid? captainPlayerId, CancellationToken ct = default)
+    {
+        var team = await _uow.Teams.GetByIdAsync(teamId, ct);
+        if (team is null) return Result.Failure("Team not found.");
+
+        // Clear old captain role
+        var oldCaptainEntry = await _uow.TeamPlayers.FirstOrDefaultAsync(
+            tp => tp.TeamId == teamId && tp.Role == "Captain" && tp.IsActive, ct);
+        if (oldCaptainEntry is not null)
+        {
+            oldCaptainEntry.Role = "Member";
+            _uow.TeamPlayers.Update(oldCaptainEntry);
+        }
+
+        if (captainPlayerId.HasValue && captainPlayerId.Value != Guid.Empty)
+        {
+            var newCaptainEntry = await _uow.TeamPlayers.FirstOrDefaultAsync(
+                tp => tp.TeamId == teamId && tp.PlayerId == captainPlayerId.Value && tp.IsActive, ct);
+            if (newCaptainEntry is null)
+                return Result.Failure("El jugador no pertenece a este equipo.");
+
+            newCaptainEntry.Role = "Captain";
+            _uow.TeamPlayers.Update(newCaptainEntry);
+            team.CaptainId = captainPlayerId.Value;
+        }
+        else
+        {
+            team.CaptainId = Guid.Empty;
+        }
+
+        _uow.Teams.Update(team);
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
     }
