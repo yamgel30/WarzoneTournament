@@ -179,12 +179,6 @@
 
     private async Task OnSubmit()
     {
-        if (_selectedCaptain is null)
-        {
-            _errorMessage = "Please select a captain.";
-            return;
-        }
-
         _saving = true;
         _errorMessage = null;
         try

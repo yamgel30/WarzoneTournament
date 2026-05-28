@@ -17,9 +17,6 @@ public class CreateTeamValidator : AbstractValidator<CreateTeamDto>
             .Matches("^[A-Za-z0-9]+$").WithMessage("Team tag can only contain letters and numbers.")
             .When(x => !string.IsNullOrEmpty(x.Tag));
 
-        RuleFor(x => x.CaptainId)
-            .NotEmpty().WithMessage("Captain ID is required.");
-
         RuleFor(x => x.ContactEmail)
             .EmailAddress().WithMessage("Contact email must be a valid email address.")
             .When(x => !string.IsNullOrEmpty(x.ContactEmail));

@@ -31,12 +31,15 @@ public class TeamService : ITeamService
         if (nameExists)
             return Result.Failure<TeamDto>($"Team name '{dto.Name}' is already taken.");
 
-        var captain = await _uow.Players.GetByIdAsync(dto.CaptainId, ct);
-        if (captain is null)
-            return Result.Failure<TeamDto>("Captain player not found.");
-
-        if (captain.IsBanned)
-            return Result.Failure<TeamDto>("Banned players cannot be team captains.");
+        Player? captain = null;
+        if (dto.CaptainId.HasValue && dto.CaptainId.Value != Guid.Empty)
+        {
+            captain = await _uow.Players.GetByIdAsync(dto.CaptainId.Value, ct);
+            if (captain is null)
+                return Result.Failure<TeamDto>("Captain player not found.");
+            if (captain.IsBanned)
+                return Result.Failure<TeamDto>("Banned players cannot be team captains.");
+        }
 
         await _uow.BeginTransactionAsync(ct);
         try
@@ -49,24 +52,27 @@ public class TeamService : ITeamService
                 Country = dto.Country,
                 ContactEmail = dto.ContactEmail,
                 PreferredPlatform = dto.PreferredPlatform,
-                CaptainId = dto.CaptainId
+                CaptainId = dto.CaptainId ?? Guid.Empty
             };
 
             await _uow.Teams.AddAsync(team, ct);
             await _uow.SaveChangesAsync(ct);
 
-            // Add captain as first team member
-            var captainPlayer = new TeamPlayer
+            // Add captain as first team member if provided
+            if (captain is not null)
             {
-                TeamId = team.Id,
-                PlayerId = dto.CaptainId,
-                Role = "Captain",
-                JoinedAt = DateTime.UtcNow
-            };
-            await _uow.TeamPlayers.AddAsync(captainPlayer, ct);
+                await _uow.TeamPlayers.AddAsync(new TeamPlayer
+                {
+                    TeamId = team.Id,
+                    PlayerId = captain.Id,
+                    Role = "Captain",
+                    JoinedAt = DateTime.UtcNow
+                }, ct);
+            }
 
             // Add additional players
-            foreach (var playerId in dto.PlayerIds.Where(id => id != dto.CaptainId))
+            var excludeId = dto.CaptainId ?? Guid.Empty;
+            foreach (var playerId in dto.PlayerIds.Where(id => id != excludeId))
             {
                 var player = await _uow.Players.GetByIdAsync(playerId, ct);
                 if (player is null || player.IsBanned) continue;
@@ -85,7 +91,7 @@ public class TeamService : ITeamService
             _logger.LogInformation("Team created: {Name} ({Id})", team.Name, team.Id);
 
             var result = _mapper.Map<TeamDto>(team);
-            result.CaptainUsername = captain.Username;
+            result.CaptainUsername = captain?.Username;
             return Result.Success(result);
         }
         catch (Exception ex)

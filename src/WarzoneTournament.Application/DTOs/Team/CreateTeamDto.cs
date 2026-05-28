@@ -10,6 +10,6 @@ public class CreateTeamDto
     public string? Country { get; set; }
     public string? ContactEmail { get; set; }
     public Platform PreferredPlatform { get; set; }
-    public Guid CaptainId { get; set; }
+    public Guid? CaptainId { get; set; }
     public List<Guid> PlayerIds { get; set; } = new();
 }
