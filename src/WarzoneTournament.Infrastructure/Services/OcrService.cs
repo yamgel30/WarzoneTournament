@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text.RegularExpressions;
-using Tesseract;
 using WarzoneTournament.Application.Common.Interfaces;
 using WarzoneTournament.Application.Common.Models;
 using WarzoneTournament.Application.DTOs.Evidence;
@@ -12,46 +12,45 @@ namespace WarzoneTournament.Infrastructure.Services;
 
 public class OcrService : IOcrService
 {
-    // Static so one DllNotFoundException disables OCR for all subsequent requests in the process
-    private static volatile bool _nativeDllsMissing = false;
-
     private readonly IUnitOfWork _uow;
     private readonly ILogger<OcrService> _logger;
     private readonly IHttpClientFactory _httpFactory;
-    private readonly string _ocrProvider;
     private readonly string _tessdataPath;
+    private readonly string? _tesseractExe;
     private readonly bool _ocrEnabled;
+
+    private static readonly string[] CommonWindowsPaths =
+    [
+        @"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        @"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+    ];
 
     public OcrService(IUnitOfWork uow, ILogger<OcrService> logger, IConfiguration config, IHttpClientFactory httpFactory)
     {
         _uow = uow;
         _logger = logger;
         _httpFactory = httpFactory;
-        _ocrProvider = config["Ocr:Provider"] ?? "Tesseract";
         _tessdataPath = config["Ocr:TesseractDataPath"] ?? "tessdata";
 
+        // Resolve tesseract.exe: config override → common install paths → PATH
+        var configured = config["Ocr:TesseractExePath"];
+        if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
+            _tesseractExe = configured;
+        else
+            _tesseractExe = CommonWindowsPaths.FirstOrDefault(File.Exists);
+
         var engFile = Path.Combine(_tessdataPath, "eng.traineddata");
-        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-
-        // Always log these so you can diagnose where to put the files
-        _logger.LogInformation("OCR diagnostics — BaseDirectory (DLL search path): {Base}", baseDir);
-        _logger.LogInformation("OCR diagnostics — CurrentDirectory: {Cur}", Directory.GetCurrentDirectory());
-        _logger.LogInformation("OCR diagnostics — tessdata full path: {Path}", Path.GetFullPath(_tessdataPath));
-        _logger.LogInformation("OCR diagnostics — eng.traineddata exists: {Exists}", File.Exists(engFile));
-        _logger.LogInformation("OCR diagnostics — leptonica-1.82.0.dll in BaseDir: {Exists}", File.Exists(Path.Combine(baseDir, "leptonica-1.82.0.dll")));
-        _logger.LogInformation("OCR diagnostics — tesseract50.dll in BaseDir: {Exists}", File.Exists(Path.Combine(baseDir, "tesseract50.dll")));
-        _logger.LogInformation("OCR diagnostics — leptonica in x64 subdir: {Exists}", File.Exists(Path.Combine(baseDir, "x64", "leptonica-1.82.0.dll")));
-
-        _ocrEnabled = Directory.Exists(_tessdataPath) && File.Exists(engFile);
+        _ocrEnabled = _tesseractExe is not null && File.Exists(engFile);
 
         if (_ocrEnabled)
-            _logger.LogInformation("Tesseract OCR enabled. Tessdata: {Path}", Path.GetFullPath(_tessdataPath));
+            _logger.LogInformation("Tesseract OCR enabled. Exe: {Exe} | Tessdata: {Data}",
+                _tesseractExe, Path.GetFullPath(_tessdataPath));
         else
             _logger.LogWarning(
-                "Tesseract OCR not configured — evidence will go to manual review. " +
-                "To enable: (1) install Tesseract, (2) place eng.traineddata in '{Path}', " +
-                "(3) set Ocr:TesseractDataPath in appsettings.json if using a different folder.",
-                _tessdataPath);
+                "Tesseract OCR not ready. Exe found: {ExeFound} | eng.traineddata found: {DataFound}. " +
+                "Install Tesseract from https://github.com/UB-Mannheim/tesseract/wiki and place " +
+                "eng.traineddata in '{DataPath}'. Optionally set Ocr:TesseractExePath in appsettings.",
+                _tesseractExe is not null, File.Exists(engFile), _tessdataPath);
     }
 
     public async Task<Result<OcrResultDto>> ProcessEvidenceImageAsync(Guid evidenceId, CancellationToken ct = default)
@@ -63,44 +62,41 @@ public class OcrService : IOcrService
         var result = await ExtractTextFromImageAsync(evidence.ImageUrl, ct);
         if (result.IsFailure) return result;
 
-        var ocrResult = new Domain.Entities.OCRExtractionResult
-        {
-            EvidenceId = evidenceId,
-            RawText = result.Value.RawText ?? string.Empty,
-            ExtractedPlacement = result.Value.ExtractedPlacement,
-            ExtractedKills = result.Value.ExtractedKills,
-            ExtractedTeamName = result.Value.ExtractedTeamName,
-            ConfidenceScore = result.Value.ConfidenceScore,
-            RequiresManualReview = result.Value.RequiresManualReview,
-            ProcessingError = result.Value.ProcessingError,
-            ProcessedAt = DateTime.UtcNow,
-            OcrProvider = result.Value.OcrProvider ?? _ocrProvider
-        };
+        var existing = await _uow.OCRExtractionResults.FirstOrDefaultAsync(
+            o => o.EvidenceId == evidenceId, ct);
 
-        await _uow.OCRExtractionResults.AddAsync(ocrResult, ct);
+        if (existing is null)
+        {
+            await _uow.OCRExtractionResults.AddAsync(new Domain.Entities.OCRExtractionResult
+            {
+                EvidenceId = evidenceId,
+                RawText = result.Value.RawText ?? string.Empty,
+                ExtractedPlacement = result.Value.ExtractedPlacement,
+                ExtractedKills = result.Value.ExtractedKills,
+                ExtractedTeamName = result.Value.ExtractedTeamName,
+                ConfidenceScore = result.Value.ConfidenceScore,
+                RequiresManualReview = result.Value.RequiresManualReview,
+                ProcessingError = result.Value.ProcessingError,
+                ProcessedAt = DateTime.UtcNow,
+                OcrProvider = result.Value.OcrProvider ?? "Tesseract"
+            }, ct);
+        }
+
         evidence.OcrProcessed = true;
         _uow.MatchEvidences.Update(evidence);
         await _uow.SaveChangesAsync(ct);
 
-        _logger.LogInformation("OCR processed for evidence {EvidenceId}. Provider: {Provider}, Confidence: {Score}, ManualReview: {Review}",
-            evidenceId, ocrResult.OcrProvider, ocrResult.ConfidenceScore, ocrResult.RequiresManualReview);
+        _logger.LogInformation(
+            "OCR processed for evidence {Id}. Confidence: {Score}, ManualReview: {Review}",
+            evidenceId, result.Value.ConfidenceScore, result.Value.RequiresManualReview);
 
         return result;
     }
 
     public async Task<Result<OcrResultDto>> ExtractTextFromImageAsync(string imageUrl, CancellationToken ct = default)
     {
-        if (!_ocrEnabled || _nativeDllsMissing)
-        {
-            return Result.Success(new OcrResultDto
-            {
-                RawText = string.Empty,
-                RequiresManualReview = true,
-                ConfidenceScore = 0,
-                OcrProvider = "Fallback",
-                ProcessedAt = DateTime.UtcNow
-            });
-        }
+        if (!_ocrEnabled)
+            return Result.Success(Fallback());
 
         string? tempFile = null;
         try
@@ -110,41 +106,24 @@ public class OcrService : IOcrService
             if (imageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                 imageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
-                // Download remote image (Discord CDN, etc.) to a temp file for OCR
                 var http = _httpFactory.CreateClient();
                 http.Timeout = TimeSpan.FromSeconds(30);
                 var bytes = await http.GetByteArrayAsync(imageUrl, ct);
-                tempFile = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid()}.jpg");
+                tempFile = Path.Combine(Path.GetTempPath(), $"ocr_{Guid.NewGuid()}.png");
                 await File.WriteAllBytesAsync(tempFile, bytes, ct);
                 localPath = tempFile;
             }
             else
             {
-                localPath = Path.Combine("wwwroot", imageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                localPath = Path.Combine("wwwroot",
+                    imageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
             }
 
             if (!File.Exists(localPath))
-            {
-                return Result.Success(new OcrResultDto
-                {
-                    RequiresManualReview = true,
-                    ConfidenceScore = 0,
-                    ProcessingError = "Image file not found on server.",
-                    OcrProvider = _ocrProvider,
-                    ProcessedAt = DateTime.UtcNow
-                });
-            }
+                return Result.Success(Fallback("Image file not found on server."));
 
-            // Run Tesseract in a thread-pool thread — TesseractEngine is synchronous and CPU-bound
-            // Use absolute tessdata path and LstmOnly mode (Default requires legacy data that may be absent)
             var absData = Path.GetFullPath(_tessdataPath);
-            var rawText = await Task.Run(() =>
-            {
-                using var engine = new TesseractEngine(absData, "eng", EngineMode.LstmOnly);
-                using var img = Pix.LoadFromFile(localPath);
-                using var page = engine.Process(img);
-                return page.GetText();
-            }, ct);
+            var rawText = await RunTesseractCliAsync(localPath, absData, ct);
 
             var extracted = ParseWarzoneScoreboard(rawText);
             return Result.Success(new OcrResultDto
@@ -156,51 +135,63 @@ public class OcrService : IOcrService
                 ConfidenceScore = extracted.Confidence,
                 RequiresManualReview = extracted.Confidence < 0.75m,
                 ProcessedAt = DateTime.UtcNow,
-                OcrProvider = _ocrProvider
-            });
-        }
-        catch (Exception ex) when (IsDllNotFound(ex))
-        {
-            _nativeDllsMissing = true;
-            _logger.LogWarning(
-                "Tesseract native DLLs not found (leptonica-1.82.0.dll / tesseract50.dll). " +
-                "Copy them from %USERPROFILE%\\.nuget\\packages\\tesseract\\5.2.0\\runtimes\\win-x64\\native\\ " +
-                "to the application output directory. OCR disabled until restart.");
-            return Result.Success(new OcrResultDto
-            {
-                RawText = string.Empty,
-                RequiresManualReview = true,
-                ConfidenceScore = 0,
-                ProcessingError = "Librerías nativas de OCR no encontradas — revisión manual requerida.",
-                ProcessedAt = DateTime.UtcNow,
-                OcrProvider = _ocrProvider
+                OcrProvider = "Tesseract"
             });
         }
         catch (Exception ex)
         {
-            // Unwrap TargetInvocationException so we see the real cause
-            var inner = ex is System.Reflection.TargetInvocationException tie ? tie.InnerException ?? ex : ex;
-            _logger.LogError(inner, "OCR processing failed for {ImageUrl} — real cause: {Message}", imageUrl, inner.Message);
-            return Result.Success(new OcrResultDto
-            {
-                RawText = string.Empty,
-                RequiresManualReview = true,
-                ConfidenceScore = 0,
-                ProcessingError = inner.Message,
-                ProcessedAt = DateTime.UtcNow,
-                OcrProvider = _ocrProvider
-            });
+            _logger.LogError(ex, "OCR processing failed for {ImageUrl}", imageUrl);
+            return Result.Success(Fallback(ex.Message));
         }
         finally
         {
             if (tempFile is not null && File.Exists(tempFile))
-                try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
+                try { File.Delete(tempFile); } catch { /* best-effort */ }
         }
     }
 
-    private static bool IsDllNotFound(Exception ex) =>
-        ex is DllNotFoundException ||
-        (ex is System.Reflection.TargetInvocationException { InnerException: DllNotFoundException });
+    private async Task<string> RunTesseractCliAsync(string imagePath, string tessdata, CancellationToken ct)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = _tesseractExe!,
+                // stdout = output text, --psm 6 = uniform block of text, --tessdata-dir = explicit path
+                Arguments = $"\"{imagePath}\" stdout --psm 6 -l eng --tessdata-dir \"{tessdata}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+
+        var textTask = process.StandardOutput.ReadToEndAsync(ct);
+        var errTask  = process.StandardError.ReadToEndAsync(ct);
+
+        await process.WaitForExitAsync(ct);
+
+        var text  = await textTask;
+        var error = await errTask;
+
+        if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException(
+                $"tesseract.exe exited with code {process.ExitCode}: {error.Trim()}");
+
+        return text;
+    }
+
+    private OcrResultDto Fallback(string? error = null) => new()
+    {
+        RawText = string.Empty,
+        RequiresManualReview = true,
+        ConfidenceScore = 0,
+        OcrProvider = "Fallback",
+        ProcessingError = error,
+        ProcessedAt = DateTime.UtcNow
+    };
 
     private static (int? Placement, int? Kills, string? TeamName, decimal Confidence) ParseWarzoneScoreboard(string text)
     {
@@ -254,7 +245,7 @@ public class OcrService : IOcrService
             matchCount++;
         }
 
-        var confidence = totalPatterns > 0 ? (decimal)matchCount / totalPatterns : 0;
+        var confidence = (decimal)matchCount / totalPatterns;
         return (placement, kills, teamName, confidence);
     }
 }
