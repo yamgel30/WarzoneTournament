@@ -87,14 +87,18 @@ public class MatchService : IMatchService
 
         if (domainStatus == DomainMatchStatus.InProgress)
         {
-            var otherInProgress = await _uow.Matches.FindAsync(
+            // Any match that is not Pending, Completed or Cancelled must be resolved before starting a new one.
+            // Exception: the very first match (no completed/confirmed predecessors) can always start.
+            var blocking = await _uow.Matches.FindAsync(
                 m => m.TournamentId == match.TournamentId &&
-                     m.Status == DomainMatchStatus.InProgress &&
-                     m.Id != id, ct);
-            if (otherInProgress.Any())
+                     m.Id != id &&
+                     m.Status != DomainMatchStatus.Pending &&
+                     m.Status != DomainMatchStatus.Completed &&
+                     m.Status != DomainMatchStatus.Cancelled, ct);
+            if (blocking.Any())
                 return Result.Failure<MatchDto>(
-                    "No puedes iniciar este mapa mientras el mapa anterior sigue en progreso. " +
-                    "Pásalo a 'En espera' primero.");
+                    "No puedes iniciar este mapa: hay un mapa anterior sin confirmar. " +
+                    "Completa y confirma el mapa actual en Manual Points antes de continuar.");
         }
 
         match.Status = domainStatus;

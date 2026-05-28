@@ -205,6 +205,25 @@ public class LeaderboardService : ILeaderboardService
         }
 
         await _uow.SaveChangesAsync(ct);
+
+        // Update Player.TotalKills (displayed on player profiles) from ALL matches across all tournaments
+        var tournamentMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+            m => m.TournamentId == tournamentId, ct)).Select(m => m.Id).ToHashSet();
+
+        var involvedPlayerIds = (await _uow.PlayerMatchStats.FindAsNoTrackingAsync(
+            s => tournamentMatchIds.Contains(s.MatchId), ct))
+            .Select(s => s.PlayerId).Distinct().ToList();
+
+        foreach (var playerId in involvedPlayerIds)
+        {
+            var player = await _uow.Players.GetByIdAsync(playerId, ct);
+            if (player is null) continue;
+            var allStats = await _uow.PlayerMatchStats.FindAsync(s => s.PlayerId == playerId, ct);
+            player.TotalKills = allStats.Sum(s => s.Kills);
+            _uow.Players.Update(player);
+        }
+
+        await _uow.SaveChangesAsync(ct);
         _logger.LogInformation("Leaderboard recalculated for tournament {TournamentId}", tournamentId);
         return Result.Success();
     }
