@@ -84,6 +84,19 @@ public class MatchService : IMatchService
         if (match is null) return Result.Failure<MatchDto>("Match not found.");
 
         var domainStatus = (DomainMatchStatus)(int)status;
+
+        if (domainStatus == DomainMatchStatus.InProgress)
+        {
+            var otherInProgress = await _uow.Matches.FindAsync(
+                m => m.TournamentId == match.TournamentId &&
+                     m.Status == DomainMatchStatus.InProgress &&
+                     m.Id != id, ct);
+            if (otherInProgress.Any())
+                return Result.Failure<MatchDto>(
+                    "No puedes iniciar este mapa mientras el mapa anterior sigue en progreso. " +
+                    "Pásalo a 'En espera' primero.");
+        }
+
         match.Status = domainStatus;
         if (domainStatus == DomainMatchStatus.InProgress && match.StartTime is null)
             match.StartTime = DateTime.UtcNow;
@@ -105,16 +118,14 @@ public class MatchService : IMatchService
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         if (tournament is null) return Result.Failure<MatchDto>("Tournament not found.");
 
-        // Validate placements
-        var teamCount  = dto.TeamResults.Count;
-        var placements = dto.TeamResults.Select(r => r.Placement).ToList();
-        if (placements.Any(p => p <= 0))
-            return Result.Failure<MatchDto>("All teams must have a placement greater than 0.");
-        if (placements.Any(p => p > teamCount))
-            return Result.Failure<MatchDto>($"Placement cannot exceed the number of teams ({teamCount}).");
-        var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        // Validate only placed entries (placement > 0) for duplicates — teams with placement = 0 are "pending"
+        var placedResults = dto.TeamResults.Where(r => r.Placement > 0).ToList();
+        var teamCount = dto.TeamResults.Count;
+        if (placedResults.Any(r => r.Placement > teamCount))
+            return Result.Failure<MatchDto>($"La posición máxima es {teamCount} (número de equipos).");
+        var duplicates = placedResults.GroupBy(r => r.Placement).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
         if (duplicates.Any())
-            return Result.Failure<MatchDto>($"Duplicate placement(s): {string.Join(", ", duplicates)}.");
+            return Result.Failure<MatchDto>($"Posición duplicada: #{string.Join(", #", duplicates)}. Cada equipo debe tener una posición única.");
 
         // Parse placement multipliers — formula: TotalPoints = Kills × Multiplier + BonusPoints
         var placementMultipliers = new Dictionary<int, double>();
@@ -137,10 +148,12 @@ public class MatchService : IMatchService
 
             await _uow.SaveChangesAsync(ct);
 
-            // Insert team results with calculated points
+            // Insert team results with calculated points.
+            // Placement = 0 means "not yet assigned" — use multiplier 1.0 so kills still show.
             foreach (var teamResult in dto.TeamResults)
             {
-                var multiplier = placementMultipliers.TryGetValue(teamResult.Placement, out var m) ? m : 1.0;
+                var multiplier = (teamResult.Placement > 0 && placementMultipliers.TryGetValue(teamResult.Placement, out var m))
+                    ? m : 1.0;
                 var killPts = Math.Round(teamResult.Kills * multiplier, 2);
                 var totalPts = killPts + teamResult.BonusPoints;
 
@@ -210,13 +223,24 @@ public class MatchService : IMatchService
         var match = await _uow.Matches.GetByIdAsync(id, ct);
         if (match is null) return Result.Failure<MatchDto>("Match not found.");
 
+        // Mark team results as verified
+        var results = await _uow.MatchTeamResults.FindAsync(r => r.MatchId == id, ct);
+
+        // Strict placement validation at confirm time
+        var unplaced = results.Where(r => r.Placement <= 0).ToList();
+        if (unplaced.Any())
+            return Result.Failure<MatchDto>(
+                $"No puedes confirmar: {unplaced.Count} equipo(s) sin posición asignada. " +
+                "Asígnalas en Manual Points y guarda antes de confirmar.");
+        var dupPlacements = results.GroupBy(r => r.Placement).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (dupPlacements.Any())
+            return Result.Failure<MatchDto>(
+                $"Posiciones duplicadas: #{string.Join(", #", dupPlacements)}. Corrígelas antes de confirmar.");
+
         match.Status = DomainMatchStatus.Completed;
         match.ResultsConfirmed = true;
         match.EndTime ??= DateTime.UtcNow;
         _uow.Matches.Update(match);
-
-        // Mark team results as verified
-        var results = await _uow.MatchTeamResults.FindAsync(r => r.MatchId == id, ct);
         foreach (var result in results)
         {
             result.IsVerified = true;

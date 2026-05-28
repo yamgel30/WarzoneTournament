@@ -465,12 +465,9 @@
     {
         if (_editingMatch == null) return;
 
-        var validationError = ValidatePlacements();
-        if (validationError is not null)
-        {
-            _saveError = validationError;
-            return;
-        }
+        // Only block on duplicate placements (among placed teams); missing placements are allowed — show as warning
+        var dupError = ValidatePlacementDuplicates();
+        if (dupError is not null) { _saveError = dupError; return; }
 
         _saving = true;
         _saveError = null;
@@ -479,7 +476,7 @@
         var teamResults = _editTeams.Select(t => new TeamResultDto
         {
             TeamId      = t.TeamId,
-            Placement   = t.Placement > 0 ? t.Placement : 1,
+            Placement   = t.Placement,   // 0 = not yet assigned; backend treats as pending
             Kills       = t.Players.Any() ? t.Players.Sum(p => p.Kills) : t.DirectKills,
             Deaths      = 0,
             BonusPoints = t.BonusPoints,
@@ -507,7 +504,10 @@
             var idx = _matches.FindIndex(m => m.Id == result.Value.Id);
             if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
-            _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado.";
+            var unplaced = _editTeams.Count(t => t.Placement <= 0);
+            _saveSuccess = unplaced > 0
+                ? $"✓ Mapa {_editingMatch.MatchNumber} guardado (kills actualizados). {unplaced} equipo(s) sin posición — los kills se muestran sin multiplicador hasta asignar posición."
+                : $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado con posiciones y puntos.";
             SortEditTeams();
         }
         else
@@ -520,6 +520,10 @@
     private async Task ConfirmResults()
     {
         if (_editingMatch == null) return;
+
+        // Full placement validation before confirming
+        var validationError = ValidatePlacements();
+        if (validationError is not null) { _saveError = validationError; return; }
 
         // Show a warning if a Match Point team placed 1st — the backend will verify
         // whether they were truly in MP *before* this map and finalize accordingly.
@@ -572,13 +576,14 @@
             .ToList();
     }
 
+    // Used at Confirm time — all placements must be set and unique
     private string? ValidatePlacements()
     {
         var placements = _editTeams.Select(t => t.Placement).ToList();
         int teamCount  = _editTeams.Count;
 
         if (placements.Any(p => p <= 0))
-            return "Todos los equipos deben tener una posición mayor a 0.";
+            return "Para confirmar, todos los equipos deben tener una posición asignada (> 0).";
 
         if (placements.Any(p => p > teamCount))
             return $"La posición máxima es {teamCount} (número de equipos).";
@@ -586,6 +591,22 @@
         var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
         if (duplicates.Any())
             return $"Posición duplicada: #{string.Join(", #", duplicates)}. Cada equipo debe tener una posición única.";
+
+        return null;
+    }
+
+    // Used at Save time — only blocks on duplicates among placed teams
+    private string? ValidatePlacementDuplicates()
+    {
+        var placed = _editTeams.Where(t => t.Placement > 0).ToList();
+        int teamCount = _editTeams.Count;
+
+        if (placed.Any(t => t.Placement > teamCount))
+            return $"La posición máxima es {teamCount} (número de equipos).";
+
+        var duplicates = placed.GroupBy(t => t.Placement).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Any())
+            return $"Posición duplicada: #{string.Join(", #", duplicates)}. Corrígela antes de guardar.";
 
         return null;
     }
