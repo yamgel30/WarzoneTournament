@@ -1,0 +1,293 @@
+@page "/admin/settings"
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Settings
+@using WarzoneTournament.Application.DTOs.Discord
+@using WarzoneTournament.Domain.Enums
+@inject ISiteSettingsService SettingsService
+@inject IDiscordNotificationService DiscordService
+@inject NavigationManager NavManager
+
+<PageTitle>Configuración Global - Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">⚙️ Configuración Global</h1>
+        <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/admin"))" />
+    </div>
+
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-3">
+        Estas configuraciones aplican como <strong>valores predeterminados</strong> para nuevos torneos.
+        Cada torneo puede sobreescribir estos valores en su propia página de Setup.
+    </RadzenAlert>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_error</RadzenAlert>
+    }
+    @if (!string.IsNullOrEmpty(_success))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_success</RadzenAlert>
+    }
+
+    @if (_loading)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <RadzenTabs style="margin-top:4px">
+            <Tabs>
+
+                @* ── Tab 1: Branding ── *@
+                <RadzenTabsItem Text="🏷️ Branding" Icon="palette">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard>
+                            <h3 style="margin-bottom:16px">Identidad de la aplicación</h3>
+
+                            <div style="margin-bottom:14px">
+                                <RadzenLabel Text="Nombre de la aplicación / organización" />
+                                <RadzenTextBox @bind-Value="_dto.AppName" Style="width:100%;margin-top:6px"
+                                               Placeholder="ej: WZ League PRO" />
+                                <small style="color:var(--rz-text-secondary-color)">
+                                    Aparece en cabeceras y notificaciones de Discord.
+                                </small>
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Email de soporte" />
+                                <RadzenTextBox @bind-Value="_dto.SupportEmail" Style="width:100%;margin-top:6px"
+                                               Placeholder="admin@miliga.com" />
+                            </div>
+
+                            <RadzenButton Text="Guardar branding" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 2: Leaderboard defaults ── *@
+                <RadzenTabsItem Text="🏆 Torneo (defaults)" Icon="emoji_events">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Media predeterminada</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Sube tus archivos a <code>wwwroot/images/</code> y escribe la ruta aquí.
+                                Nuevos torneos heredarán estos valores.
+                            </small>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Logo predeterminado (imagen o GIF animado)" />
+                                <RadzenTextBox @bind-Value="_dto.DefaultLogoUrl" Style="width:100%;margin-top:6px"
+                                               Placeholder="/images/logo.gif  o  https://..." />
+                                @if (!string.IsNullOrEmpty(_dto.DefaultLogoUrl))
+                                {
+                                    <img src="@_dto.DefaultLogoUrl" alt="preview"
+                                         style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:contain" />
+                                }
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Imagen de fondo predeterminada" />
+                                <RadzenTextBox @bind-Value="_dto.DefaultBannerUrl" Style="width:100%;margin-top:6px"
+                                               Placeholder="/images/background.jpg  o  https://..." />
+                                @if (!string.IsNullOrEmpty(_dto.DefaultBannerUrl))
+                                {
+                                    <img src="@_dto.DefaultBannerUrl" alt="preview"
+                                         style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:cover" />
+                                }
+                            </div>
+
+                            <RadzenButton Text="Guardar media" Icon="image" ButtonStyle="ButtonStyle.Light"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+
+                        <RadzenCard>
+                            <h3 style="margin-bottom:16px">Puntuación predeterminada</h3>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Match Point Threshold (puntos)" />
+                                <RadzenNumeric @bind-Value="_dto.DefaultMatchPointThreshold"
+                                               Min="1" Max="9999" TValue="int?"
+                                               Style="width:180px;margin-top:6px"
+                                               Placeholder="ej: 120" />
+                                <small style="display:block;margin-top:4px;color:var(--rz-text-secondary-color)">
+                                    Puntos necesarios para entrar en Match Point. Deja vacío para sin Match Point.
+                                </small>
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Multiplicadores de posición (JSON)" />
+                                <RadzenTextArea @bind-Value="_dto.DefaultPlacementPointsJson"
+                                                Style="width:100%;margin-top:6px;font-family:monospace;font-size:0.85em"
+                                                Rows="4"
+                                                Placeholder='{"1":1.6,"2":1.4,"3":1.2,"4":1.0}' />
+                                <small style="color:var(--rz-text-secondary-color)">
+                                    Formato JSON: posición → multiplicador. Aplica a nuevos torneos.
+                                </small>
+                            </div>
+
+                            <RadzenButton Text="Guardar puntuación" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 3: Discord defaults ── *@
+                <RadzenTabsItem Text="🤖 Discord (defaults)" Icon="chat">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard>
+                            <h3 style="margin-bottom:6px">Servidor y canales predeterminados</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Estos valores se pre-cargan al crear un nuevo torneo.
+                                Puedes sobreescribirlos por torneo desde la página de Setup.
+                            </small>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Discord Guild ID (ID del servidor)" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_dto.DefaultDiscordGuildId" Style="flex:1"
+                                                   Placeholder="Ej: 123456789012345678" />
+                                    <RadzenButton Text="Buscar canales" Icon="search"
+                                                  ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                                  Click="@LoadChannelsAsync"
+                                                  Disabled="@(_loadingChannels || string.IsNullOrWhiteSpace(_dto.DefaultDiscordGuildId))" />
+                                </div>
+                                @if (_channelError is not null)
+                                {
+                                    <small style="color:var(--rz-danger);display:block;margin-top:4px">@_channelError</small>
+                                }
+                            </div>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Canal de anuncios predeterminado" />
+                                @if (_channels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_dto.DefaultDiscordAnnouncementChannelId"
+                                                    Data="@_channels" TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal..." Style="width:100%;margin-top:6px"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_dto.DefaultDiscordAnnouncementChannelId"
+                                                   Style="width:100%;margin-top:6px"
+                                                   Placeholder="ID del canal o busca arriba" />
+                                }
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Canal de evidencia predeterminado" />
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:4px">
+                                    Canal donde los jugadores subirán sus capturas.
+                                </small>
+                                @if (_channels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_dto.DefaultDiscordEvidenceChannelId"
+                                                    Data="@_channels" TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal..." Style="width:100%"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_dto.DefaultDiscordEvidenceChannelId"
+                                                   Style="width:100%"
+                                                   Placeholder="ID del canal o busca arriba" />
+                                }
+                            </div>
+
+                            <RadzenButton Text="Guardar Discord" Icon="save" ButtonStyle="ButtonStyle.Light"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 4: Futuro multi-tenant ── *@
+                <RadzenTabsItem Text="🌐 Multi-Tenant" Icon="people">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard style="border-left:4px solid var(--rz-warning)">
+                            <h3 style="margin:0 0 12px">Próximamente: Multi-Tenant</h3>
+                            <p style="margin:0 0 12px">
+                                La plataforma está preparada para evolucionar a multi-tenant donde cada
+                                organizador tendrá su propio espacio aislado:
+                            </p>
+                            <div style="display:flex;flex-direction:column;gap:10px">
+                                <div style="display:flex;align-items:flex-start;gap:10px">
+                                    <span style="color:#22c55e;font-weight:700;min-width:20px">✓</span>
+                                    <div>
+                                        <strong>Fase 1: Autenticación</strong><br />
+                                        <small style="color:var(--rz-text-secondary-color)">
+                                            Login con usuario/contraseña via ASP.NET Core Identity.
+                                            Páginas admin protegidas con [Authorize].
+                                        </small>
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:flex-start;gap:10px">
+                                    <span style="color:var(--rz-warning);font-weight:700;min-width:20px">○</span>
+                                    <div>
+                                        <strong>Fase 2: Aislamiento de datos</strong><br />
+                                        <small style="color:var(--rz-text-secondary-color)">
+                                            Cada organizador solo ve sus torneos, equipos y jugadores.
+                                            Se añade OrganizerId a Tournament.
+                                        </small>
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:flex-start;gap:10px">
+                                    <span style="color:var(--rz-warning);font-weight:700;min-width:20px">○</span>
+                                    <div>
+                                        <strong>Fase 3: Self-registration de jugadores</strong><br />
+                                        <small style="color:var(--rz-text-secondary-color)">
+                                            Los jugadores se registran ellos mismos con Discord OAuth.
+                                            El admin solo aprueba.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top:16px;font-size:0.85em;color:var(--rz-text-secondary-color)">
+                                Di "quiero autenticación" para comenzar la Fase 1.
+                            </div>
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+            </Tabs>
+        </RadzenTabs>
+    }
+</div>
+
+@code {
+    private SiteSettingsDto _dto = new();
+    private bool _loading = true;
+    private bool _saving = false;
+    private string? _error;
+    private string? _success;
+
+    private List<DiscordChannelDto> _channels = new();
+    private bool _loadingChannels = false;
+    private string? _channelError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dto = await SettingsService.GetAsync();
+        _loading = false;
+    }
+
+    private async Task Save()
+    {
+        _saving = true; _error = null; _success = null;
+        var result = await SettingsService.SaveAsync(_dto);
+        if (result.IsSuccess) _success = "✓ Configuración guardada correctamente.";
+        else _error = result.Error;
+        _saving = false;
+    }
+
+    private async Task LoadChannelsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_dto.DefaultDiscordGuildId)) return;
+        _loadingChannels = true; _channelError = null;
+        var result = await DiscordService.GetGuildChannelsAsync(_dto.DefaultDiscordGuildId);
+        if (result.IsSuccess) _channels = result.Value.ToList();
+        else _channelError = result.Error;
+        _loadingChannels = false;
+    }
+}

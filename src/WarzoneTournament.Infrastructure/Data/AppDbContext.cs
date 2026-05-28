@@ -23,6 +23,7 @@ public class AppDbContext : DbContext
     public DbSet<OCRExtractionResult> OCRExtractionResults => Set<OCRExtractionResult>();
     public DbSet<TeamPlayer> TeamPlayers => Set<TeamPlayer>();
     public DbSet<TournamentTeam> TournamentTeams => Set<TournamentTeam>();
+    public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

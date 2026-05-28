@@ -200,7 +200,11 @@ public class PlayerService : IPlayerService
                 var matches = await _uow.Matches.FindAsNoTrackingAsync(
                     m => m.TournamentId == tt.TournamentId &&
                          (m.Status == Domain.Enums.MatchStatus.InProgress || m.Status == Domain.Enums.MatchStatus.Pending), ct);
-                var activeMatch = matches.OrderByDescending(m => m.MatchNumber).FirstOrDefault();
+                // InProgress takes strict priority over Pending so evidence always targets the running map
+                var activeMatch = matches
+                    .OrderByDescending(m => m.Status == Domain.Enums.MatchStatus.InProgress ? 1 : 0)
+                    .ThenByDescending(m => m.MatchNumber)
+                    .FirstOrDefault();
 
                 var allTeamPlayers = await _uow.TeamPlayers.FindAsNoTrackingAsync(
                     x => x.TeamId == tp.TeamId && x.IsActive, ct);
