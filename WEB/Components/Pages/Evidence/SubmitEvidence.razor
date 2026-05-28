@@ -4,12 +4,9 @@
 @using WarzoneTournament.Application.DTOs.Evidence
 @using WarzoneTournament.Application.DTOs.Player
 @using WarzoneTournament.Domain.Enums
-@using WarzoneTournament.Infrastructure.BackgroundJobs
-@using Hangfire
 @inject IPlayerService PlayerService
 @inject IEvidenceService EvidenceService
 @inject IFileStorageService FileStorage
-@inject IBackgroundJobClient BackgroundJobs
 
 <PageTitle>Subir Evidencia - Warzone Tournament</PageTitle>
 
@@ -148,8 +145,6 @@
             <strong>✓ Evidencia enviada correctamente.</strong><br />
             Las imágenes quedaron registradas para el Mapa #@_submittedMatchNumber.
             El administrador las revisará y confirmará los resultados.
-            @if (_ocrQueued)
-            {<span> El sistema procesará las imágenes automáticamente en segundo plano.</span>}
         </RadzenAlert>
 
         <RadzenButton Text="Enviar evidencia de otro mapa" Icon="refresh"
@@ -163,7 +158,6 @@
     private string? _submitError;
     private bool _busy;
     private bool _submitted;
-    private bool _ocrQueued;
     private int _submittedMatchNumber;
     private PlayerContextDto? _context;
 
@@ -265,17 +259,6 @@
                 _busy = false;
                 return;
             }
-        }
-
-        // Enqueue OCR background jobs — if Tesseract not configured the job returns immediately
-        foreach (var eid in evidenceIds)
-        {
-            try
-            {
-                BackgroundJobs.Enqueue<OcrBackgroundJob>(job => job.ProcessEvidenceOcrAsync(eid, matchId));
-                _ocrQueued = true;
-            }
-            catch { /* Hangfire not available — OCR will be skipped */ }
         }
 
         _submittedMatchNumber = _context.ActiveMatchNumber;

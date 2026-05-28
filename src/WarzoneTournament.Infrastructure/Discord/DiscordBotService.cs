@@ -1,6 +1,5 @@
 using Discord;
 using Discord.WebSocket;
-using Hangfire;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -8,7 +7,6 @@ using WarzoneTournament.Application.Common.Interfaces;
 using WarzoneTournament.Application.DTOs.Evidence;
 using WarzoneTournament.Domain.Enums;
 using WarzoneTournament.Domain.Interfaces;
-using WarzoneTournament.Infrastructure.BackgroundJobs;
 
 namespace WarzoneTournament.Infrastructure.Discord;
 
@@ -348,13 +346,6 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
             if (result.IsSuccess)
             {
                 submitted++;
-                try
-                {
-                    var bgJobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-                    bgJobs.Enqueue<OcrBackgroundJob>(job =>
-                        job.ProcessEvidenceOcrAsync(result.Value.Id, ctx.ActiveMatchId.Value));
-                }
-                catch { /* Hangfire not available — OCR skipped */ }
             }
             else
             {

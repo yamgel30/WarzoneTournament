@@ -195,6 +195,10 @@
                                              ButtonStyle="ButtonStyle.Secondary"
                                              Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
                                              Click="@RejectEvidence" />
+                                <RadzenButton Text="Cancelar" Icon="close"
+                                             ButtonStyle="ButtonStyle.Light"
+                                             Disabled="@_reviewing"
+                                             Click="@CancelEvidence" />
                             </div>
                             <ErrorMessage Message="@_actionError" />
                         </div>
@@ -331,6 +335,33 @@
             else _actionError = result.Error;
         }
         finally { _reviewing = false; }
+    }
+
+    private async Task CancelEvidence()
+    {
+        if (_selectedEvidence is null) return;
+        _reviewing = true;
+        _actionError = null;
+        try
+        {
+            var result = await EvidenceService.RejectEvidenceAsync(
+                _selectedEvidence.Id, "Admin", "Cancelado por administrador");
+
+            if (result.IsSuccess)
+            {
+                _pendingEvidence.RemoveAll(e => e.Id == _selectedEvidence.Id);
+                _selectedEvidence = null;
+                _pendingCount = _pendingEvidence.Count;
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        finally
+        {
+            _reviewing = false;
+        }
     }
 
     private async Task RejectEvidence()

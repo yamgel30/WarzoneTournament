@@ -217,7 +217,6 @@ public class EvidenceService : IEvidenceService
         // Save per-player kills to PlayerMatchStats
         if (playerKills is { Count: > 0 })
         {
-            var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);
             foreach (var (playerId, playerKillCount) in playerKills)
             {
                 var stat = await _uow.PlayerMatchStats.FirstOrDefaultAsync(
@@ -240,6 +239,28 @@ public class EvidenceService : IEvidenceService
                     }, ct);
                 }
             }
+        }
+
+        // Upsert MatchTeamResult so Manual Points page picks up placement and kills
+        var teamResult = await _uow.MatchTeamResults.FirstOrDefaultAsync(
+            tr => tr.MatchId == evidence.MatchId && tr.TeamId == evidence.SubmittedByTeamId, ct);
+
+        if (teamResult is not null)
+        {
+            if (placement.HasValue) teamResult.Placement = placement.Value;
+            if (totalKills.HasValue) teamResult.Kills = totalKills.Value;
+            _uow.MatchTeamResults.Update(teamResult);
+        }
+        else
+        {
+            await _uow.MatchTeamResults.AddAsync(new Domain.Entities.MatchTeamResult
+            {
+                MatchId = evidence.MatchId,
+                TeamId = evidence.SubmittedByTeamId,
+                Placement = placement ?? 0,
+                Kills = totalKills ?? 0,
+                IsVerified = false
+            }, ct);
         }
 
         evidence.Status = EvidenceStatus.Approved;
