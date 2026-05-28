@@ -32,6 +32,7 @@ public class TournamentDto
     public string? LobbyCode { get; set; }
     public string? LobbyPassword { get; set; }
     public string? BannerImageUrl { get; set; }
+    public string? LogoUrl { get; set; }
     public string? OrganizerName { get; set; }
     public int? MatchPointThreshold { get; set; }
     public Guid? WinnerTeamId { get; set; }

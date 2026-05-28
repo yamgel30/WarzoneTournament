@@ -77,6 +77,7 @@ public class TournamentService : ITournamentService
         if (dto.LobbyCode is not null) tournament.LobbyCode = dto.LobbyCode;
         if (dto.LobbyPassword is not null) tournament.LobbyPassword = dto.LobbyPassword;
         if (dto.BannerImageUrl is not null) tournament.BannerImageUrl = dto.BannerImageUrl;
+        if (dto.LogoUrl is not null) tournament.LogoUrl = dto.LogoUrl;
         if (dto.OrganizerName is not null) tournament.OrganizerName = dto.OrganizerName;
         if (dto.MatchPointThreshold.HasValue) tournament.MatchPointThreshold = dto.MatchPointThreshold.Value;
 
