@@ -11,6 +11,7 @@ public interface IDiscordNotificationService
     Task SendEvidenceRejectionNotificationAsync(Guid evidenceId, string reason, CancellationToken ct = default);
     Task SendTournamentAnnouncementAsync(Guid tournamentId, string message, CancellationToken ct = default);
     Task<Result<IReadOnlyList<DiscordChannelDto>>> GetGuildChannelsAsync(string guildId, CancellationToken ct = default);
+    Task<Result<DiscordUserDto>> GetDiscordUserAsync(string discordId, CancellationToken ct = default);
     Task StartBotAsync(CancellationToken ct = default);
     Task StopBotAsync(CancellationToken ct = default);
 }

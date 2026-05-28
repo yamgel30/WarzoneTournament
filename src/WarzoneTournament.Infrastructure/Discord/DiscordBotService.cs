@@ -255,6 +255,35 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         return Task.FromResult(Result.Success(channels));
     }
 
+    public async Task<Result<DiscordUserDto>> GetDiscordUserAsync(string discordId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(BotToken))
+            return Result.Failure<DiscordUserDto>("El bot de Discord no está configurado.");
+
+        if (!ulong.TryParse(discordId, out var userId))
+            return Result.Failure<DiscordUserDto>("Discord ID inválido. Debe ser un número de 17–20 dígitos.");
+
+        try
+        {
+            var user = await _client.Rest.GetUserAsync(userId);
+            if (user is null)
+                return Result.Failure<DiscordUserDto>("Usuario no encontrado en Discord.");
+
+            return Result.Success(new DiscordUserDto
+            {
+                Id         = discordId,
+                Username   = user.Username,
+                GlobalName = user.GlobalName,
+                AvatarUrl  = user.GetAvatarUrl(size: 256) ?? user.GetDefaultAvatarUrl()
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Discord: error buscando usuario {DiscordId}: {Msg}", discordId, ex.Message);
+            return Result.Failure<DiscordUserDto>("No se pudo obtener la información. Verifica que el ID sea correcto.");
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private async Task<ITextChannel?> GetTournamentChannelAsync(Guid tournamentId, IUnitOfWork uow)
