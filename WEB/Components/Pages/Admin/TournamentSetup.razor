@@ -5,12 +5,14 @@
 @using WarzoneTournament.Application.DTOs.Match
 @using WarzoneTournament.Application.DTOs.Tournament
 @using WarzoneTournament.Application.DTOs.Discord
+@using WarzoneTournament.Application.DTOs.Settings
 @using WarzoneTournament.Domain.Enums
 @inject ITournamentService TournamentService
 @inject ITeamService TeamService
 @inject IRoundService RoundService
 @inject IMatchService MatchService
 @inject IDiscordNotificationService DiscordService
+@inject ISiteSettingsService SettingsService
 @inject NavigationManager NavManager
 
 <PageTitle>Tournament Setup - Admin</PageTitle>
@@ -558,6 +560,19 @@ else
             _configEvidenceChannelId = _tournament.DiscordEvidenceChannelId;
             _configLogoUrl           = _tournament.LogoUrl;
             _configBannerUrl         = _tournament.BannerImageUrl;
+
+            // Fill blanks from GlobalSettings so the admin never starts from scratch
+            var defaults = await SettingsService.GetAsync();
+            if (string.IsNullOrEmpty(_configGuildId))           _configGuildId           = defaults.DefaultDiscordGuildId;
+            if (string.IsNullOrEmpty(_configChannelId))         _configChannelId         = defaults.DefaultDiscordAnnouncementChannelId;
+            if (string.IsNullOrEmpty(_configEvidenceChannelId)) _configEvidenceChannelId = defaults.DefaultDiscordEvidenceChannelId;
+            if (string.IsNullOrEmpty(_configLogoUrl))           _configLogoUrl           = defaults.DefaultLogoUrl;
+            if (string.IsNullOrEmpty(_configBannerUrl))         _configBannerUrl         = defaults.DefaultBannerUrl;
+            if (_configThreshold is null && defaults.DefaultMatchPointThreshold.HasValue)
+                _configThreshold = defaults.DefaultMatchPointThreshold;
+
+            if (!string.IsNullOrWhiteSpace(_configGuildId))
+                await LoadDiscordChannelsAsync();
 
             await LoadTeams();
             await LoadRounds();
