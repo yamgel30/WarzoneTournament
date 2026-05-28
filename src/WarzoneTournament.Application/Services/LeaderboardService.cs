@@ -205,26 +205,41 @@ public class LeaderboardService : ILeaderboardService
         }
 
         await _uow.SaveChangesAsync(ct);
+        _logger.LogInformation("Leaderboard recalculated for tournament {TournamentId}", tournamentId);
+        return Result.Success();
+    }
 
-        // Update Player.TotalKills (displayed on player profiles) from ALL matches across all tournaments
-        var tournamentMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
-            m => m.TournamentId == tournamentId, ct)).Select(m => m.Id).ToHashSet();
+    public async Task<Result> UpdatePlayerCareerKillsAsync(Guid tournamentId, CancellationToken ct = default)
+    {
+        // Only count kills from confirmed (Completed) matches so cancelled tournaments don't pollute career stats
+        var completedMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+            m => m.TournamentId == tournamentId &&
+                 m.Status == Domain.Enums.MatchStatus.Completed, ct))
+            .Select(m => m.Id).ToHashSet();
+
+        if (completedMatchIds.Count == 0)
+            return Result.Success();
 
         var involvedPlayerIds = (await _uow.PlayerMatchStats.FindAsNoTrackingAsync(
-            s => tournamentMatchIds.Contains(s.MatchId), ct))
+            s => completedMatchIds.Contains(s.MatchId), ct))
             .Select(s => s.PlayerId).Distinct().ToList();
 
         foreach (var playerId in involvedPlayerIds)
         {
             var player = await _uow.Players.GetByIdAsync(playerId, ct);
             if (player is null) continue;
-            var allStats = await _uow.PlayerMatchStats.FindAsync(s => s.PlayerId == playerId, ct);
+            // Sum kills from ALL completed matches across ALL tournaments (career stat)
+            var allCompletedMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+                m => m.Status == Domain.Enums.MatchStatus.Completed, ct))
+                .Select(m => m.Id).ToHashSet();
+            var allStats = await _uow.PlayerMatchStats.FindAsync(
+                s => s.PlayerId == playerId && allCompletedMatchIds.Contains(s.MatchId), ct);
             player.TotalKills = allStats.Sum(s => s.Kills);
             _uow.Players.Update(player);
         }
 
         await _uow.SaveChangesAsync(ct);
-        _logger.LogInformation("Leaderboard recalculated for tournament {TournamentId}", tournamentId);
+        _logger.LogInformation("Career kills updated for players in tournament {TournamentId}", tournamentId);
         return Result.Success();
     }
 }

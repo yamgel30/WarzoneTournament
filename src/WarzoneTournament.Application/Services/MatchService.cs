@@ -305,6 +305,7 @@ public class MatchService : IMatchService
                 await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
                     $"🏆 ¡**{winnerTeam?.Name ?? "Un equipo"}** gana el torneo con Match Point!", ct);
                 await _signalR.NotifyTournamentStatusChangedAsync(match.TournamentId, "Completed", ct);
+                await _leaderboard.UpdatePlayerCareerKillsAsync(match.TournamentId, ct);
             }
         }
 

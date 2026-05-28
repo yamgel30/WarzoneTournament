@@ -16,16 +16,18 @@ public class TournamentService : ITournamentService
     private readonly ILogger<TournamentService> _logger;
     private readonly ISignalRNotificationService _signalR;
     private readonly IDiscordNotificationService _discord;
+    private readonly ILeaderboardService _leaderboard;
 
     public TournamentService(IUnitOfWork uow, IMapper mapper,
         ILogger<TournamentService> logger, ISignalRNotificationService signalR,
-        IDiscordNotificationService discord)
+        IDiscordNotificationService discord, ILeaderboardService leaderboard)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
         _discord = discord;
+        _leaderboard = leaderboard;
     }
 
     public async Task<Result<TournamentDto>> CreateTournamentAsync(CreateTournamentDto dto, CancellationToken ct = default)
@@ -220,6 +222,7 @@ public class TournamentService : ITournamentService
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.Completed.ToString(), ct);
         await _discord.SendTournamentAnnouncementAsync(id, "🏆 ¡El torneo ha finalizado! Gracias a todos los participantes.", ct);
+        await _leaderboard.UpdatePlayerCareerKillsAsync(id, ct);
 
         return Result.Success(_mapper.Map<TournamentDto>(tournament));
     }
