@@ -20,6 +20,7 @@ public class UpdateTournamentDto
     public string? StreamUrl { get; set; }
     public string? DiscordChannelId { get; set; }
     public string? DiscordGuildId { get; set; }
+    public string? DiscordEvidenceChannelId { get; set; }
     public int? KillPoints { get; set; }
     public string? PlacementPointsJson { get; set; }
     public bool? IsPrivate { get; set; }

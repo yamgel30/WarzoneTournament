@@ -250,56 +250,136 @@
 
                 @* ════ Tab 2 — Puntuación ════ *@
                 <RadzenTabsItem Text="📋 Puntuación">
-                    <div style="max-width:680px;margin:16px auto 0">
+                    <div style="margin-top:16px">
 
-                        @* Formula explanation *@
-                        <RadzenCard class="mb-3" style="border-left:4px solid var(--rz-primary)">
-                            <h3 style="margin:0 0 8px">Fórmula de puntos</h3>
-                            <div style="font-size:1.05em;background:var(--rz-base-background-color);padding:12px 16px;border-radius:6px;font-family:monospace">
-                                Pts = Kills × Multiplicador(posición) + Bonus
-                            </div>
-                            @if (_tournamentDto?.MatchPointThreshold is not null)
-                            {
-                                <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-                                    <span style="background:#ef4444;color:#fff;font-size:0.75em;font-weight:800;padding:2px 8px;border-radius:4px;letter-spacing:0.04em">MATCH POINT</span>
-                                    <span style="font-size:0.95em">se activa al alcanzar <strong>@_tournamentDto.MatchPointThreshold pts</strong> acumulados</span>
+                        @* Formula + multipliers summary row *@
+                        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-start">
+                            <RadzenCard style="flex:1;min-width:220px">
+                                <h4 style="margin:0 0 6px;font-size:0.9em;color:var(--rz-text-secondary-color);text-transform:uppercase;letter-spacing:0.04em">Fórmula</h4>
+                                <div style="font-family:monospace;font-size:0.9em;background:var(--rz-base-background-color);padding:7px 10px;border-radius:4px">
+                                    Pts = Kills × Mult(pos) + Bonus
                                 </div>
-                            }
-                        </RadzenCard>
-
-                        @* Placement multipliers table *@
-                        @if (_placementMultipliers.Any())
-                        {
-                            <RadzenCard>
-                                <h3 style="margin:0 0 12px">Multiplicadores por posición</h3>
-                                <div class="lb-table">
-                                    <div style="display:grid;grid-template-columns:80px 1fr 1fr;background:var(--rz-grid-header-background-color,#1e1e2e);padding:7px 14px;font-size:0.78em;color:var(--rz-text-secondary-color);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;gap:8px">
-                                        <span>Posición</span>
-                                        <span style="text-align:right">Multiplicador</span>
-                                        <span style="text-align:right">Ej. 10 kills</span>
+                                @if (_tournamentDto?.MatchPointThreshold is not null)
+                                {
+                                    <div style="margin-top:8px;font-size:0.83em;display:flex;align-items:center;gap:6px">
+                                        <span style="background:#ef4444;color:#fff;font-weight:800;padding:1px 6px;border-radius:3px;font-size:0.85em">MP</span>
+                                        ≥ <strong>@_tournamentDto.MatchPointThreshold pts</strong>
                                     </div>
-                                    @foreach (var kv in _placementMultipliers.OrderBy(x => x.Key))
-                                    {
-                                        var pts = Math.Round(10 * kv.Value, 2);
-                                        <div style="display:grid;grid-template-columns:80px 1fr 1fr;padding:8px 14px;border-bottom:1px solid var(--rz-grid-header-border-color);gap:8px;align-items:center">
-                                            <div style="display:flex;align-items:center;gap:6px;font-weight:600">
-                                                @if (kv.Key == 1)      { <span>🥇</span> }
-                                                else if (kv.Key == 2)  { <span>🥈</span> }
-                                                else if (kv.Key == 3)  { <span>🥉</span> }
-                                                <span>#@kv.Key</span>
-                                            </div>
-                                            <div style="text-align:right;font-weight:600;color:var(--rz-primary)">×@kv.Value.ToString("0.##")</div>
-                                            <div style="text-align:right;color:var(--rz-text-secondary-color);font-size:0.9em">@pts.ToString("0.##") pts</div>
-                                        </div>
-                                    }
-                                </div>
+                                }
                             </RadzenCard>
+                            @if (_placementMultipliers.Any())
+                            {
+                                <RadzenCard style="flex:2;min-width:260px">
+                                    <h4 style="margin:0 0 8px;font-size:0.9em;color:var(--rz-text-secondary-color);text-transform:uppercase;letter-spacing:0.04em">Multiplicadores por posición</h4>
+                                    <div style="display:flex;flex-wrap:wrap;gap:4px">
+                                        @foreach (var kv in _placementMultipliers.OrderBy(x => x.Key))
+                                        {
+                                            var exPts = Math.Round(10 * kv.Value, 2);
+                                            <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-grid-header-border-color);padding:4px 8px;border-radius:4px;font-size:0.8em;text-align:center;min-width:70px">
+                                                <div style="font-weight:700">
+                                                    @if (kv.Key == 1) { <span>🥇</span> }
+                                                    else if (kv.Key == 2) { <span>🥈</span> }
+                                                    else if (kv.Key == 3) { <span>🥉</span> }
+                                                    #@kv.Key
+                                                </div>
+                                                <div style="color:var(--rz-primary);font-weight:600">×@kv.Value.ToString("0.##")</div>
+                                                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">10k→@exPts.ToString("0.##")</div>
+                                            </div>
+                                        }
+                                    </div>
+                                </RadzenCard>
+                            }
+                        </div>
+
+                        @* Scoring breakdown table *@
+                        @{
+                            var allMaps = _leaderboard
+                                .SelectMany(e => e.MatchScores)
+                                .GroupBy(s => s.MatchId)
+                                .Select(g => g.First())
+                                .OrderBy(s => s.MatchNumber)
+                                .ToList();
+                        }
+
+                        @if (!_leaderboard.Any())
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat">
+                                No hay resultados de mapas aún.
+                            </RadzenAlert>
                         }
                         else
                         {
-                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat">
-                                No hay multiplicadores configurados para este torneo.
-                            </RadzenAlert>
+                            <div style="overflow-x:auto">
+                                <table class="scoring-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="st-col-team">Equipo / Jugador</th>
+                                            @foreach (var map in allMaps)
+                                            {
+                                                <th class="st-col-map">Mapa @map.MatchNumber</th>
+                                            }
+                                            <th class="st-col-total">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var team in _leaderboard.OrderBy(t => t.Rank))
+                                        {
+                                            var teamPlayers = _playerLeaderboard
+                                                .Where(p => p.TeamId == team.TeamId)
+                                                .OrderByDescending(p => p.TotalKills)
+                                                .ToList();
+
+                                            @* Team header row *@
+                                            <tr class="st-row-team">
+                                                <td class="st-cell-teamname">
+                                                    <span class="st-rank">#@team.Rank</span>
+                                                    @if (!string.IsNullOrEmpty(team.TeamTag))
+                                                    { <span class="st-tag">[@team.TeamTag]</span> }
+                                                    <span class="st-tname">@team.TeamName</span>
+                                                    @if (team.IsMatchPoint)
+                                                    { <span class="mp-badge-inline" style="font-size:0.6em;vertical-align:middle">MP</span> }
+                                                </td>
+                                                @foreach (var map in allMaps)
+                                                {
+                                                    var sc = team.MatchScores.FirstOrDefault(s => s.MatchId == map.MatchId);
+                                                    <td class="st-cell-map st-cell-teammap">
+                                                        @if (sc is not null)
+                                                        {
+                                                            <div class="st-place">@ScoringPlacementIcon(sc.Placement) #@sc.Placement</div>
+                                                            <div class="st-kills">@sc.Kills kills</div>
+                                                            <div class="st-pts">@sc.Points.ToString("0.##") pts</div>
+                                                        }
+                                                        else { <span class="st-dash">—</span> }
+                                                    </td>
+                                                }
+                                                <td class="st-cell-total">
+                                                    <span class="st-total-pts">@team.TotalPoints.ToString("0.##") pts</span>
+                                                    <span class="st-total-sub">@team.TotalKills kills</span>
+                                                </td>
+                                            </tr>
+
+                                            @* Player rows *@
+                                            @foreach (var player in teamPlayers)
+                                            {
+                                                <tr class="st-row-player">
+                                                    <td class="st-cell-playername">
+                                                        <span class="st-indent">↳</span>@player.Username
+                                                    </td>
+                                                    @foreach (var map in allMaps)
+                                                    {
+                                                        var mk = player.MatchKills.FirstOrDefault(k => k.MatchId == map.MatchId);
+                                                        <td class="st-cell-map st-cell-playermap">
+                                                            @if (mk is not null) { <span>@mk.Kills</span> }
+                                                            else { <span class="st-dash">—</span> }
+                                                        </td>
+                                                    }
+                                                    <td class="st-cell-total st-cell-playertotal">@player.TotalKills</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
                         }
                     </div>
                 </RadzenTabsItem>
@@ -500,6 +580,86 @@
     }
     .mp-overlay__subtitle { font-size: 0.95em; color: rgba(255,255,255,0.7); margin-bottom: 24px; }
     .mp-overlay__dismiss  { font-size: 0.75em; color: rgba(255,255,255,0.3); letter-spacing: 0.05em; }
+
+    /* ── Scoring breakdown table ── */
+    .scoring-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88em;
+        background: var(--rz-base-background-color);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .scoring-table thead th {
+        background: var(--rz-grid-header-background-color, #1e1e2e);
+        color: var(--rz-text-secondary-color);
+        font-weight: 600;
+        font-size: 0.78em;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 8px 10px;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .st-col-team { text-align: left !important; min-width: 160px; }
+    .st-col-map  { min-width: 100px; }
+    .st-col-total { min-width: 90px; }
+
+    /* Team rows */
+    .st-row-team td {
+        background: var(--rz-base-200, rgba(255,255,255,0.04));
+        border-top: 2px solid var(--rz-grid-header-border-color);
+        padding: 8px 10px;
+        vertical-align: middle;
+    }
+    .st-cell-teamname {
+        display: flex; align-items: center; gap: 5px;
+        font-weight: 700; white-space: nowrap;
+    }
+    .st-rank  { color: var(--rz-text-secondary-color); font-size: 0.85em; min-width: 26px; }
+    .st-tag   { color: var(--rz-text-secondary-color); font-size: 0.85em; }
+    .st-tname { color: var(--rz-text-color); }
+
+    .st-cell-teammap {
+        text-align: center;
+        font-size: 0.85em;
+        line-height: 1.35;
+    }
+    .st-place { font-weight: 700; white-space: nowrap; }
+    .st-kills { color: var(--rz-text-secondary-color); }
+    .st-pts   { color: var(--rz-primary); font-weight: 600; }
+
+    .st-cell-total {
+        text-align: center;
+        font-weight: 700;
+    }
+    .st-total-pts { display: block; color: var(--rz-primary); }
+    .st-total-sub { display: block; font-size: 0.82em; color: var(--rz-text-secondary-color); font-weight: 400; }
+
+    /* Player rows */
+    .st-row-player td {
+        border-top: 1px solid var(--rz-grid-header-border-color);
+        padding: 5px 10px;
+        vertical-align: middle;
+    }
+    .st-cell-playername {
+        color: var(--rz-text-secondary-color);
+        white-space: nowrap;
+        padding-left: 18px !important;
+        font-size: 0.92em;
+    }
+    .st-indent { color: var(--rz-text-disabled-color, #555); margin-right: 4px; }
+    .st-cell-playermap {
+        text-align: center;
+        color: var(--rz-text-secondary-color);
+    }
+    .st-cell-playertotal {
+        text-align: center;
+        font-weight: 600;
+        color: var(--rz-text-secondary-color);
+    }
+    .st-cell-map { border-left: 1px solid var(--rz-grid-header-border-color); }
+    .st-dash { color: var(--rz-text-disabled-color, #555); }
 </style>
 
 @code {
@@ -706,6 +866,14 @@
         1 => "rank-gold",
         2 => "rank-silver",
         3 => "rank-bronze",
+        _ => ""
+    };
+
+    private static string ScoringPlacementIcon(int placement) => placement switch
+    {
+        1 => "🥇",
+        2 => "🥈",
+        3 => "🥉",
         _ => ""
     };
 

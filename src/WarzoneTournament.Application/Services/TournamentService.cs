@@ -71,6 +71,7 @@ public class TournamentService : ITournamentService
         if (dto.StreamUrl is not null) tournament.StreamUrl = dto.StreamUrl;
         if (dto.DiscordChannelId is not null) tournament.DiscordChannelId = dto.DiscordChannelId;
         if (dto.DiscordGuildId is not null) tournament.DiscordGuildId = dto.DiscordGuildId;
+        if (dto.DiscordEvidenceChannelId is not null) tournament.DiscordEvidenceChannelId = dto.DiscordEvidenceChannelId;
         if (dto.KillPoints.HasValue) tournament.KillPoints = dto.KillPoints.Value;
         if (dto.PlacementPointsJson is not null) tournament.PlacementPointsJson = dto.PlacementPointsJson;
         if (dto.IsPrivate.HasValue) tournament.IsPrivate = dto.IsPrivate.Value;

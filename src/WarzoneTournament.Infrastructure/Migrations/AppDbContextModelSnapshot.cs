@@ -805,6 +805,10 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<string>("DiscordEvidenceChannelId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("DiscordGuildId")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");

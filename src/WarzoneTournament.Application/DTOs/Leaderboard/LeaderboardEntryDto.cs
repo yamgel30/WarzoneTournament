@@ -33,10 +33,19 @@ public class PlayerLeaderboardEntryDto
 {
     public int Rank { get; set; }
     public Guid PlayerId { get; set; }
+    public Guid TeamId { get; set; }
     public string Username { get; set; } = string.Empty;
     public string? TeamName { get; set; }
     public string? TeamTag { get; set; }
     public int TotalKills { get; set; }
     public int MatchesPlayed { get; set; }
     public double KillsPerMatch => MatchesPlayed > 0 ? Math.Round((double)TotalKills / MatchesPlayed, 1) : 0;
+    public List<PlayerMatchKillDto> MatchKills { get; set; } = new();
+}
+
+public class PlayerMatchKillDto
+{
+    public Guid MatchId { get; set; }
+    public int MatchNumber { get; set; }
+    public int Kills { get; set; }
 }

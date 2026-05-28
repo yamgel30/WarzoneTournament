@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
+using WarzoneTournament.Application.Common.Models;
+using WarzoneTournament.Application.DTOs.Discord;
 using WarzoneTournament.Application.DTOs.Evidence;
 using WarzoneTournament.Domain.Enums;
 using WarzoneTournament.Domain.Interfaces;
@@ -232,6 +234,27 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
     }
 
+    public Task<Result<IReadOnlyList<DiscordChannelDto>>> GetGuildChannelsAsync(string guildId, CancellationToken ct = default)
+    {
+        if (!_isReady)
+            return Task.FromResult(Result.Failure<IReadOnlyList<DiscordChannelDto>>("El bot de Discord no está conectado."));
+
+        if (!ulong.TryParse(guildId, out var guildIdParsed))
+            return Task.FromResult(Result.Failure<IReadOnlyList<DiscordChannelDto>>("Guild ID inválido."));
+
+        var guild = _client.GetGuild(guildIdParsed);
+        if (guild is null)
+            return Task.FromResult(Result.Failure<IReadOnlyList<DiscordChannelDto>>(
+                "Servidor no encontrado. Verifica que el bot esté en el servidor."));
+
+        IReadOnlyList<DiscordChannelDto> channels = guild.TextChannels
+            .OrderBy(c => c.Position)
+            .Select(c => new DiscordChannelDto { Id = c.Id.ToString(), Name = c.Name })
+            .ToList();
+
+        return Task.FromResult(Result.Success(channels));
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private async Task<ITextChannel?> GetTournamentChannelAsync(Guid tournamentId, IUnitOfWork uow)
@@ -275,14 +298,16 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         using var scope = _serviceProvider.CreateScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-        // Accept evidence from: (a) global evidence channel, or (b) any tournament-specific channel
+        // Accept evidence from: (a) global evidence channel, (b) tournament evidence channel, or (c) tournament announcement channel (fallback)
         var globalEvidenceChannelId = _config["Discord:EvidenceChannelId"];
         bool isEvidenceChannel = channelIdStr == globalEvidenceChannelId;
 
         if (!isEvidenceChannel)
         {
             var tournament = await uow.Tournaments.FirstOrDefaultAsync(
-                t => t.DiscordChannelId == channelIdStr && t.Status == TournamentStatus.InProgress);
+                t => t.Status == TournamentStatus.InProgress &&
+                     (t.DiscordEvidenceChannelId == channelIdStr ||
+                      (t.DiscordEvidenceChannelId == null && t.DiscordChannelId == channelIdStr)));
             isEvidenceChannel = tournament is not null;
         }
 

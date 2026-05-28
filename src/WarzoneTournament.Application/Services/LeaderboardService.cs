@@ -149,15 +149,29 @@ public class LeaderboardService : ILeaderboardService
         {
             var player = await _uow.Players.GetByIdAsync(g.PlayerId, ct);
             var team = await _uow.Teams.GetByIdAsync(g.TeamId, ct);
+
+            var matchKills = allStats
+                .Where(s => s.PlayerId == g.PlayerId)
+                .Select(s => new PlayerMatchKillDto
+                {
+                    MatchId     = s.MatchId,
+                    MatchNumber = matches.FirstOrDefault(m => m.Id == s.MatchId)?.MatchNumber ?? 0,
+                    Kills       = s.Kills
+                })
+                .OrderBy(k => k.MatchNumber)
+                .ToList();
+
             result.Add(new PlayerLeaderboardEntryDto
             {
-                Rank         = rank++,
-                PlayerId     = g.PlayerId,
-                Username     = player?.Username ?? "Unknown",
-                TeamName     = team?.Name,
-                TeamTag      = team?.Tag,
-                TotalKills   = g.TotalKills,
-                MatchesPlayed = g.MatchesPlayed
+                Rank          = rank++,
+                PlayerId      = g.PlayerId,
+                TeamId        = g.TeamId,
+                Username      = player?.Username ?? "Unknown",
+                TeamName      = team?.Name,
+                TeamTag       = team?.Tag,
+                TotalKills    = g.TotalKills,
+                MatchesPlayed = g.MatchesPlayed,
+                MatchKills    = matchKills
             });
         }
 

@@ -4,11 +4,13 @@
 @using WarzoneTournament.Application.DTOs.Round
 @using WarzoneTournament.Application.DTOs.Match
 @using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Application.DTOs.Discord
 @using WarzoneTournament.Domain.Enums
 @inject ITournamentService TournamentService
 @inject ITeamService TeamService
 @inject IRoundService RoundService
 @inject IMatchService MatchService
+@inject IDiscordNotificationService DiscordService
 @inject NavigationManager NavManager
 
 <PageTitle>Tournament Setup - Admin</PageTitle>
@@ -439,15 +441,65 @@ else
                         </RadzenCard>
 
                         <RadzenCard>
-                            <h3 style="margin-bottom:16px">Discord</h3>
+                            <h3 style="margin-bottom:6px">Discord</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Ingresa el ID del servidor y haz clic en <strong>Buscar canales</strong> para seleccionar los canales desde un dropdown.
+                            </small>
+
                             <div style="margin-bottom:12px">
-                                <RadzenLabel Text="Discord Guild ID" />
-                                <RadzenTextBox @bind-Value="_configGuildId" Style="width:100%;margin-top:6px" Placeholder="ID del servidor Discord" />
+                                <RadzenLabel Text="Discord Guild ID (ID del servidor)" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_configGuildId" Style="flex:1" Placeholder="Ej: 123456789012345678" />
+                                    <RadzenButton Text="Buscar canales" Icon="search" ButtonStyle="ButtonStyle.Primary"
+                                                  Size="ButtonSize.Small"
+                                                  Click="@LoadDiscordChannelsAsync"
+                                                  Disabled="@(_loadingChannels || string.IsNullOrWhiteSpace(_configGuildId))" />
+                                </div>
+                                @if (_channelError is not null)
+                                {
+                                    <small style="color:var(--rz-danger);display:block;margin-top:4px">@_channelError</small>
+                                }
                             </div>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Canal de anuncios" />
+                                @if (_discordChannels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_configChannelId"
+                                                    Data="@_discordChannels"
+                                                    TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal de anuncios..."
+                                                    Style="width:100%;margin-top:6px"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_configChannelId" Style="width:100%;margin-top:6px"
+                                                   Placeholder="Busca canales arriba o escribe el ID manualmente" />
+                                }
+                            </div>
+
                             <div style="margin-bottom:16px">
-                                <RadzenLabel Text="Discord Channel ID" />
-                                <RadzenTextBox @bind-Value="_configChannelId" Style="width:100%;margin-top:6px" Placeholder="ID del canal de anuncios" />
+                                <RadzenLabel Text="Canal de evidencia" />
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:4px">
+                                    Canal donde los jugadores subirán sus capturas de pantalla.
+                                </small>
+                                @if (_discordChannels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_configEvidenceChannelId"
+                                                    Data="@_discordChannels"
+                                                    TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal de evidencia..."
+                                                    Style="width:100%"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_configEvidenceChannelId" Style="width:100%"
+                                                   Placeholder="Busca canales arriba o escribe el ID manualmente" />
+                                }
                             </div>
+
                             <RadzenButton Text="Guardar Discord" Icon="save" ButtonStyle="ButtonStyle.Light"
                                           Click="@SaveConfig" Disabled="@_busy" />
                         </RadzenCard>
@@ -473,8 +525,12 @@ else
     private int? _configThreshold;
     private string? _configGuildId;
     private string? _configChannelId;
+    private string? _configEvidenceChannelId;
     private string? _configLogoUrl;
     private string? _configBannerUrl;
+    private List<DiscordChannelDto> _discordChannels = new();
+    private bool _loadingChannels = false;
+    private string? _channelError;
 
     private CreateRoundDto _newRound = new();
     private CreateMatchDto _newMatch = new();
@@ -496,11 +552,12 @@ else
         if (_tournament != null)
         {
             _newRound.TournamentId = Id;
-            _configThreshold = _tournament.MatchPointThreshold;
-            _configGuildId   = _tournament.DiscordGuildId;
-            _configChannelId = _tournament.DiscordChannelId;
-            _configLogoUrl   = _tournament.LogoUrl;
-            _configBannerUrl = _tournament.BannerImageUrl;
+            _configThreshold         = _tournament.MatchPointThreshold;
+            _configGuildId           = _tournament.DiscordGuildId;
+            _configChannelId         = _tournament.DiscordChannelId;
+            _configEvidenceChannelId = _tournament.DiscordEvidenceChannelId;
+            _configLogoUrl           = _tournament.LogoUrl;
+            _configBannerUrl         = _tournament.BannerImageUrl;
 
             await LoadTeams();
             await LoadRounds();
@@ -542,9 +599,10 @@ else
         _busy = true; _globalError = null; _globalSuccess = null;
         var dto = new UpdateTournamentDto
         {
-            MatchPointThreshold = _configThreshold,
-            DiscordGuildId      = _configGuildId,
-            DiscordChannelId    = _configChannelId
+            MatchPointThreshold      = _configThreshold,
+            DiscordGuildId           = _configGuildId,
+            DiscordChannelId         = _configChannelId,
+            DiscordEvidenceChannelId = _configEvidenceChannelId
         };
         var result = await TournamentService.UpdateTournamentAsync(Id, dto);
         if (result.IsSuccess)
@@ -554,6 +612,18 @@ else
         }
         else _globalError = result.Error;
         _busy = false;
+    }
+
+    private async Task LoadDiscordChannelsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_configGuildId)) return;
+        _loadingChannels = true; _channelError = null;
+        var result = await DiscordService.GetGuildChannelsAsync(_configGuildId);
+        if (result.IsSuccess)
+            _discordChannels = result.Value.ToList();
+        else
+            _channelError = result.Error;
+        _loadingChannels = false;
     }
 
     // ── Helpers (computed) ─────────────────────────────────────────────────
