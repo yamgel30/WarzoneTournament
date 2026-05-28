@@ -224,11 +224,11 @@
     private async Task LoadData()
     {
         _loading = true;
-        var teamsTask  = TeamService.GetTeamsAsync();
-        var playersTask = PlayerService.GetPlayersAsync();
-        await Task.WhenAll(teamsTask, playersTask);
-        if (teamsTask.Result.IsSuccess)   _teams      = teamsTask.Result.Value.ToList();
-        if (playersTask.Result.IsSuccess) _allPlayers = playersTask.Result.Value.ToList();
+        var teams  = await TeamService.GetTeamsAsync();
+        var players = await PlayerService.GetPlayersAsync();
+
+        if (teams.IsSuccess)   _teams      = teams.Value.ToList();
+        if (players.IsSuccess) _allPlayers = players.Value.ToList();
         _loading = false;
     }
 
