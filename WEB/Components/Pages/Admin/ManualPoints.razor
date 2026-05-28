@@ -19,7 +19,7 @@
         <h1 class="page-title">Ingresar Kills</h1>
         <div style="display:flex;gap:8px;align-items:center">
             <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light"
-                          Click="@RefreshAsync"
+                          Click="@(()=>RefreshAsync())"
                           Disabled="@(_selectedTournamentId == Guid.Empty || _loadingMatches)"
                           title="Actualizar datos" />
             <RadzenButton Text="Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
