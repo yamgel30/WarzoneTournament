@@ -241,16 +241,17 @@ public class EvidenceService : IEvidenceService
             }
         }
 
-        // Upsert MatchTeamResult — only kills here; placement lives in Manual Points.
-        // Placement multiplier and total points are calculated there, not at evidence review.
-        if (totalKills.HasValue)
+        // Upsert MatchTeamResult — saves kills and placement from the evidence photo.
+        // Points are NOT recalculated here; that happens in Manual Points when the admin hits Save.
+        if (totalKills.HasValue || placement.HasValue)
         {
             var teamResult = await _uow.MatchTeamResults.FirstOrDefaultAsync(
                 tr => tr.MatchId == evidence.MatchId && tr.TeamId == evidence.SubmittedByTeamId, ct);
 
             if (teamResult is not null)
             {
-                teamResult.Kills = totalKills.Value;
+                if (totalKills.HasValue) teamResult.Kills = totalKills.Value;
+                if (placement.HasValue) teamResult.Placement = placement.Value;
                 _uow.MatchTeamResults.Update(teamResult);
             }
             else
@@ -259,8 +260,8 @@ public class EvidenceService : IEvidenceService
                 {
                     MatchId = evidence.MatchId,
                     TeamId = evidence.SubmittedByTeamId,
-                    Placement = 0,
-                    Kills = totalKills.Value,
+                    Placement = placement ?? 0,
+                    Kills = totalKills ?? 0,
                     IsVerified = false
                 }, ct);
             }
