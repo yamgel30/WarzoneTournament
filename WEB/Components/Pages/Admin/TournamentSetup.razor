@@ -396,6 +396,33 @@ else
                 <RadzenTabsItem Text="Configuración" Icon="settings">
                     <div style="margin-top:16px;max-width:520px">
                         <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Leaderboard — Media</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Sube tus archivos a <code>wwwroot/images/</code> y escribe la ruta aquí, ej: <code>/images/logo.gif</code>
+                            </small>
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Logo del torneo (imagen o GIF animado)" />
+                                <RadzenTextBox @bind-Value="_configLogoUrl" Style="width:100%;margin-top:6px"
+                                               Placeholder="/images/logo.gif  o  https://..." />
+                                @if (!string.IsNullOrEmpty(_configLogoUrl))
+                                {
+                                    <img src="@_configLogoUrl" alt="preview" style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:contain" />
+                                }
+                            </div>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Imagen de fondo del leaderboard" />
+                                <RadzenTextBox @bind-Value="_configBannerUrl" Style="width:100%;margin-top:6px"
+                                               Placeholder="/images/background.jpg  o  https://..." />
+                                @if (!string.IsNullOrEmpty(_configBannerUrl))
+                                {
+                                    <img src="@_configBannerUrl" alt="preview" style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:cover" />
+                                }
+                            </div>
+                            <RadzenButton Text="Guardar media" Icon="image" ButtonStyle="ButtonStyle.Light"
+                                          Click="@SaveMedia" Disabled="@_busy" />
+                        </RadzenCard>
+
+                        <RadzenCard class="mb-3">
                             <h3 style="margin-bottom:16px">Match Point</h3>
                             <div style="margin-bottom:16px">
                                 <RadzenLabel Text="Umbral de puntos (Match Point Threshold)" />
@@ -446,6 +473,8 @@ else
     private int? _configThreshold;
     private string? _configGuildId;
     private string? _configChannelId;
+    private string? _configLogoUrl;
+    private string? _configBannerUrl;
 
     private CreateRoundDto _newRound = new();
     private CreateMatchDto _newMatch = new();
@@ -470,6 +499,8 @@ else
             _configThreshold = _tournament.MatchPointThreshold;
             _configGuildId   = _tournament.DiscordGuildId;
             _configChannelId = _tournament.DiscordChannelId;
+            _configLogoUrl   = _tournament.LogoUrl;
+            _configBannerUrl = _tournament.BannerImageUrl;
 
             await LoadTeams();
             await LoadRounds();
@@ -491,6 +522,20 @@ else
     }
 
     // ── Config ─────────────────────────────────────────────────────────────
+
+    private async Task SaveMedia()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var dto = new UpdateTournamentDto
+        {
+            LogoUrl       = _configLogoUrl,
+            BannerImageUrl = _configBannerUrl
+        };
+        var result = await TournamentService.UpdateTournamentAsync(Id, dto);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Media guardada."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
 
     private async Task SaveConfig()
     {
