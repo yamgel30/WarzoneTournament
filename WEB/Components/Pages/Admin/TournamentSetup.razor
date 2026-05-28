@@ -101,8 +101,23 @@ else
                                           Icon="check_circle" ButtonStyle="ButtonStyle.Primary"
                                           Click="@CheckInAllTeams"
                                           Disabled="@(_busy || _tournament.Status != TournamentStatus.CheckIn || PendingCheckInCount == 0)" />
+                            @if (_selectedTeamIds.Count > 0)
+                            {
+                                <RadzenButton Text="@($"Inscribir seleccionados ({SelectedForRegistration})")"
+                                              Icon="how_to_reg" ButtonStyle="ButtonStyle.Success" Variant="Variant.Outlined"
+                                              Click="@RegisterSelectedTeams"
+                                              Disabled="@(_busy || _tournament.Status != TournamentStatus.Registration || SelectedForRegistration == 0)" />
+                                <RadzenButton Text="@($"Check-In seleccionados ({SelectedForCheckIn})")"
+                                              Icon="check_circle" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Outlined"
+                                              Click="@CheckInSelectedTeams"
+                                              Disabled="@(_busy || _tournament.Status != TournamentStatus.CheckIn || SelectedForCheckIn == 0)" />
+                            }
                             <span style="font-size:0.82em;color:var(--rz-text-secondary-color)">
                                 @_teamStatuses.Count(t => t.IsRegistered) inscritos · @_teamStatuses.Count(t => t.CheckedIn) con check-in
+                                @if (_selectedTeamIds.Count > 0)
+                                {
+                                    <strong style="margin-left:6px">· @_selectedTeamIds.Count seleccionado(s)</strong>
+                                }
                             </span>
                         </div>
 
@@ -113,6 +128,18 @@ else
                                         FilterMode="FilterMode.Simple"
                                         GridLines="DataGridGridLines.Horizontal">
                             <Columns>
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Width="48px" Sortable="false" Filterable="false">
+                                    <HeaderTemplate>
+                                        <RadzenCheckBox TriState="false" TValue="bool"
+                                            Value="@(_teamStatuses.Count > 0 && _selectedTeamIds.Count == _teamStatuses.Count)"
+                                            Change="@((bool v) => ToggleSelectAll(v))" />
+                                    </HeaderTemplate>
+                                    <Template Context="t">
+                                        <RadzenCheckBox TriState="false" TValue="bool"
+                                            Value="@(_selectedTeamIds.Contains(t.TeamId))"
+                                            Change="@((bool v) => ToggleTeamSelection(t.TeamId, v))" />
+                                    </Template>
+                                </RadzenDataGridColumn>
                                 <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Title="Equipo" Property="TeamName" Width="200px">
                                     <Template Context="t">
                                         <div style="display:flex;align-items:center;gap:10px">
@@ -524,6 +551,8 @@ else
     private string? _globalError;
     private string? _globalSuccess;
 
+    private HashSet<Guid> _selectedTeamIds = new();
+
     private int? _configThreshold;
     private string? _configGuildId;
     private string? _configChannelId;
@@ -584,7 +613,11 @@ else
     private async Task LoadTeams()
     {
         var result = await TeamService.GetTeamsWithTournamentStatusAsync(Id);
-        if (result.IsSuccess) _teamStatuses = result.Value.ToList();
+        if (result.IsSuccess)
+        {
+            _teamStatuses = result.Value.ToList();
+            _selectedTeamIds.IntersectWith(_teamStatuses.Select(t => t.TeamId));
+        }
     }
 
     private async Task LoadRounds()
@@ -644,6 +677,8 @@ else
     // ── Helpers (computed) ─────────────────────────────────────────────────
     private int UnregisteredCount    => _teamStatuses.Count(t => !t.IsRegistered);
     private int PendingCheckInCount  => _teamStatuses.Count(t => t.IsRegistered && !t.CheckedIn);
+    private int SelectedForRegistration => _teamStatuses.Count(t => _selectedTeamIds.Contains(t.TeamId) && !t.IsRegistered);
+    private int SelectedForCheckIn      => _teamStatuses.Count(t => _selectedTeamIds.Contains(t.TeamId) && t.IsRegistered && !t.CheckedIn);
 
     // ── Tournament status ──────────────────────────────────────────────────
 
@@ -700,6 +735,48 @@ else
         var result = await TeamService.UnregisterTeamFromTournamentAsync(teamId, Id);
         if (result.IsSuccess) { _globalSuccess = "Equipo eliminado del torneo."; await LoadTeams(); }
         else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private void ToggleTeamSelection(Guid teamId, bool selected)
+    {
+        if (selected) _selectedTeamIds.Add(teamId);
+        else _selectedTeamIds.Remove(teamId);
+    }
+
+    private void ToggleSelectAll(bool selected)
+    {
+        if (selected) _selectedTeamIds = _teamStatuses.Select(t => t.TeamId).ToHashSet();
+        else _selectedTeamIds.Clear();
+    }
+
+    private async Task RegisterSelectedTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => _selectedTeamIds.Contains(t.TeamId) && !t.IsRegistered).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.RegisterTeamForTournamentAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} inscrito{(ok != 1 ? "s" : "")} correctamente.";
+        await LoadTeams();
+        _busy = false;
+    }
+
+    private async Task CheckInSelectedTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => _selectedTeamIds.Contains(t.TeamId) && t.IsRegistered && !t.CheckedIn).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.CheckInTeamAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} con check-in confirmado.";
+        await LoadTeams();
         _busy = false;
     }
 
