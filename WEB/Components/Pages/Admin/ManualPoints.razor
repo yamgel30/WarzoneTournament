@@ -4,20 +4,36 @@
 @using WarzoneTournament.Application.DTOs.Round
 @using WarzoneTournament.Application.DTOs.Tournament
 @using WarzoneTournament.Domain.Enums
+@using Microsoft.AspNetCore.SignalR.Client
 @inject ITournamentService TournamentService
 @inject ITeamService TeamService
 @inject IMatchService MatchService
 @inject IRoundService RoundService
 @inject NavigationManager NavManager
+@implements IAsyncDisposable
 
 <PageTitle>Ingresar Kills - Admin</PageTitle>
 
 <div class="page-container">
     <div class="page-header">
         <h1 class="page-title">Ingresar Kills</h1>
-        <RadzenButton Text="Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
-                      Click="@(() => NavManager.NavigateTo("/admin"))" />
+        <div style="display:flex;gap:8px;align-items:center">
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                          Click="@RefreshAsync"
+                          Disabled="@(_selectedTournamentId == Guid.Empty || _loadingMatches)"
+                          title="Actualizar datos" />
+            <RadzenButton Text="Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => NavManager.NavigateTo("/admin"))" />
+        </div>
     </div>
+
+    @if (_refreshNotice is not null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-2"
+                     Close="@(() => _refreshNotice = null)">
+            @_refreshNotice
+        </RadzenAlert>
+    }
 
     @* ── Selección de torneo ── *@
     <RadzenCard class="mb-3">
@@ -262,6 +278,8 @@
     private string? _saveSuccess;
     private bool _showMpWinConfirm = false;
     private string _mpWinnerName = string.Empty;
+    private HubConnection? _hubConnection;
+    private string? _refreshNotice;
 
     protected override async Task OnInitializedAsync()
     {
@@ -269,6 +287,58 @@
         if (result.IsSuccess)
             _tournaments = result.Value.Items.ToList();
         _loadingTournaments = false;
+        await ConnectSignalRAsync();
+    }
+
+    private async Task ConnectSignalRAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavManager.ToAbsoluteUri("/hubs/tournament"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<Guid, string>("EvidenceReviewed", async (evidenceId, status) =>
+        {
+            if (status == "Approved" && _selectedTournamentId != Guid.Empty)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync(quiet: true);
+                    _refreshNotice = "Evidencia aprobada — datos del mapa actualizados.";
+                    StateHasChanged();
+                });
+            }
+        });
+
+        try { await _hubConnection.StartAsync(); }
+        catch { /* SignalR is optional for this page */ }
+    }
+
+    private async Task RefreshAsync(bool quiet = false)
+    {
+        if (_selectedTournamentId == Guid.Empty) return;
+        if (!quiet) _loadingMatches = true;
+        _refreshNotice = null;
+
+        var result = await MatchService.GetMatchesByTournamentAsync(_selectedTournamentId);
+        if (result.IsSuccess)
+        {
+            _matches = result.Value.ToList();
+            if (_editingMatch is not null)
+            {
+                var fresh = _matches.FirstOrDefault(m => m.Id == _editingMatch.Id);
+                if (fresh is not null)
+                    await SelectMatch(fresh);
+            }
+        }
+
+        if (!quiet) _loadingMatches = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+            await _hubConnection.DisposeAsync();
     }
 
     private async Task OnTournamentSelected(object? _)
