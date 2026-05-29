@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
 using WarzoneTournament.Application.Common.Models;
@@ -11,31 +12,41 @@ public class SiteSettingsService : ISiteSettingsService
 {
     private readonly IUnitOfWork _uow;
     private readonly ILogger<SiteSettingsService> _logger;
+    private readonly IMemoryCache _cache;
+    private const string CacheKey = "site_settings";
 
-    public SiteSettingsService(IUnitOfWork uow, ILogger<SiteSettingsService> logger)
+    public SiteSettingsService(IUnitOfWork uow, ILogger<SiteSettingsService> logger, IMemoryCache cache)
     {
         _uow = uow;
         _logger = logger;
+        _cache = cache;
     }
 
     public async Task<SiteSettingsDto> GetAsync(CancellationToken ct = default)
     {
-        var settings = (await _uow.SiteSettings.GetAllAsync(ct)).FirstOrDefault();
-        if (settings is null) return new SiteSettingsDto();
+        if (_cache.TryGetValue(CacheKey, out SiteSettingsDto? cached))
+            return cached!;
 
-        return new SiteSettingsDto
+        var settings = (await _uow.SiteSettings.GetAllAsync(ct)).FirstOrDefault();
+        var dto = settings is null ? new SiteSettingsDto() : new SiteSettingsDto
         {
-            AppName                           = settings.AppName,
-            SupportEmail                      = settings.SupportEmail,
-            DefaultLogoUrl                    = settings.DefaultLogoUrl,
-            DefaultBannerUrl                  = settings.DefaultBannerUrl,
-            DefaultPlacementPointsJson        = settings.DefaultPlacementPointsJson,
-            DefaultMatchPointThreshold        = settings.DefaultMatchPointThreshold,
-            DiscordBotToken                   = settings.DiscordBotToken,
-            DefaultDiscordGuildId             = settings.DefaultDiscordGuildId,
+            AppName                             = settings.AppName,
+            SupportEmail                        = settings.SupportEmail,
+            DefaultLogoUrl                      = settings.DefaultLogoUrl,
+            DefaultBannerUrl                    = settings.DefaultBannerUrl,
+            DefaultPlacementPointsJson          = settings.DefaultPlacementPointsJson,
+            DefaultMatchPointThreshold          = settings.DefaultMatchPointThreshold,
+            DiscordBotToken                     = settings.DiscordBotToken,
+            DefaultDiscordGuildId               = settings.DefaultDiscordGuildId,
             DefaultDiscordAnnouncementChannelId = settings.DefaultDiscordAnnouncementChannelId,
-            DefaultDiscordEvidenceChannelId   = settings.DefaultDiscordEvidenceChannelId
+            DefaultDiscordEvidenceChannelId     = settings.DefaultDiscordEvidenceChannelId
         };
+
+        _cache.Set(CacheKey, dto, new MemoryCacheEntryOptions
+        {
+            SlidingExpiration = TimeSpan.FromMinutes(5)
+        });
+        return dto;
     }
 
     public async Task<Result<SiteSettingsDto>> SaveAsync(SiteSettingsDto dto, CancellationToken ct = default)
@@ -58,6 +69,7 @@ public class SiteSettingsService : ISiteSettingsService
             }
 
             await _uow.SaveChangesAsync(ct);
+            _cache.Remove(CacheKey);
             _logger.LogInformation("Site settings saved.");
             return Result.Success(dto);
         }

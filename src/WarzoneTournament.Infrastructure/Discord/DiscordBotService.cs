@@ -19,6 +19,11 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     private readonly ILogger<DiscordBotService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private bool _isReady = false;
+    private string _connectionStatus = "Not configured";
+
+    public bool IsReady => _isReady;
+    public string ConnectionStatus => _connectionStatus;
+    public event Action? OnStatusChanged;
 
     public DiscordBotService(IConfiguration config, ILogger<DiscordBotService> logger,
         IServiceProvider serviceProvider)
@@ -37,7 +42,15 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
 
         _client.Log += OnLog;
         _client.Ready += OnReady;
+        _client.Disconnected += OnDisconnected;
         _client.MessageReceived += OnMessageReceived;
+    }
+
+    private void SetStatus(bool ready, string status)
+    {
+        _isReady = ready;
+        _connectionStatus = status;
+        OnStatusChanged?.Invoke();
     }
 
     // Resolve token: DB (SiteSettings) → appsettings fallback
@@ -59,8 +72,10 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         if (string.IsNullOrEmpty(token))
         {
             _logger.LogWarning("Discord bot token not configured — bot will not start. Set it in Global Settings.");
+            SetStatus(false, "Not configured");
             return;
         }
+        SetStatus(false, "Connecting");
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
         _logger.LogInformation("Discord bot started.");
@@ -69,6 +84,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     public async Task StopBotAsync(CancellationToken ct = default)
     {
         await _client.StopAsync();
+        SetStatus(false, "Disconnected");
         _logger.LogInformation("Discord bot stopped.");
     }
 
@@ -318,8 +334,14 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
 
     private Task OnReady()
     {
-        _isReady = true;
+        SetStatus(true, "Connected");
         _logger.LogInformation("Discord bot ready. Connected as {User}.", _client.CurrentUser.Username);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDisconnected(Exception _)
+    {
+        SetStatus(false, "Disconnected");
         return Task.CompletedTask;
     }
 
@@ -448,6 +470,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     {
         _client.Log -= OnLog;
         _client.Ready -= OnReady;
+        _client.Disconnected -= OnDisconnected;
         _client.MessageReceived -= OnMessageReceived;
         await _client.DisposeAsync();
     }

@@ -30,5 +30,10 @@
         <RadzenPanelMenuItem Text="Hangfire Jobs" Icon="schedule" Path="/hangfire" />
         <RadzenPanelMenuItem Text="Setup Torneo" Icon="build" Path="/tournaments" />
         <RadzenPanelMenuItem Text="Configuración Global" Icon="settings" Path="/admin/settings" />
+        <RadzenPanelMenuItem Text="Cerrar Sesión" Icon="logout" Click="@Logout" />
     </RadzenPanelMenuItem>
 </RadzenPanelMenu>
+
+@code {
+    private void Logout() => NavManager.NavigateTo("/admin/logout", forceLoad: true);
+}

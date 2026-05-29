@@ -5,7 +5,6 @@
 /.vs
 /WEB/bin/Debug/net8.0
 /WEB/obj
-/src
 # Build output
 [Bb]in/
 [Oo]bj/

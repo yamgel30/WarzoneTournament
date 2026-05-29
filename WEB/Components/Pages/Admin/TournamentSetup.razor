@@ -1,4 +1,6 @@
 @page "/admin/setup/{Id:guid}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Team
 @using WarzoneTournament.Application.DTOs.Round

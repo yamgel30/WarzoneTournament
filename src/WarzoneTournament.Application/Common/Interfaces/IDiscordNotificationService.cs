@@ -5,6 +5,10 @@ namespace WarzoneTournament.Application.Common.Interfaces;
 
 public interface IDiscordNotificationService
 {
+    bool IsReady { get; }
+    string ConnectionStatus { get; }
+    event Action? OnStatusChanged;
+
     Task SendMatchResultsAsync(Guid matchId, CancellationToken ct = default);
     Task SendLeaderboardUpdateAsync(Guid tournamentId, CancellationToken ct = default);
     Task NotifyTeamCheckInAsync(Guid teamId, Guid tournamentId, CancellationToken ct = default);

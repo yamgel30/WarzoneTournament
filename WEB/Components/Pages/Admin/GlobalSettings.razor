@@ -1,8 +1,11 @@
 @page "/admin/settings"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Settings
 @using WarzoneTournament.Application.DTOs.Discord
 @using WarzoneTournament.Domain.Enums
+@implements IDisposable
 @inject ISiteSettingsService SettingsService
 @inject IDiscordNotificationService DiscordService
 @inject NavigationManager NavManager
@@ -138,7 +141,18 @@
                     <div style="margin-top:16px;max-width:520px">
 
                         <RadzenCard class="mb-3">
-                            <h3 style="margin-bottom:6px">Credenciales del Bot</h3>
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                                <h3 style="margin:0">Credenciales del Bot</h3>
+                                <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(255,255,255,0.06);border-radius:20px;font-size:0.85em">
+                                    <span>@(DiscordService.ConnectionStatus switch {
+                                        "Connected"      => "✅",
+                                        "Connecting"     => "⏳",
+                                        "Disconnected"   => "❌",
+                                        _                => "⚫"
+                                    })</span>
+                                    <span style="color:var(--rz-text-secondary-color)">@DiscordService.ConnectionStatus</span>
+                                </div>
+                            </div>
                             <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat"
                                          style="margin-bottom:14px;font-size:0.85em">
                                 El token del bot se guarda <strong>cifrado en la base de datos</strong>.
@@ -301,7 +315,12 @@
     {
         _dto = await SettingsService.GetAsync();
         _loading = false;
+        DiscordService.OnStatusChanged += OnBotStatusChanged;
     }
+
+    private void OnBotStatusChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => DiscordService.OnStatusChanged -= OnBotStatusChanged;
 
     private async Task Save()
     {
