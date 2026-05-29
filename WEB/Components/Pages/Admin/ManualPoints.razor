@@ -82,6 +82,12 @@
                               Click="@AddMap" Disabled="@_addingMap" />
             </div>
 
+            @if (!string.IsNullOrEmpty(_saveError) && _editingMatch is null)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-2"
+                             Close="@(() => _saveError = null)">@_saveError</RadzenAlert>
+            }
+
             @if (_loadingMatches || _addingMap)
             {
                 <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
@@ -99,12 +105,38 @@
                     @foreach (var m in _matches.OrderBy(x => x.MatchNumber))
                     {
                         var isSelected = _editingMatch?.Id == m.Id;
-                        <div @onclick="@(() => SelectMatch(m))"
-                             style="cursor:pointer;padding:10px 18px;border-radius:8px;border:2px solid @(isSelected ? "var(--rz-primary)" : "var(--rz-grid-header-border-color)");background:@(isSelected ? "var(--rz-primary-light)" : "transparent");display:flex;flex-direction:column;align-items:center;min-width:90px;transition:all 0.15s">
-                            <span style="font-weight:700;font-size:1.1em;color:@(isSelected ? "var(--rz-primary)" : "inherit")">Mapa @m.MatchNumber</span>
-                            <RadzenBadge Text="@(m.ResultsConfirmed ? "✓" : (m.TeamResults.Count > 0 ? "Parcial" : "Vacío"))"
-                                         BadgeStyle="@(m.ResultsConfirmed ? BadgeStyle.Success : (m.TeamResults.Count > 0 ? BadgeStyle.Warning : BadgeStyle.Light))"
-                                         style="margin-top:4px;font-size:0.75em" />
+                        var isConfirming = _confirmDeleteMatchId == m.Id;
+                        <div style="position:relative;display:inline-flex">
+                            <div @onclick="@(() => SelectMatch(m))"
+                                 style="cursor:pointer;padding:10px 18px;border-radius:8px;border:2px solid @(isSelected ? "var(--rz-primary)" : "var(--rz-grid-header-border-color)");background:@(isSelected ? "var(--rz-primary-light)" : "transparent");display:flex;flex-direction:column;align-items:center;min-width:90px;transition:all 0.15s">
+                                <span style="font-weight:700;font-size:1.1em;color:@(isSelected ? "var(--rz-primary)" : "inherit")">Mapa @m.MatchNumber</span>
+                                <RadzenBadge Text="@(m.ResultsConfirmed ? "✓" : (m.TeamResults.Count > 0 ? "Parcial" : "Vacío"))"
+                                             BadgeStyle="@(m.ResultsConfirmed ? BadgeStyle.Success : (m.TeamResults.Count > 0 ? BadgeStyle.Warning : BadgeStyle.Light))"
+                                             style="margin-top:4px;font-size:0.75em" />
+                            </div>
+                            @if (!m.ResultsConfirmed)
+                            {
+                                @if (isConfirming)
+                                {
+                                    <div style="position:absolute;top:-38px;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--rz-danger);color:#fff;border-radius:6px;padding:4px 8px;display:flex;align-items:center;gap:6px;font-size:0.8em;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.3)">
+                                        ¿Eliminar?
+                                        <span @onclick:stopPropagation="true">
+                                            <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                                          Click="@(() => DeleteMap(m.Id))" Disabled="@_deletingMap" />
+                                        </span>
+                                        <span @onclick:stopPropagation="true">
+                                            <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                          Click="@(() => _confirmDeleteMatchId = null)" />
+                                        </span>
+                                    </div>
+                                }
+                                <span @onclick:stopPropagation="true"
+                                      style="position:absolute;top:-8px;right:-8px">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                                  title="Eliminar mapa"
+                                                  Click="@(() => _confirmDeleteMatchId = (_confirmDeleteMatchId == m.Id ? null : m.Id))" />
+                                </span>
+                            }
                         </div>
                     }
                 </div>
@@ -280,6 +312,8 @@
     private string _mpWinnerName = string.Empty;
     private HubConnection? _hubConnection;
     private string? _refreshNotice;
+    private Guid? _confirmDeleteMatchId;
+    private bool _deletingMap = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -371,6 +405,18 @@
         _addingMap = true;
         _saveError = null;
         _saveSuccess = null;
+
+        // Block if any existing map is not Completed or Cancelled
+        var unconfirmed = _matches.Where(m =>
+            m.Status != MatchStatus.Completed &&
+            m.Status != MatchStatus.Cancelled).ToList();
+        if (unconfirmed.Any())
+        {
+            var mapNums = string.Join(", ", unconfirmed.Select(m => $"Mapa {m.MatchNumber}"));
+            _saveError = $"No puedes agregar otro mapa hasta confirmar el anterior. Pendiente: {mapNums}.";
+            _addingMap = false;
+            return;
+        }
 
         Guid roundId;
         var roundsResult = await RoundService.GetRoundsByTournamentAsync(_selectedTournamentId);
@@ -566,6 +612,28 @@
             _saveError = result.Error;
         }
         _saving = false;
+    }
+
+    private async Task DeleteMap(Guid matchId)
+    {
+        _deletingMap = true;
+        _confirmDeleteMatchId = null;
+        var result = await MatchService.DeleteMatchAsync(matchId);
+        if (result.IsSuccess)
+        {
+            _matches.RemoveAll(m => m.Id == matchId);
+            if (_editingMatch?.Id == matchId)
+            {
+                _editingMatch = null;
+                _saveError = null;
+                _saveSuccess = null;
+            }
+        }
+        else
+        {
+            _saveError = result.Error;
+        }
+        _deletingMap = false;
     }
 
     private void SortEditTeams()
