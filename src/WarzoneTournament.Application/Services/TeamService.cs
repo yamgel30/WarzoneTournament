@@ -183,6 +183,17 @@ public class TeamService : ITeamService
         if (tournament.Status != TournamentStatus.Registration)
             return Result.Failure("Tournament is not currently accepting registrations.");
 
+        // Validate minimum player count
+        if (tournament.PlayersPerTeam > 0)
+        {
+            var playerCount = await _uow.TeamPlayers.CountAsync(
+                tp => tp.TeamId == teamId && tp.IsActive, ct);
+            if (playerCount < tournament.PlayersPerTeam)
+                return Result.Failure(
+                    $"El equipo necesita al menos {tournament.PlayersPerTeam} jugador(es) para inscribirse (tiene {playerCount}).");
+        }
+
+        // Check for an active registration (not soft-deleted)
         var alreadyRegistered = await _uow.TournamentTeams.ExistsAsync(
             tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
         if (alreadyRegistered)
@@ -192,11 +203,34 @@ public class TeamService : ITeamService
         if (registeredCount >= tournament.MaxTeams)
             return Result.Failure("Tournament is full.");
 
-        await _uow.TournamentTeams.AddAsync(new TournamentTeam
+        // Reactivate soft-deleted entry if it exists, otherwise insert fresh
+        var existing = (await _uow.TournamentTeams.FindIncludingDeletedAsync(
+            tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct))
+            .FirstOrDefault();
+
+        if (existing is not null)
         {
-            TournamentId = tournamentId,
-            TeamId = teamId
-        }, ct);
+            existing.IsDeleted = false;
+            existing.DeletedAt = null;
+            existing.CheckedIn = false;
+            existing.CheckInTime = null;
+            existing.IsEliminated = false;
+            existing.IsMatchPoint = false;
+            existing.TotalPoints = 0;
+            existing.TotalKills = 0;
+            existing.CurrentRank = 0;
+            existing.Seed = 0;
+            _uow.TournamentTeams.Update(existing);
+        }
+        else
+        {
+            await _uow.TournamentTeams.AddAsync(new TournamentTeam
+            {
+                TournamentId = tournamentId,
+                TeamId = teamId
+            }, ct);
+        }
+
         await _uow.SaveChangesAsync(ct);
 
         _logger.LogInformation("Team {TeamId} registered for tournament {TournamentId}", teamId, tournamentId);
