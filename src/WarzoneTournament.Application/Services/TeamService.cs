@@ -52,7 +52,7 @@ public class TeamService : ITeamService
                 Country = dto.Country,
                 ContactEmail = dto.ContactEmail,
                 PreferredPlatform = dto.PreferredPlatform,
-                CaptainId = dto.CaptainId ?? Guid.Empty
+                CaptainId = dto.CaptainId
             };
 
             await _uow.Teams.AddAsync(team, ct);
@@ -71,8 +71,7 @@ public class TeamService : ITeamService
             }
 
             // Add additional players
-            var excludeId = dto.CaptainId ?? Guid.Empty;
-            foreach (var playerId in dto.PlayerIds.Where(id => id != excludeId))
+            foreach (var playerId in dto.PlayerIds.Where(id => id != dto.CaptainId))
             {
                 var player = await _uow.Players.GetByIdAsync(playerId, ct);
                 if (player is null || player.IsBanned) continue;
@@ -133,8 +132,11 @@ public class TeamService : ITeamService
         dto.Players = playerDtos;
         dto.PlayerCount = playerDtos.Count;
 
-        var captain = await _uow.Players.GetByIdAsync(team.CaptainId, ct);
-        dto.CaptainUsername = captain?.Username;
+        if (team.CaptainId.HasValue && team.CaptainId.Value != Guid.Empty)
+        {
+            var captain = await _uow.Players.GetByIdAsync(team.CaptainId.Value, ct);
+            dto.CaptainUsername = captain?.Username;
+        }
 
         return Result.Success(dto);
     }
@@ -262,7 +264,7 @@ public class TeamService : ITeamService
         // If removing the captain, clear the captain slot
         if (team.CaptainId == playerId)
         {
-            team.CaptainId = Guid.Empty;
+            team.CaptainId = null;
             _uow.Teams.Update(team);
         }
 
@@ -300,7 +302,7 @@ public class TeamService : ITeamService
         }
         else
         {
-            team.CaptainId = Guid.Empty;
+            team.CaptainId = null;
         }
 
         _uow.Teams.Update(team);

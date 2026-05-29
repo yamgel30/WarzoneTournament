@@ -228,7 +228,7 @@
     // drawer state
     private bool _drawerOpen = false;
     private TeamDto? _drawerTeam;
-    private Guid _drawerCaptainId = Guid.Empty;
+    private Guid? _drawerCaptainId;
     private List<PlayerDto> _drawerTeamPlayers = new();
     private HashSet<Guid> _pendingAdd = new();
     private string _drawerSearch = string.Empty;
