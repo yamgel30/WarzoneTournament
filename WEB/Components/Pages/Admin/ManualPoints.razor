@@ -103,7 +103,7 @@
             {
                 @* Current active = first non-Completed/Cancelled match by MatchNumber *@
                 var currentMatch = _matches
-                    .Where(m => m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed && m.Status != MatchStatus.Cancelled)
+                    .Where(m => m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed && m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Cancelled)
                     .OrderBy(m => m.MatchNumber)
                     .FirstOrDefault();
 
@@ -112,7 +112,7 @@
                     {
                         var isSelected   = _editingMatch?.Id == m.Id;
                         var isConfirming = _confirmDeleteMatchId == m.Id;
-                        var isCompleted  = m.Status == MatchStatus.Completed || m.Status == MatchStatus.Cancelled;
+                        var isCompleted = m.Status == WarzoneTournament.Domain.Enums.MatchStatus.Completed || m.Status == WarzoneTournament.Domain.Enums.MatchStatus.Cancelled;
                         var isLocked     = !isCompleted && m.Id != currentMatch?.Id;
 
                         <div style="position:relative;display:inline-flex">
@@ -421,8 +421,8 @@
 
         // Block if any existing map is not Completed or Cancelled
         var unconfirmed = _matches.Where(m =>
-            m.Status != MatchStatus.Completed &&
-            m.Status != MatchStatus.Cancelled).ToList();
+            m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed &&
+            m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Cancelled).ToList();
         if (unconfirmed.Any())
         {
             var mapNums = string.Join(", ", unconfirmed.Select(m => $"Mapa {m.MatchNumber}"));
