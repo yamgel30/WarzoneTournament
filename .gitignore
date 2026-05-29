@@ -1,8 +1,60 @@
-﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+# .NET / ASP.NET Core
 ################################################################################
 
 /.vs
 /WEB/bin/Debug/net8.0
 /WEB/obj
 /src
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+artifacts/
+
+# Compiled output
+*.dll
+*.exe
+*.pdb
+*.mdb
+*.cache
+
+# Publish output
+[Pp]ublish/
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / env
+*.env
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+# Node (if any front-end tooling)
+node_modules/
+dist/
