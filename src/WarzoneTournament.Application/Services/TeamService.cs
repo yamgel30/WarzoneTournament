@@ -193,6 +193,40 @@ public class TeamService : ITeamService
                     $"El equipo necesita al menos {tournament.PlayersPerTeam} jugador(es) para inscribirse (tiene {playerCount}).");
         }
 
+        // Validate no player overlap with teams already registered in this tournament
+        var teamPlayerIds = (await _uow.TeamPlayers.FindAsNoTrackingAsync(
+            tp => tp.TeamId == teamId && tp.IsActive, ct))
+            .Select(tp => tp.PlayerId)
+            .ToList();
+
+        if (teamPlayerIds.Count > 0)
+        {
+            var otherTeamIds = (await _uow.TournamentTeams.FindAsNoTrackingAsync(
+                tt => tt.TournamentId == tournamentId && tt.TeamId != teamId, ct))
+                .Select(tt => tt.TeamId)
+                .ToList();
+
+            if (otherTeamIds.Count > 0)
+            {
+                var conflicts = await _uow.TeamPlayers.FindAsNoTrackingAsync(
+                    tp => otherTeamIds.Contains(tp.TeamId) && tp.IsActive && teamPlayerIds.Contains(tp.PlayerId), ct);
+
+                if (conflicts.Any())
+                {
+                    var lines = new List<string>();
+                    foreach (var c in conflicts)
+                    {
+                        var p = await _uow.Players.GetByIdAsync(c.PlayerId, ct);
+                        var t = await _uow.Teams.GetByIdAsync(c.TeamId, ct);
+                        lines.Add($"• {p?.Username ?? c.PlayerId.ToString()} ya está en \"{t?.Name ?? c.TeamId.ToString()}\"");
+                    }
+                    return Result.Failure(
+                        $"No se puede inscribir: los siguientes jugadores ya están en otro equipo inscrito en este torneo:\n" +
+                        string.Join("\n", lines));
+                }
+            }
+        }
+
         // Check for an active registration (not soft-deleted)
         var alreadyRegistered = await _uow.TournamentTeams.ExistsAsync(
             tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
