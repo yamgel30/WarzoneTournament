@@ -203,33 +203,17 @@ public class TeamService : ITeamService
         if (registeredCount >= tournament.MaxTeams)
             return Result.Failure("Tournament is full.");
 
-        // Reactivate soft-deleted entry if it exists, otherwise insert fresh
-        var existing = (await _uow.TournamentTeams.FindIncludingDeletedAsync(
-            tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct))
-            .FirstOrDefault();
+        // Purge any stale soft-deleted rows left by older code (hard delete going forward)
+        var stale = await _uow.TournamentTeams.FindIncludingDeletedAsync(
+            tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
+        foreach (var s in stale)
+            _uow.TournamentTeams.HardRemove(s);
 
-        if (existing is not null)
+        await _uow.TournamentTeams.AddAsync(new TournamentTeam
         {
-            existing.IsDeleted = false;
-            existing.DeletedAt = null;
-            existing.CheckedIn = false;
-            existing.CheckInTime = null;
-            existing.IsEliminated = false;
-            existing.IsMatchPoint = false;
-            existing.TotalPoints = 0;
-            existing.TotalKills = 0;
-            existing.CurrentRank = 0;
-            existing.Seed = 0;
-            _uow.TournamentTeams.Update(existing);
-        }
-        else
-        {
-            await _uow.TournamentTeams.AddAsync(new TournamentTeam
-            {
-                TournamentId = tournamentId,
-                TeamId = teamId
-            }, ct);
-        }
+            TournamentId = tournamentId,
+            TeamId = teamId
+        }, ct);
 
         await _uow.SaveChangesAsync(ct);
 
@@ -396,7 +380,8 @@ public class TeamService : ITeamService
             tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
         if (entry is null) return Result.Failure("Team is not registered for this tournament.");
 
-        _uow.TournamentTeams.Remove(entry);
+        // Hard delete — soft-delete leaves a row that conflicts with the unique index on re-registration
+        _uow.TournamentTeams.HardRemove(entry);
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
     }
