@@ -176,8 +176,24 @@
                                 </small>
                             </div>
 
-                            <RadzenButton Text="Guardar token" Icon="vpn_key" ButtonStyle="ButtonStyle.Primary"
-                                          Click="@Save" Disabled="@_saving" />
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                                <RadzenButton Text="Guardar token" Icon="vpn_key" ButtonStyle="ButtonStyle.Primary"
+                                              Click="@Save" Disabled="@_saving" />
+                                <RadzenButton Text="@(_restartingBot ? "Reiniciando..." : "Reiniciar Bot")"
+                                              Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                                              Click="@RestartBotAsync" Disabled="@_restartingBot"
+                                              title="Detiene y vuelve a iniciar el bot con el token guardado en base de datos" />
+                            </div>
+                            @if (_botRestartError is not null)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat"
+                                             style="margin-top:10px;font-size:0.85em">@_botRestartError</RadzenAlert>
+                            }
+                            @if (_botRestartOk)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat"
+                                             style="margin-top:10px;font-size:0.85em">Bot reiniciado — espera unos segundos hasta que el estado cambie a Connected.</RadzenAlert>
+                            }
                         </RadzenCard>
 
                         <RadzenCard>
@@ -310,6 +326,9 @@
     private bool _loadingChannels = false;
     private string? _channelError;
     private bool _showToken = false;
+    private bool _restartingBot = false;
+    private string? _botRestartError;
+    private bool _botRestartOk = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -339,5 +358,24 @@
         if (result.IsSuccess) _channels = result.Value.ToList();
         else _channelError = result.Error;
         _loadingChannels = false;
+    }
+
+    private async Task RestartBotAsync()
+    {
+        _restartingBot = true; _botRestartError = null; _botRestartOk = false;
+        try
+        {
+            await DiscordService.StopBotAsync();
+            await DiscordService.StartBotAsync();
+            _botRestartOk = true;
+        }
+        catch (Exception ex)
+        {
+            _botRestartError = $"Error al reiniciar el bot: {ex.Message}";
+        }
+        finally
+        {
+            _restartingBot = false;
+        }
     }
 }
