@@ -103,7 +103,7 @@
             {
                 @* Current active = first non-Completed/Cancelled match by MatchNumber *@
                 var currentMatch = _matches
-                    .Where(m => m.Status != MatchStatus.Completed && m.Status != MatchStatus.Cancelled)
+                    .Where(m => m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed && m.Status != MatchStatus.Cancelled)
                     .OrderBy(m => m.MatchNumber)
                     .FirstOrDefault();
 
