@@ -14,6 +14,9 @@ public class SiteSettings : BaseEntity
     public string? DefaultPlacementPointsJson { get; set; }
     public int? DefaultMatchPointThreshold { get; set; }
 
+    // Discord bot credentials
+    public string? DiscordBotToken { get; set; }
+
     // Discord global defaults
     public string? DefaultDiscordGuildId { get; set; }
     public string? DefaultDiscordAnnouncementChannelId { get; set; }

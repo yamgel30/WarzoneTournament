@@ -20,8 +20,6 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     private readonly IServiceProvider _serviceProvider;
     private bool _isReady = false;
 
-    private string BotToken => _config["Discord:BotToken"] ?? string.Empty;
-
     public DiscordBotService(IConfiguration config, ILogger<DiscordBotService> logger,
         IServiceProvider serviceProvider)
     {
@@ -42,16 +40,28 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         _client.MessageReceived += OnMessageReceived;
     }
 
+    // Resolve token: DB (SiteSettings) → appsettings fallback
+    private async Task<string> GetBotTokenAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settings = scope.ServiceProvider.GetRequiredService<ISiteSettingsService>();
+        var dto = await settings.GetAsync();
+        return !string.IsNullOrWhiteSpace(dto.DiscordBotToken)
+            ? dto.DiscordBotToken
+            : _config["Discord:BotToken"] ?? string.Empty;
+    }
+
     // ── Bot lifecycle ──────────────────────────────────────────────────────
 
     public async Task StartBotAsync(CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(BotToken))
+        var token = await GetBotTokenAsync();
+        if (string.IsNullOrEmpty(token))
         {
-            _logger.LogWarning("Discord:BotToken not configured — bot will not start.");
+            _logger.LogWarning("Discord bot token not configured — bot will not start. Set it in Global Settings.");
             return;
         }
-        await _client.LoginAsync(TokenType.Bot, BotToken);
+        await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
         _logger.LogInformation("Discord bot started.");
     }
@@ -257,8 +267,8 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
 
     public async Task<Result<DiscordUserDto>> GetDiscordUserAsync(string discordId, CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(BotToken))
-            return Result.Failure<DiscordUserDto>("El bot de Discord no está configurado.");
+        if (!_isReady)
+            return Result.Failure<DiscordUserDto>("El bot de Discord no está configurado o no está listo.");
 
         if (!ulong.TryParse(discordId, out var userId))
             return Result.Failure<DiscordUserDto>("Discord ID inválido. Debe ser un número de 17–20 dígitos.");
@@ -327,8 +337,12 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         using var scope = _serviceProvider.CreateScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-        // Accept evidence from: (a) global evidence channel, (b) tournament evidence channel, or (c) tournament announcement channel (fallback)
-        var globalEvidenceChannelId = _config["Discord:EvidenceChannelId"];
+        // Accept evidence from: (a) global evidence channel (DB), (b) tournament evidence channel, or (c) tournament announcement channel (fallback)
+        var siteSettingsSvc = scope.ServiceProvider.GetRequiredService<ISiteSettingsService>();
+        var siteSettings = await siteSettingsSvc.GetAsync();
+        var globalEvidenceChannelId = !string.IsNullOrWhiteSpace(siteSettings.DefaultDiscordEvidenceChannelId)
+            ? siteSettings.DefaultDiscordEvidenceChannelId
+            : _config["Discord:EvidenceChannelId"];
         bool isEvidenceChannel = channelIdStr == globalEvidenceChannelId;
 
         if (!isEvidenceChannel)

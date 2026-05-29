@@ -31,6 +31,7 @@ public class SiteSettingsService : ISiteSettingsService
             DefaultBannerUrl                  = settings.DefaultBannerUrl,
             DefaultPlacementPointsJson        = settings.DefaultPlacementPointsJson,
             DefaultMatchPointThreshold        = settings.DefaultMatchPointThreshold,
+            DiscordBotToken                   = settings.DiscordBotToken,
             DefaultDiscordGuildId             = settings.DefaultDiscordGuildId,
             DefaultDiscordAnnouncementChannelId = settings.DefaultDiscordAnnouncementChannelId,
             DefaultDiscordEvidenceChannelId   = settings.DefaultDiscordEvidenceChannelId
@@ -75,6 +76,7 @@ public class SiteSettingsService : ISiteSettingsService
         entity.DefaultBannerUrl                  = dto.DefaultBannerUrl;
         entity.DefaultPlacementPointsJson        = dto.DefaultPlacementPointsJson;
         entity.DefaultMatchPointThreshold        = dto.DefaultMatchPointThreshold;
+        entity.DiscordBotToken                   = dto.DiscordBotToken;
         entity.DefaultDiscordGuildId             = dto.DefaultDiscordGuildId;
         entity.DefaultDiscordAnnouncementChannelId = dto.DefaultDiscordAnnouncementChannelId;
         entity.DefaultDiscordEvidenceChannelId   = dto.DefaultDiscordEvidenceChannelId;

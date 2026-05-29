@@ -8,6 +8,7 @@ public class SiteSettingsDto
     public string? DefaultBannerUrl { get; set; }
     public string? DefaultPlacementPointsJson { get; set; }
     public int? DefaultMatchPointThreshold { get; set; }
+    public string? DiscordBotToken { get; set; }
     public string? DefaultDiscordGuildId { get; set; }
     public string? DefaultDiscordAnnouncementChannelId { get; set; }
     public string? DefaultDiscordEvidenceChannelId { get; set; }

@@ -48,6 +48,9 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<string>("DiscordBotToken")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("DefaultDiscordEvidenceChannelId")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");

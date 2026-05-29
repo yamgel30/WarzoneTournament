@@ -136,6 +136,36 @@
                 @* ── Tab 3: Discord defaults ── *@
                 <RadzenTabsItem Text="🤖 Discord (defaults)" Icon="chat">
                     <div style="margin-top:16px;max-width:520px">
+
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Credenciales del Bot</h3>
+                            <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat"
+                                         style="margin-bottom:14px;font-size:0.85em">
+                                El token del bot se guarda <strong>cifrado en la base de datos</strong>.
+                                No lo compartas ni lo incluyas en código fuente o appsettings.
+                            </RadzenAlert>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Discord Bot Token" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_dto.DiscordBotToken"
+                                                   Style="flex:1;font-family:monospace"
+                                                   Placeholder="@(_showToken ? "MTIzNDU2..." : "••••••••••••••••••••")"
+                                                   InputAttributes="@(new Dictionary<string,object>{{ "type", _showToken ? "text" : "password" }})" />
+                                    <RadzenButton Icon="@(_showToken ? "visibility_off" : "visibility")"
+                                                  ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                                  Click="@(() => _showToken = !_showToken)"
+                                                  title="@(_showToken ? "Ocultar token" : "Mostrar token")" />
+                                </div>
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-top:4px">
+                                    Token de tu Discord Application Bot. Reemplaza el valor configurado en appsettings.
+                                </small>
+                            </div>
+
+                            <RadzenButton Text="Guardar token" Icon="vpn_key" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+
                         <RadzenCard>
                             <h3 style="margin-bottom:6px">Servidor y canales predeterminados</h3>
                             <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
@@ -265,6 +295,7 @@
     private List<DiscordChannelDto> _channels = new();
     private bool _loadingChannels = false;
     private string? _channelError;
+    private bool _showToken = false;
 
     protected override async Task OnInitializedAsync()
     {
