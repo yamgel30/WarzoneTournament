@@ -1,5 +1,7 @@
 @page "/leaderboard"
 @page "/leaderboard/{TournamentId:guid}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Leaderboard
 @using WarzoneTournament.Application.DTOs.Tournament

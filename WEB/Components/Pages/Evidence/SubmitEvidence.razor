@@ -1,5 +1,7 @@
 @page "/submit-evidence"
 @rendermode InteractiveServer
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Evidence
 @using WarzoneTournament.Application.DTOs.Player
