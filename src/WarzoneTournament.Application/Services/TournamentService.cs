@@ -16,16 +16,18 @@ public class TournamentService : ITournamentService
     private readonly ILogger<TournamentService> _logger;
     private readonly ISignalRNotificationService _signalR;
     private readonly IDiscordNotificationService _discord;
+    private readonly ILeaderboardService _leaderboard;
 
     public TournamentService(IUnitOfWork uow, IMapper mapper,
         ILogger<TournamentService> logger, ISignalRNotificationService signalR,
-        IDiscordNotificationService discord)
+        IDiscordNotificationService discord, ILeaderboardService leaderboard)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
         _discord = discord;
+        _leaderboard = leaderboard;
     }
 
     public async Task<Result<TournamentDto>> CreateTournamentAsync(CreateTournamentDto dto, CancellationToken ct = default)
@@ -71,12 +73,14 @@ public class TournamentService : ITournamentService
         if (dto.StreamUrl is not null) tournament.StreamUrl = dto.StreamUrl;
         if (dto.DiscordChannelId is not null) tournament.DiscordChannelId = dto.DiscordChannelId;
         if (dto.DiscordGuildId is not null) tournament.DiscordGuildId = dto.DiscordGuildId;
+        if (dto.DiscordEvidenceChannelId is not null) tournament.DiscordEvidenceChannelId = dto.DiscordEvidenceChannelId;
         if (dto.KillPoints.HasValue) tournament.KillPoints = dto.KillPoints.Value;
         if (dto.PlacementPointsJson is not null) tournament.PlacementPointsJson = dto.PlacementPointsJson;
         if (dto.IsPrivate.HasValue) tournament.IsPrivate = dto.IsPrivate.Value;
         if (dto.LobbyCode is not null) tournament.LobbyCode = dto.LobbyCode;
         if (dto.LobbyPassword is not null) tournament.LobbyPassword = dto.LobbyPassword;
         if (dto.BannerImageUrl is not null) tournament.BannerImageUrl = dto.BannerImageUrl;
+        if (dto.LogoUrl is not null) tournament.LogoUrl = dto.LogoUrl;
         if (dto.OrganizerName is not null) tournament.OrganizerName = dto.OrganizerName;
         if (dto.MatchPointThreshold.HasValue) tournament.MatchPointThreshold = dto.MatchPointThreshold.Value;
 
@@ -218,6 +222,7 @@ public class TournamentService : ITournamentService
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyTournamentStatusChangedAsync(id, TournamentStatus.Completed.ToString(), ct);
         await _discord.SendTournamentAnnouncementAsync(id, "🏆 ¡El torneo ha finalizado! Gracias a todos los participantes.", ct);
+        await _leaderboard.UpdatePlayerCareerKillsAsync(id, ct);
 
         return Result.Success(_mapper.Map<TournamentDto>(tournament));
     }

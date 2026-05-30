@@ -1,9 +1,14 @@
 @page "/admin/evidence"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Evidence
+@using WarzoneTournament.Application.DTOs.Team
 @using WarzoneTournament.Domain.Enums
 @using Microsoft.AspNetCore.SignalR.Client
 @inject IEvidenceService EvidenceService
+@inject ITeamService TeamService
 @inject NavigationManager NavManager
 @implements IAsyncDisposable
 
@@ -93,63 +98,109 @@
                             }
                         </div>
 
-                        @if (_selectedEvidence.OcrResult is not null)
+                        @* ── OCR results panel ────────────────────────────────── *@
+                        @if (_selectedEvidence.OcrResult is not null &&
+                             _selectedEvidence.OcrResult.OcrProvider != "Fallback")
                         {
                             <div class="ocr-results">
-                                <h4>OCR Results (@(_selectedEvidence.OcrResult.OcrProvider))</h4>
-                                <div class="ocr-confidence">
-                                    <span>Confidence: </span>
+                                <h4>OCR — @_selectedEvidence.OcrResult.OcrProvider</h4>
+                                <div class="ocr-confidence" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                                    <span style="font-size:0.9em">Confianza:</span>
                                     <RadzenProgressBar Value="@((double)_selectedEvidence.OcrResult.ConfidenceScore * 100)"
-                                                       ShowValue="true" Style="width:150px" />
+                                                       ShowValue="true" Style="width:140px" />
                                 </div>
                                 @if (_selectedEvidence.OcrResult.ExtractedPlacement.HasValue)
-                                {
-                                    <div class="ocr-field">
-                                        <strong>Placement:</strong> #@_selectedEvidence.OcrResult.ExtractedPlacement.Value
-                                    </div>
-                                }
+                                {<div class="ocr-field"><strong>Posición:</strong> #@_selectedEvidence.OcrResult.ExtractedPlacement.Value</div>}
                                 @if (_selectedEvidence.OcrResult.ExtractedKills.HasValue)
-                                {
-                                    <div class="ocr-field">
-                                        <strong>Kills:</strong> @_selectedEvidence.OcrResult.ExtractedKills.Value
-                                    </div>
-                                }
+                                {<div class="ocr-field"><strong>Kills totales:</strong> @_selectedEvidence.OcrResult.ExtractedKills.Value</div>}
                                 @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ExtractedTeamName))
-                                {
-                                    <div class="ocr-field">
-                                        <strong>Team:</strong> @_selectedEvidence.OcrResult.ExtractedTeamName
-                                    </div>
-                                }
-                                @if (_selectedEvidence.OcrResult.RequiresManualReview)
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
-                                        Low confidence — manual review recommended.
-                                    </RadzenAlert>
-                                }
+                                {<div class="ocr-field"><strong>Equipo detectado:</strong> @_selectedEvidence.OcrResult.ExtractedTeamName</div>}
+                                @if (!string.IsNullOrEmpty(_selectedEvidence.OcrResult.ProcessingError))
+                                {<div style="color:var(--rz-danger);font-size:0.85em">Error OCR: @_selectedEvidence.OcrResult.ProcessingError</div>}
                             </div>
                         }
 
+                        @* ── Manual data entry ────────────────────────────────── *@
+                        @{ bool needsManualEntry = _selectedEvidence.OcrResult is null ||
+                               _selectedEvidence.OcrResult.RequiresManualReview; }
+
+                        <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-warning);border-radius:6px;padding:14px;margin-bottom:12px">
+                            <h4 style="margin:0 0 4px;color:var(--rz-warning-darker)">
+                                ✏️ Datos del mapa
+                            </h4>
+                            <p style="font-size:0.83em;color:var(--rz-text-secondary-color);margin-bottom:12px">
+                                Revisa la imagen y completa los campos. Los kills por jugador se guardan en las estadísticas individuales.
+                            </p>
+
+                            @* Placement *@
+                            <div style="margin-bottom:14px">
+                                <RadzenLabel Text="Posición del equipo" />
+                                <RadzenNumeric @bind-Value="_manualPlacement" Min="1" Max="150"
+                                               TValue="int?" Style="width:110px;display:block;margin-top:4px"
+                                               Placeholder="ej: 1" />
+                                <div style="font-size:0.78em;color:var(--rz-text-secondary-color);margin-top:3px">
+                                    Opcional — puede completarse cuando llegue la captura de posición.
+                                </div>
+                            </div>
+
+                            @* Per-player kills table *@
+                            @if (_teamPlayers.Any())
+                            {
+                                <div style="margin-bottom:14px">
+                                    <RadzenLabel Text="Kills por jugador" />
+                                    <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">
+                                        @foreach (var p in _teamPlayers)
+                                        {
+                                            <div style="display:flex;align-items:center;gap:10px">
+                                                <span style="min-width:130px;font-size:0.9em">@p.Username</span>
+                                                <RadzenNumeric TValue="int"
+                                                               Value="@(_playerKills.TryGetValue(p.PlayerId, out var k) ? k : 0)"
+                                                               ValueChanged="@(v => _playerKills[p.PlayerId] = v)"
+                                                               Min="0" Max="50"
+                                                               Style="width:80px" />
+                                            </div>
+                                        }
+                                    </div>
+                                    <div style="font-size:0.82em;color:var(--rz-text-secondary-color);margin-top:6px">
+                                        Total: <strong>@_playerKills.Values.Sum()</strong> kills
+                                    </div>
+                                </div>
+                            }
+
+                            <RadzenButton Text="Guardar y aprobar" Icon="save"
+                                         ButtonStyle="ButtonStyle.Warning"
+                                         Disabled="@_reviewing"
+                                         Click="@ApproveWithManualData" />
+                        </div>
+
                         <div class="review-actions">
-                            <h4>Admin Decision</h4>
+                            <h4>Decisión</h4>
                             <div class="form-field">
-                                <RadzenLabel Text="Notes" />
-                                <RadzenTextArea @bind-Value="_reviewNotes" Rows="3"
-                                                Placeholder="Add notes (optional for approval, required for rejection)"
+                                <RadzenLabel Text="Notas" />
+                                <RadzenTextArea @bind-Value="_reviewNotes" Rows="2"
+                                                Placeholder="Notas (opcional para aprobar, requerido para rechazar)"
                                                 Style="width:100%" />
                             </div>
                             <div class="action-buttons">
-                                <RadzenButton Text="Approve" Icon="check_circle"
-                                             ButtonStyle="ButtonStyle.Success"
-                                             Disabled="@_reviewing"
-                                             Click="@ApproveEvidence" />
-                                <RadzenButton Text="Reject" Icon="cancel"
+                                @if (!needsManualEntry)
+                                {
+                                    <RadzenButton Text="Aprobar" Icon="check_circle"
+                                                 ButtonStyle="ButtonStyle.Success"
+                                                 Disabled="@_reviewing"
+                                                 Click="@ApproveEvidence" />
+                                }
+                                <RadzenButton Text="Rechazar" Icon="cancel"
                                              ButtonStyle="ButtonStyle.Danger"
                                              Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
                                              Click="@RejectEvidence" />
-                                <RadzenButton Text="Request Resubmission" Icon="redo"
-                                             ButtonStyle="ButtonStyle.Warning"
+                                <RadzenButton Text="Pedir reenvío" Icon="redo"
+                                             ButtonStyle="ButtonStyle.Secondary"
                                              Disabled="@(_reviewing || string.IsNullOrWhiteSpace(_reviewNotes))"
                                              Click="@RejectEvidence" />
+                                <RadzenButton Text="Cancelar" Icon="close"
+                                             ButtonStyle="ButtonStyle.Light"
+                                             Disabled="@_reviewing"
+                                             Click="@CancelEvidence" />
                             </div>
                             <ErrorMessage Message="@_actionError" />
                         </div>
@@ -188,6 +239,9 @@
     private string? _actionError;
     private int _pendingCount = 0;
     private HubConnection? _hubConnection;
+    private int? _manualPlacement;
+    private List<TeamPlayerDto> _teamPlayers = new();
+    private Dictionary<Guid, int> _playerKills = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -213,11 +267,23 @@
         }
     }
 
-    private void SelectEvidence(EvidenceDto evidence)
+    private async Task SelectEvidence(EvidenceDto evidence)
     {
         _selectedEvidence = evidence;
         _reviewNotes = null;
         _actionError = null;
+        _manualPlacement = evidence.OcrResult?.ExtractedPlacement;
+        _teamPlayers = new();
+        _playerKills = new();
+
+        var teamResult = await TeamService.GetTeamByIdAsync(evidence.SubmittedByTeamId);
+        if (teamResult.IsSuccess)
+        {
+            _teamPlayers = teamResult.Value.Players;
+            // Pre-fill zero kills for each player
+            foreach (var p in _teamPlayers)
+                _playerKills[p.PlayerId] = 0;
+        }
     }
 
     private async Task ApproveEvidence()
@@ -229,6 +295,59 @@
         {
             var result = await EvidenceService.ApproveEvidenceAsync(
                 _selectedEvidence.Id, "Admin", _reviewNotes);
+
+            if (result.IsSuccess)
+            {
+                _pendingEvidence.RemoveAll(e => e.Id == _selectedEvidence.Id);
+                _selectedEvidence = null;
+                _pendingCount = _pendingEvidence.Count;
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        finally
+        {
+            _reviewing = false;
+        }
+    }
+
+    private async Task ApproveWithManualData()
+    {
+        if (_selectedEvidence is null) return;
+        _reviewing = true;
+        _actionError = null;
+        try
+        {
+            var killsDict = _playerKills.Where(kv => kv.Value > 0)
+                                        .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+            var result = await EvidenceService.ApproveWithVerifiedDataAsync(
+                _selectedEvidence.Id, "Admin", _manualPlacement,
+                killsDict.Any() ? (int?)killsDict.Values.Sum() : null,
+                _reviewNotes, killsDict);
+
+            if (result.IsSuccess)
+            {
+                _pendingEvidence.RemoveAll(e => e.Id == _selectedEvidence.Id);
+                _selectedEvidence = null;
+                _pendingCount = _pendingEvidence.Count;
+            }
+            else _actionError = result.Error;
+        }
+        finally { _reviewing = false; }
+    }
+
+    private async Task CancelEvidence()
+    {
+        if (_selectedEvidence is null) return;
+        _reviewing = true;
+        _actionError = null;
+        try
+        {
+            var result = await EvidenceService.RejectEvidenceAsync(
+                _selectedEvidence.Id, "Admin", "Cancelado por administrador");
 
             if (result.IsSuccess)
             {

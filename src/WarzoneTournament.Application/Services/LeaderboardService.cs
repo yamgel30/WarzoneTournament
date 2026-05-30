@@ -21,8 +21,8 @@ public class LeaderboardService : ILeaderboardService
     public async Task<Result<IReadOnlyList<LeaderboardEntryDto>>> GetTournamentLeaderboardAsync(
         Guid tournamentId, CancellationToken ct = default)
     {
-        var tournamentTeams = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
-        var matches = await _uow.Matches.FindAsync(m => m.TournamentId == tournamentId, ct);
+        var tournamentTeams = await _uow.TournamentTeams.FindAsNoTrackingAsync(tt => tt.TournamentId == tournamentId, ct);
+        var matches = await _uow.Matches.FindAsNoTrackingAsync(m => m.TournamentId == tournamentId, ct);
         var matchIds = matches.Select(m => m.Id).ToHashSet();
 
         var entries = new List<LeaderboardEntryDto>();
@@ -32,7 +32,7 @@ public class LeaderboardService : ILeaderboardService
             var team = await _uow.Teams.GetByIdAsync(tt.TeamId, ct);
             if (team is null) continue;
 
-            var teamResults = await _uow.MatchTeamResults.FindAsync(
+            var teamResults = await _uow.MatchTeamResults.FindAsNoTrackingAsync(
                 r => r.TeamId == tt.TeamId && matchIds.Contains(r.MatchId), ct);
 
             var matchScores = new List<MatchScoreDto>();
@@ -132,10 +132,10 @@ public class LeaderboardService : ILeaderboardService
     public async Task<Result<IReadOnlyList<PlayerLeaderboardEntryDto>>> GetPlayerLeaderboardAsync(
         Guid tournamentId, CancellationToken ct = default)
     {
-        var matches = await _uow.Matches.FindAsync(m => m.TournamentId == tournamentId, ct);
+        var matches = await _uow.Matches.FindAsNoTrackingAsync(m => m.TournamentId == tournamentId, ct);
         var matchIds = matches.Select(m => m.Id).ToHashSet();
 
-        var allStats = await _uow.PlayerMatchStats.FindAsync(s => matchIds.Contains(s.MatchId), ct);
+        var allStats = await _uow.PlayerMatchStats.FindAsNoTrackingAsync(s => matchIds.Contains(s.MatchId), ct);
 
         var grouped = allStats
             .GroupBy(s => s.PlayerId)
@@ -149,15 +149,29 @@ public class LeaderboardService : ILeaderboardService
         {
             var player = await _uow.Players.GetByIdAsync(g.PlayerId, ct);
             var team = await _uow.Teams.GetByIdAsync(g.TeamId, ct);
+
+            var matchKills = allStats
+                .Where(s => s.PlayerId == g.PlayerId)
+                .Select(s => new PlayerMatchKillDto
+                {
+                    MatchId     = s.MatchId,
+                    MatchNumber = matches.FirstOrDefault(m => m.Id == s.MatchId)?.MatchNumber ?? 0,
+                    Kills       = s.Kills
+                })
+                .OrderBy(k => k.MatchNumber)
+                .ToList();
+
             result.Add(new PlayerLeaderboardEntryDto
             {
-                Rank         = rank++,
-                PlayerId     = g.PlayerId,
-                Username     = player?.Username ?? "Unknown",
-                TeamName     = team?.Name,
-                TeamTag      = team?.Tag,
-                TotalKills   = g.TotalKills,
-                MatchesPlayed = g.MatchesPlayed
+                Rank          = rank++,
+                PlayerId      = g.PlayerId,
+                TeamId        = g.TeamId,
+                Username      = player?.Username ?? "Unknown",
+                TeamName      = team?.Name,
+                TeamTag       = team?.Tag,
+                TotalKills    = g.TotalKills,
+                MatchesPlayed = g.MatchesPlayed,
+                MatchKills    = matchKills
             });
         }
 
@@ -173,25 +187,70 @@ public class LeaderboardService : ILeaderboardService
         var tournament = await _uow.Tournaments.GetByIdAsync(tournamentId, ct);
         var tournamentTeams = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
 
+        // Only confirmed matches count toward MatchPoint evaluation
+        var confirmedMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+            m => m.TournamentId == tournamentId && m.ResultsConfirmed, ct))
+            .Select(m => m.Id).ToHashSet();
+
         foreach (var entry in leaderboardResult.Value)
         {
             var tt = tournamentTeams.FirstOrDefault(t => t.TeamId == entry.TeamId);
             if (tt is null) continue;
 
+            // Display totals include all entered results (partial + confirmed)
             tt.TotalPoints = entry.TotalPoints;
             tt.TotalKills = entry.TotalKills;
             tt.CurrentRank = entry.Rank;
 
-            // Once a team reaches the threshold it stays in Match Point
-            if (tournament?.MatchPointThreshold.HasValue == true
-                && entry.TotalPoints >= tournament.MatchPointThreshold.Value)
-                tt.IsMatchPoint = true;
+            // MatchPoint is re-evaluated every time using only confirmed points.
+            // This clears it if a match is re-edited (unconfirmed) or if points drop below threshold.
+            if (tournament?.MatchPointThreshold.HasValue == true)
+            {
+                var confirmedPoints = entry.MatchScores
+                    .Where(ms => confirmedMatchIds.Contains(ms.MatchId))
+                    .Sum(ms => ms.Points);
+                tt.IsMatchPoint = confirmedPoints >= tournament.MatchPointThreshold.Value;
+            }
 
             _uow.TournamentTeams.Update(tt);
         }
 
         await _uow.SaveChangesAsync(ct);
         _logger.LogInformation("Leaderboard recalculated for tournament {TournamentId}", tournamentId);
+        return Result.Success();
+    }
+
+    public async Task<Result> UpdatePlayerCareerKillsAsync(Guid tournamentId, CancellationToken ct = default)
+    {
+        // Only count kills from confirmed (Completed) matches so cancelled tournaments don't pollute career stats
+        var completedMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+            m => m.TournamentId == tournamentId &&
+                 m.Status == Domain.Enums.MatchStatus.Completed, ct))
+            .Select(m => m.Id).ToHashSet();
+
+        if (completedMatchIds.Count == 0)
+            return Result.Success();
+
+        var involvedPlayerIds = (await _uow.PlayerMatchStats.FindAsNoTrackingAsync(
+            s => completedMatchIds.Contains(s.MatchId), ct))
+            .Select(s => s.PlayerId).Distinct().ToList();
+
+        foreach (var playerId in involvedPlayerIds)
+        {
+            var player = await _uow.Players.GetByIdAsync(playerId, ct);
+            if (player is null) continue;
+            // Sum kills from ALL completed matches across ALL tournaments (career stat)
+            var allCompletedMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+                m => m.Status == Domain.Enums.MatchStatus.Completed, ct))
+                .Select(m => m.Id).ToHashSet();
+            var allStats = await _uow.PlayerMatchStats.FindAsync(
+                s => s.PlayerId == playerId && allCompletedMatchIds.Contains(s.MatchId), ct);
+            player.TotalKills = allStats.Sum(s => s.Kills);
+            _uow.Players.Update(player);
+        }
+
+        await _uow.SaveChangesAsync(ct);
+        _logger.LogInformation("Career kills updated for players in tournament {TournamentId}", tournamentId);
         return Result.Success();
     }
 }

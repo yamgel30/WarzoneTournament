@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<ILeaderboardService, LeaderboardService>();
         services.AddScoped<IEvidenceService, EvidenceService>();
         services.AddScoped<IRoundService, RoundService>();
+        services.AddScoped<ISiteSettingsService, SiteSettingsService>();
 
         return services;
     }

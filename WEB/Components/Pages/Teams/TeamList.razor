@@ -1,7 +1,11 @@
 @page "/teams"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Team
+@using WarzoneTournament.Application.DTOs.Player
 @inject ITeamService TeamService
+@inject IPlayerService PlayerService
 @inject NavigationManager NavManager
 
 <PageTitle>Teams - Warzone</PageTitle>
@@ -9,7 +13,7 @@
 <div class="page-container">
     <div class="page-header">
         <h1 class="page-title">Teams</h1>
-        <RadzenButton Text="Register Team" Icon="group_add"
+        <RadzenButton Text="Crear equipo" Icon="group_add"
                       ButtonStyle="ButtonStyle.Primary"
                       Click="@(() => NavManager.NavigateTo("/teams/register"))" />
     </div>
@@ -24,39 +28,36 @@
                         AllowPaging="true" PageSize="20"
                         AllowSorting="true"
                         AllowFiltering="true"
-                        GridLines="DataGridGridLines.Horizontal"
-                        RowClick="@(args => NavManager.NavigateTo($"/teams/{args.Data.Id}"))">
+                        GridLines="DataGridGridLines.Horizontal">
             <Columns>
-                <RadzenDataGridColumn TItem="TeamDto" Title="Team" Width="220px">
+                <RadzenDataGridColumn TItem="TeamDto" Title="Equipo" Property="Name" Width="220px">
                     <Template Context="t">
                         <div class="team-cell">
                             @if (!string.IsNullOrEmpty(t.LogoUrl))
-                            {
-                                <img src="@t.LogoUrl" alt="@t.Name" class="team-logo-xs" />
-                            }
+                            {<img src="@t.LogoUrl" alt="@t.Name" class="team-logo-xs" />}
                             else
-                            {
-                                <div class="team-logo-placeholder">@t.Name[0]</div>
-                            }
+                            {<div class="team-logo-placeholder">@t.Name[0]</div>}
                             <div>
                                 <strong>@t.Name</strong>
                                 @if (!string.IsNullOrEmpty(t.Tag))
-                                {
-                                    <small class="text-muted d-block">[@t.Tag]</small>
-                                }
+                                {<small class="text-muted d-block">[@t.Tag]</small>}
                             </div>
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="TeamDto" Property="CaptainUsername" Title="Captain" Width="140px" />
-                <RadzenDataGridColumn TItem="TeamDto" Property="PlatformName" Title="Platform" Width="110px" />
-                <RadzenDataGridColumn TItem="TeamDto" Property="PlayerCount" Title="Players" Width="90px" />
-                <RadzenDataGridColumn TItem="TeamDto" Property="Country" Title="Country" Width="100px" />
-                <RadzenDataGridColumn TItem="TeamDto" Property="CreatedAt" Title="Joined" Width="120px" FormatString="{0:MMM dd, yyyy}" />
-                <RadzenDataGridColumn TItem="TeamDto" Title="" Width="80px">
+                <RadzenDataGridColumn TItem="TeamDto" Property="PlayerCount" Title="Jugadores" Width="95px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="CaptainUsername" Title="Capitán" Width="130px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="PlatformName" Title="Plataforma" Width="110px" />
+                <RadzenDataGridColumn TItem="TeamDto" Property="Country" Title="País" Width="100px" />
+                <RadzenDataGridColumn TItem="TeamDto" Title="" Width="130px" Sortable="false" Filterable="false">
                     <Template Context="t">
-                        <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
-                                      Click="@(() => NavManager.NavigateTo($"/teams/{t.Id}"))" />
+                        <div style="display:flex;gap:6px">
+                            <RadzenButton Icon="manage_accounts" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                          title="Gestionar jugadores"
+                                          Click="@(() => OpenDrawer(t))" />
+                            <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                          Click="@(() => NavManager.NavigateTo($"/teams/{t.Id}"))" />
+                        </div>
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -64,22 +65,297 @@
     }
 </div>
 
+@* ── Player management drawer ── *@
+@if (_drawerOpen && _drawerTeam is not null)
+{
+    <div style="position:fixed;inset:0;z-index:1000;display:flex">
+        @* backdrop *@
+        <div style="flex:1;background:rgba(0,0,0,.45)" @onclick="CloseDrawer" />
+
+        @* panel *@
+        <div style="width:420px;background:var(--rz-base-background-color);box-shadow:-4px 0 24px rgba(0,0,0,.35);
+                    display:flex;flex-direction:column;overflow:hidden">
+
+            @* header *@
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                        padding:16px 20px;border-bottom:1px solid var(--rz-border-disabled-color);
+                        background:var(--rz-primary);color:#fff">
+                <div>
+                    <div style="font-size:1.1em;font-weight:700">@_drawerTeam.Name</div>
+                    <small style="opacity:.85">@_drawerTeam.PlayerCount jugador(es)</small>
+                </div>
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="CloseDrawer" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_drawerError))
+            {
+                <div style="padding:8px 16px;background:var(--rz-danger-lighter);color:var(--rz-danger);font-size:.85em">
+                    @_drawerError
+                </div>
+            }
+
+            <div style="flex:1;overflow-y:auto;padding:16px">
+
+                @* ── Current players ── *@
+                <h4 style="margin:0 0 10px;font-size:.95em;text-transform:uppercase;
+                            letter-spacing:.05em;color:var(--rz-text-secondary-color)">
+                    En el equipo
+                </h4>
+
+                @if (!_drawerTeamPlayers.Any())
+                {
+                    <p style="color:var(--rz-text-secondary-color);font-size:.9em;margin:0 0 16px">
+                        Sin jugadores aún.
+                    </p>
+                }
+                else
+                {
+                    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+                        @foreach (var p in _drawerTeamPlayers)
+                        {
+                            var isCaptain = p.Id == _drawerCaptainId;
+                            <div style="display:flex;align-items:center;justify-content:space-between;
+                                        padding:8px 12px;border-radius:6px;
+                                        border:1px solid @(isCaptain ? "var(--rz-warning)" : "var(--rz-border-disabled-color)");
+                                        background:@(isCaptain ? "var(--rz-warning-lighter, rgba(255,193,7,.08))" : "var(--rz-base-300)")">
+                                <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                                    @if (!string.IsNullOrEmpty(p.AvatarUrl))
+                                    {<img src="@p.AvatarUrl" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0" />}
+                                    else
+                                    {<div style="width:30px;height:30px;border-radius:50%;background:var(--rz-primary);flex-shrink:0;
+                                                 display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:.85em">
+                                        @p.Username[0]
+                                    </div>}
+                                    <div style="min-width:0">
+                                        <span style="font-weight:500">@p.Username</span>
+                                        @if (isCaptain)
+                                        {<RadzenBadge Text="Capitán" BadgeStyle="BadgeStyle.Warning"
+                                                     style="margin-left:6px;font-size:.75em" />}
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:4px;flex-shrink:0">
+                                    @if (isCaptain)
+                                    {
+                                        <RadzenButton Icon="person_off" ButtonStyle="ButtonStyle.Warning"
+                                                      Size="ButtonSize.Small" Variant="Variant.Outlined"
+                                                      title="Quitar capitanía (sin eliminar del equipo)"
+                                                      Disabled="@_drawerBusy"
+                                                      Click="@(() => UnsetCaptain())" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenButton Icon="military_tech" ButtonStyle="ButtonStyle.Success"
+                                                      Size="ButtonSize.Small" Variant="Variant.Outlined"
+                                                      title="Hacer capitán"
+                                                      Disabled="@_drawerBusy"
+                                                      Click="@(() => MakeCaptain(p.Id))" />
+                                    }
+                                    <RadzenButton Icon="person_remove" ButtonStyle="ButtonStyle.Danger"
+                                                  Size="ButtonSize.Small" Variant="Variant.Outlined"
+                                                  title="Quitar del equipo"
+                                                  Disabled="@_drawerBusy"
+                                                  Click="@(() => RemovePlayerFromTeam(p.Id))" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <hr style="border-color:var(--rz-border-disabled-color);margin:0 0 14px" />
+
+                @* ── Add players ── *@
+                <h4 style="margin:0 0 10px;font-size:.95em;text-transform:uppercase;
+                            letter-spacing:.05em;color:var(--rz-text-secondary-color)">
+                    Agregar jugadores
+                </h4>
+
+                <RadzenTextBox @bind-Value="_drawerSearch" Placeholder="Buscar jugador..."
+                               Style="width:100%;margin-bottom:10px"
+                               @oninput="@((e) => _drawerSearch = e.Value?.ToString() ?? string.Empty)" />
+
+                @{ var available = AvailablePlayers; }
+                @if (!available.Any())
+                {
+                    <p style="color:var(--rz-text-secondary-color);font-size:.9em">
+                        @(string.IsNullOrWhiteSpace(_drawerSearch) ? "Todos los jugadores ya están en el equipo." : "Sin resultados.")
+                    </p>
+                }
+                else
+                {
+                    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
+                        @foreach (var p in available)
+                        {
+                            var isSelected = _pendingAdd.Contains(p.Id);
+                            <div @onclick="@(() => TogglePending(p.Id))"
+                                 style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;
+                                        border:1px solid @(isSelected ? "var(--rz-primary)" : "var(--rz-border-disabled-color)");
+                                        background:@(isSelected ? "var(--rz-primary-lighter)" : "transparent");
+                                        transition:all .15s">
+                                <RadzenCheckBox TValue="bool" Value="@isSelected" />
+                                @if (!string.IsNullOrEmpty(p.AvatarUrl))
+                                {<img src="@p.AvatarUrl" style="width:28px;height:28px;border-radius:50%;object-fit:cover" />}
+                                else
+                                {<div style="width:28px;height:28px;border-radius:50%;background:var(--rz-base-600);
+                                             display:flex;align-items:center;justify-content:center;color:#fff;font-size:.8em">
+                                    @p.Username[0]
+                                </div>}
+                                <span>@p.Username</span>
+                                @if (!string.IsNullOrEmpty(p.DiscordUsername))
+                                {<small style="color:var(--rz-text-secondary-color)">(@p.DiscordUsername)</small>}
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* footer *@
+            <div style="padding:14px 20px;border-top:1px solid var(--rz-border-disabled-color);
+                        background:var(--rz-base-background-color)">
+                <RadzenButton Text="@($"Agregar {_pendingAdd.Count} seleccionado(s)")"
+                              Icon="person_add" ButtonStyle="ButtonStyle.Primary"
+                              Style="width:100%"
+                              Disabled="@(_pendingAdd.Count == 0 || _drawerBusy)"
+                              Click="@AddSelectedPlayers" />
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private bool _loading = true;
     private List<TeamDto> _teams = new();
+    private List<PlayerDto> _allPlayers = new();
+
+    // drawer state
+    private bool _drawerOpen = false;
+    private TeamDto? _drawerTeam;
+    private Guid? _drawerCaptainId;
+    private List<PlayerDto> _drawerTeamPlayers = new();
+    private HashSet<Guid> _pendingAdd = new();
+    private string _drawerSearch = string.Empty;
+    private bool _drawerBusy = false;
+    private string? _drawerError;
+
+    private IEnumerable<PlayerDto> AvailablePlayers =>
+        _allPlayers
+            .Where(p => !_drawerTeamPlayers.Any(tp => tp.Id == p.Id))
+            .Where(p => string.IsNullOrWhiteSpace(_drawerSearch) ||
+                        p.Username.Contains(_drawerSearch, StringComparison.OrdinalIgnoreCase) ||
+                        (p.DiscordUsername?.Contains(_drawerSearch, StringComparison.OrdinalIgnoreCase) ?? false));
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
         _loading = true;
-        try
+        var teams  = await TeamService.GetTeamsAsync();
+        var players = await PlayerService.GetPlayersAsync();
+
+        if (teams.IsSuccess)   _teams      = teams.Value.ToList();
+        if (players.IsSuccess) _allPlayers = players.Value.ToList();
+        _loading = false;
+    }
+
+    private async Task OpenDrawer(TeamDto team)
+    {
+        _drawerTeam   = team;
+        _drawerSearch = string.Empty;
+        _pendingAdd   = new();
+        _drawerError  = null;
+        _drawerBusy   = false;
+
+        // Load full team detail to get current players and captain
+        var detail = await TeamService.GetTeamByIdAsync(team.Id);
+        if (detail.IsSuccess)
         {
-            var result = await TeamService.GetTeamsAsync();
-            if (result.IsSuccess)
-                _teams = result.Value.ToList();
+            _drawerCaptainId   = detail.Value.CaptainId;
+            _drawerTeamPlayers = _allPlayers
+                .Where(p => detail.Value.Players.Any(tp => tp.PlayerId == p.Id))
+                .ToList();
         }
-        finally
+
+        _drawerOpen = true;
+    }
+
+    private void CloseDrawer()
+    {
+        _drawerOpen = false;
+        _drawerTeam = null;
+    }
+
+    private void TogglePending(Guid playerId)
+    {
+        if (!_pendingAdd.Remove(playerId))
+            _pendingAdd.Add(playerId);
+    }
+
+    private async Task AddSelectedPlayers()
+    {
+        if (_drawerTeam is null || _pendingAdd.Count == 0) return;
+        _drawerBusy = true; _drawerError = null;
+        int ok = 0;
+        foreach (var pid in _pendingAdd.ToList())
         {
-            _loading = false;
+            var r = await TeamService.AddPlayerToTeamAsync(_drawerTeam.Id, pid);
+            if (r.IsSuccess) ok++;
+            else _drawerError = r.Error;
+        }
+        _pendingAdd.Clear();
+        await RefreshDrawer();
+        _drawerBusy = false;
+    }
+
+    private async Task RemovePlayerFromTeam(Guid playerId)
+    {
+        if (_drawerTeam is null) return;
+        _drawerBusy = true; _drawerError = null;
+        var r = await TeamService.RemovePlayerFromTeamAsync(_drawerTeam.Id, playerId);
+        if (r.IsSuccess) await RefreshDrawer();
+        else _drawerError = r.Error;
+        _drawerBusy = false;
+    }
+
+    private async Task MakeCaptain(Guid playerId)
+    {
+        if (_drawerTeam is null) return;
+        _drawerBusy = true; _drawerError = null;
+        var r = await TeamService.SetCaptainAsync(_drawerTeam.Id, playerId);
+        if (r.IsSuccess) await RefreshDrawer();
+        else _drawerError = r.Error;
+        _drawerBusy = false;
+    }
+
+    private async Task UnsetCaptain()
+    {
+        if (_drawerTeam is null) return;
+        _drawerBusy = true; _drawerError = null;
+        var r = await TeamService.SetCaptainAsync(_drawerTeam.Id, null);
+        if (r.IsSuccess) await RefreshDrawer();
+        else _drawerError = r.Error;
+        _drawerBusy = false;
+    }
+
+    private async Task RefreshDrawer()
+    {
+        if (_drawerTeam is null) return;
+        var detail = await TeamService.GetTeamByIdAsync(_drawerTeam.Id);
+        if (detail.IsSuccess)
+        {
+            _drawerCaptainId   = detail.Value.CaptainId;
+            _drawerTeamPlayers = _allPlayers
+                .Where(p => detail.Value.Players.Any(tp => tp.PlayerId == p.Id))
+                .ToList();
+            var teamInGrid = _teams.FirstOrDefault(t => t.Id == _drawerTeam.Id);
+            if (teamInGrid is not null)
+            {
+                teamInGrid.PlayerCount    = detail.Value.PlayerCount;
+                teamInGrid.CaptainId       = detail.Value.CaptainId;
+                teamInGrid.CaptainUsername = detail.Value.CaptainUsername;
+            }
         }
     }
 }

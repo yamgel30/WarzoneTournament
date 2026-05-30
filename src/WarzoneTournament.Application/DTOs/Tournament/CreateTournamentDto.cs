@@ -21,6 +21,7 @@ public class CreateTournamentDto
     public string? StreamUrl { get; set; }
     public string? DiscordChannelId { get; set; }
     public string? DiscordGuildId { get; set; }
+    public string? DiscordEvidenceChannelId { get; set; }
     public int KillPoints { get; set; } = 1;
     public string PlacementPointsJson { get; set; } =
         "{\"1\":1.6,\"2\":1.4,\"3\":1.4,\"4\":1.4,\"5\":1.4,\"6\":1.2,\"7\":1.2,\"8\":1.2,\"9\":1.2,\"10\":1.2,\"11\":1.0,\"12\":1.0,\"13\":1.0,\"14\":1.0,\"15\":1.0,\"16\":1.0,\"17\":1.0}";
@@ -28,6 +29,7 @@ public class CreateTournamentDto
     public string? LobbyCode { get; set; }
     public string? LobbyPassword { get; set; }
     public string? BannerImageUrl { get; set; }
+    public string? LogoUrl { get; set; }
     public string? OrganizerName { get; set; }
     public int? MatchPointThreshold { get; set; }
 }

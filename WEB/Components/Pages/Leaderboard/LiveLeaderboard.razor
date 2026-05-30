@@ -1,24 +1,70 @@
 @page "/leaderboard"
 @page "/leaderboard/{TournamentId:guid}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Leaderboard
 @using WarzoneTournament.Application.DTOs.Tournament
 @using Microsoft.AspNetCore.SignalR.Client
+@using System.Text.Json
 @inject ILeaderboardService LeaderboardService
 @inject ITournamentService TournamentService
 @inject NavigationManager NavManager
+@inject IJSRuntime JS
 @implements IAsyncDisposable
 
 <PageTitle>Live Leaderboard - Warzone</PageTitle>
 
+@* ── Full-screen background image ── *@
+@if (!string.IsNullOrEmpty(_tournamentDto?.BannerImageUrl))
+{
+    <div style="position:fixed;inset:0;z-index:-1;
+                background-image:url('@_tournamentDto.BannerImageUrl');
+                background-size:cover;background-position:center;
+                opacity:0.13;pointer-events:none"></div>
+}
+
+@* ── Match Point / Winner overlay ── *@
+@if (_showOverlay)
+{
+    <div class="@(_overlayIsWinner ? "mp-overlay mp-overlay--winner" : "mp-overlay mp-overlay--matchpoint")"
+         @onclick="DismissOverlay">
+        <div class="mp-overlay__inner">
+            @if (_overlayIsWinner)
+            {
+                <div class="mp-overlay__icon">🏆</div>
+                <div class="mp-overlay__label">¡CAMPEÓN!</div>
+                <div class="mp-overlay__team">@_overlayTeamName</div>
+                <div class="mp-overlay__subtitle">¡Ganó el torneo con Match Point!</div>
+            }
+            else
+            {
+                <div class="mp-overlay__icon">⚡</div>
+                <div class="mp-overlay__label">MATCH POINT</div>
+                <div class="mp-overlay__team">@_overlayTeamName</div>
+                <div class="mp-overlay__subtitle">Solo necesita ganar 1 partida más para ser campeón</div>
+            }
+            <div class="mp-overlay__dismiss">Toca para cerrar</div>
+        </div>
+    </div>
+}
+
 <div class="leaderboard-page">
+
+    @* ── Tournament logo / gif ── *@
+    @if (!string.IsNullOrEmpty(_tournamentDto?.LogoUrl))
+    {
+        <div style="display:flex;justify-content:center;margin-bottom:12px">
+            <img src="@_tournamentDto.LogoUrl" alt="Logo"
+                 style="max-height:140px;max-width:360px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(0,0,0,0.6))" />
+        </div>
+    }
+
+    @* ── Header ── *@
     <div class="page-header">
         <h1 class="page-title">
             Live Leaderboard
-            @if (_isConnected)
-            {
-                <span class="live-indicator">● LIVE</span>
-            }
+            @if (_isConnected) { <span class="live-indicator">● LIVE</span> }
         </h1>
         <div class="leaderboard-controls">
             <RadzenDropDown @bind-Value="_selectedTournamentId"
@@ -60,119 +106,284 @@
             </div>
         }
 
-        <RadzenTabs @bind-SelectedIndex="_tabIndex">
+        @* ── Global stats bar ── *@
+        @if (_leaderboard.Any())
+        {
+            var totalMaps   = _leaderboard.Max(e => e.MatchesPlayed);
+            var avgTeamKpM  = _leaderboard.Average(e => e.AverageKillsPerMatch);
+            var avgPlayerKpM = _playerLeaderboard.Any() ? _playerLeaderboard.Average(p => p.KillsPerMatch) : 0;
+            var totalKills  = _leaderboard.Sum(e => e.TotalKills);
+            <div class="lb-stats-bar">
+                <div class="lb-stat"><span class="lb-stat__n">@totalMaps</span><span class="lb-stat__l">Mapas</span></div>
+                <div class="lb-stat"><span class="lb-stat__n">@totalKills</span><span class="lb-stat__l">Kills totales</span></div>
+                <div class="lb-stat"><span class="lb-stat__n">@avgTeamKpM.ToString("0.#")</span><span class="lb-stat__l">Avg kills/equipo/mapa</span></div>
+                <div class="lb-stat"><span class="lb-stat__n">@avgPlayerKpM.ToString("0.#")</span><span class="lb-stat__l">Avg kills/jugador/mapa</span></div>
+            </div>
+        }
+
+        @* ── Tabs ── *@
+        <RadzenTabs @bind-SelectedIndex="_activeTab" style="margin-top:4px">
             <Tabs>
 
-                @* ── Tab: Equipos ── *@
-                <RadzenTabsItem Text="Equipos" Icon="groups">
-                    @if (!_leaderboard.Any())
-                    {
-                        <div class="empty-state" style="margin-top:24px">
-                            <div class="empty-state__icon">📊</div>
-                            <h3>Sin resultados aún</h3>
-                            <p>Los matches no han comenzado o no hay resultados ingresados.</p>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="leaderboard-container" style="margin-top:16px">
-                            <div class="leaderboard-table-header">
-                                <span class="col-rank">#</span>
-                                <span class="col-team">Equipo</span>
-                                <span class="col-pts">Puntos</span>
-                                <span class="col-kills">Kills</span>
-                                <span class="col-matches">Mapas</span>
-                                <span class="col-best">Mejor Pos.</span>
+                @* ════ Tab 1 — Leaderboard ════ *@
+                <RadzenTabsItem Text="🏅 Leaderboard">
+                    <div class="lb-grid" style="margin-top:14px">
+
+                        @* LEFT — Teams *@
+                        <div class="lb-section">
+                            <div class="lb-section-header">
+                                <span>🏅 Equipos</span>
+                                @if (_leaderboard.Any(e => e.IsMatchPoint))
+                                {
+                                    <span class="mp-active-badge">● MATCH POINT ACTIVO</span>
+                                }
                             </div>
 
-                            @foreach (var entry in _leaderboard)
+                            @if (!_leaderboard.Any())
                             {
-                                <div class="leaderboard-row @GetRowClass(entry.Rank)">
-                                    <div class="col-rank">
-                                        <div class="rank-badge rank-@(entry.Rank <= 3 ? entry.Rank.ToString() : "other")">
-                                            @if (entry.Rank == 1)      {<span>🥇</span>}
-                                            else if (entry.Rank == 2)  {<span>🥈</span>}
-                                            else if (entry.Rank == 3)  {<span>🥉</span>}
-                                            else                        {<span>@entry.Rank</span>}
+                                <div class="empty-state" style="margin-top:16px">
+                                    <div class="empty-state__icon">📊</div>
+                                    <h3>Sin resultados aún</h3>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="lb-table">
+                                    <div class="lb-thead">
+                                        <span class="lbc-rank">#</span>
+                                        <span class="lbc-team">Equipo</span>
+                                        <span class="lbc-num lbc-pts">Pts</span>
+                                        <span class="lbc-num">Kills</span>
+                                        <span class="lbc-num">K/Mapa</span>
+                                        <span class="lbc-num">Mapas</span>
+                                        <span class="lbc-num">Mejor</span>
+                                    </div>
+                                    @foreach (var entry in _leaderboard)
+                                    {
+                                        <div class="lb-row @GetRowClass(entry.Rank) @(entry.IsMatchPoint ? "lb-row--mp" : "")">
+                                            <div class="lbc-rank">
+                                                <div class="rank-badge rank-@(entry.Rank <= 3 ? entry.Rank.ToString() : "other")">
+                                                    @if (entry.Rank == 1)     { <span>🥇</span> }
+                                                    else if (entry.Rank == 2) { <span>🥈</span> }
+                                                    else if (entry.Rank == 3) { <span>🥉</span> }
+                                                    else                       { <span>@entry.Rank</span> }
+                                                </div>
+                                            </div>
+                                            <div class="lbc-team">
+                                                @if (!string.IsNullOrEmpty(entry.TeamLogoUrl))
+                                                { <img src="@entry.TeamLogoUrl" alt="@entry.TeamName" class="team-logo-xs" /> }
+                                                <div class="team-name-info">
+                                                    @if (!string.IsNullOrEmpty(entry.TeamTag))
+                                                    { <span class="team-tag">[<span>@entry.TeamTag</span>]</span> }
+                                                    <span class="team-name">@entry.TeamName</span>
+                                                    @if (entry.IsMatchPoint)
+                                                    { <span class="mp-badge-inline">MP</span> }
+                                                </div>
+                                            </div>
+                                            <div class="lbc-num lbc-pts points-total">@entry.TotalPoints.ToString("0.##")</div>
+                                            <div class="lbc-num">@entry.TotalKills</div>
+                                            <div class="lbc-num">@entry.AverageKillsPerMatch.ToString("0.#")</div>
+                                            <div class="lbc-num">@entry.MatchesPlayed</div>
+                                            <div class="lbc-num">
+                                                @if (entry.BestPlacement > 0) { <span class="placement-value">#@entry.BestPlacement</span> }
+                                                else { <span>—</span> }
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="col-team">
-                                        @if (!string.IsNullOrEmpty(entry.TeamLogoUrl))
-                                        {
-                                            <img src="@entry.TeamLogoUrl" alt="@entry.TeamName" class="team-logo-xs" />
-                                        }
-                                        <div class="team-name-info">
-                                            @if (!string.IsNullOrEmpty(entry.TeamTag))
-                                            {<span class="team-tag">[<span>@entry.TeamTag</span>]</span>}
-                                            <span class="team-name">@entry.TeamName</span>
-                                            @if (entry.IsMatchPoint)
-                                            {
-                                                <span style="background:#ef4444;color:#fff;font-size:0.65em;font-weight:800;padding:2px 6px;border-radius:4px;letter-spacing:0.05em;margin-left:6px;vertical-align:middle">MATCH POINT</span>
-                                            }
-                                        </div>
-                                    </div>
-                                    <div class="col-pts points-total">@entry.TotalPoints.ToString("0.##")</div>
-                                    <div class="col-kills">@entry.TotalKills</div>
-                                    <div class="col-matches">@entry.MatchesPlayed</div>
-                                    <div class="col-best">
-                                        @if (entry.BestPlacement > 0)
-                                        {<span class="placement-value">#@entry.BestPlacement</span>}
-                                        else {<span>—</span>}
-                                    </div>
+                                    }
                                 </div>
                             }
                         </div>
-                    }
+
+                        @* RIGHT — Players *@
+                        <div class="lb-section">
+                            <div class="lb-section-header">
+                                <span>🎯 Top Fraggers</span>
+                            </div>
+
+                            @if (!_playerLeaderboard.Any())
+                            {
+                                <div class="empty-state" style="margin-top:16px">
+                                    <div class="empty-state__icon">🎮</div>
+                                    <h3>Sin estadísticas aún</h3>
+                                    <p>Ingresa kills por jugador para ver este ranking.</p>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="lb-table">
+                                    <div class="lb-thead">
+                                        <span class="lbc-rank">#</span>
+                                        <span class="lbc-team">Jugador</span>
+                                        <span class="lbc-num lbc-pts">Kills</span>
+                                        <span class="lbc-num">K/Mapa</span>
+                                        <span class="lbc-num">Mapas</span>
+                                    </div>
+                                    @foreach (var p in _playerLeaderboard)
+                                    {
+                                        <div class="lb-row @(p.Rank <= 3 ? GetRowClass(p.Rank) : "")">
+                                            <div class="lbc-rank">
+                                                <div class="rank-badge rank-@(p.Rank <= 3 ? p.Rank.ToString() : "other")">
+                                                    @if (p.Rank == 1)     { <span>🥇</span> }
+                                                    else if (p.Rank == 2) { <span>🥈</span> }
+                                                    else if (p.Rank == 3) { <span>🥉</span> }
+                                                    else                   { <span>@p.Rank</span> }
+                                                </div>
+                                            </div>
+                                            <div class="lbc-team">
+                                                <div class="team-name-info">
+                                                    <span class="team-name">@p.Username</span>
+                                                    @if (!string.IsNullOrEmpty(p.TeamTag))
+                                                    { <span class="team-tag" style="margin-left:4px">[@p.TeamTag]</span> }
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(p.TeamName))
+                                                { <div style="font-size:0.78em;color:var(--rz-text-secondary-color)">@p.TeamName</div> }
+                                            </div>
+                                            <div class="lbc-num lbc-pts points-total">@p.TotalKills</div>
+                                            <div class="lbc-num">@p.KillsPerMatch.ToString("0.#")</div>
+                                            <div class="lbc-num">@p.MatchesPlayed</div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                    </div>
                 </RadzenTabsItem>
 
-                @* ── Tab: Jugadores ── *@
-                <RadzenTabsItem Text="Jugadores" Icon="person">
-                    @if (!_playerLeaderboard.Any())
-                    {
-                        <div class="empty-state" style="margin-top:24px">
-                            <div class="empty-state__icon">🎮</div>
-                            <h3>Sin estadísticas de jugadores</h3>
-                            <p>Ingresa kills por jugador en cada mapa para ver este ranking.</p>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="leaderboard-container" style="margin-top:16px">
-                            <div class="leaderboard-table-header">
-                                <span class="col-rank">#</span>
-                                <span class="col-team" style="min-width:160px">Jugador</span>
-                                <span class="col-team">Equipo</span>
-                                <span class="col-kills">Kills</span>
-                                <span class="col-matches">Mapas</span>
-                                <span class="col-best">K/Mapa</span>
-                            </div>
+                @* ════ Tab 2 — Puntuación ════ *@
+                <RadzenTabsItem Text="📋 Puntuación">
+                    <div style="margin-top:16px">
 
-                            @foreach (var entry in _playerLeaderboard)
-                            {
-                                <div class="leaderboard-row @(entry.Rank <= 3 ? GetRowClass(entry.Rank) : "")">
-                                    <div class="col-rank">
-                                        <div class="rank-badge rank-@(entry.Rank <= 3 ? entry.Rank.ToString() : "other")">
-                                            @if (entry.Rank == 1)      {<span>🥇</span>}
-                                            else if (entry.Rank == 2)  {<span>🥈</span>}
-                                            else if (entry.Rank == 3)  {<span>🥉</span>}
-                                            else                        {<span>@entry.Rank</span>}
-                                        </div>
-                                    </div>
-                                    <div class="col-team" style="min-width:160px">
-                                        <span class="team-name">@entry.Username</span>
-                                    </div>
-                                    <div class="col-team">
-                                        @if (!string.IsNullOrEmpty(entry.TeamTag))
-                                        {<small style="color:var(--rz-text-secondary-color)">[@entry.TeamTag]</small>}
-                                        <span>@(entry.TeamName ?? "—")</span>
-                                    </div>
-                                    <div class="col-kills points-total">@entry.TotalKills</div>
-                                    <div class="col-matches">@entry.MatchesPlayed</div>
-                                    <div class="col-best">@entry.KillsPerMatch</div>
+                        @* Formula + multipliers summary row *@
+                        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-start">
+                            <RadzenCard style="flex:1;min-width:220px">
+                                <h4 style="margin:0 0 6px;font-size:0.9em;color:var(--rz-text-secondary-color);text-transform:uppercase;letter-spacing:0.04em">Fórmula</h4>
+                                <div style="font-family:monospace;font-size:0.9em;background:var(--rz-base-background-color);padding:7px 10px;border-radius:4px">
+                                    Pts = Kills × Mult(pos) + Bonus
                                 </div>
+                                @if (_tournamentDto?.MatchPointThreshold is not null)
+                                {
+                                    <div style="margin-top:8px;font-size:0.83em;display:flex;align-items:center;gap:6px">
+                                        <span style="background:#ef4444;color:#fff;font-weight:800;padding:1px 6px;border-radius:3px;font-size:0.85em">MP</span>
+                                        ≥ <strong>@_tournamentDto.MatchPointThreshold pts</strong>
+                                    </div>
+                                }
+                            </RadzenCard>
+                            @if (_placementMultipliers.Any())
+                            {
+                                <RadzenCard style="flex:2;min-width:260px">
+                                    <h4 style="margin:0 0 8px;font-size:0.9em;color:var(--rz-text-secondary-color);text-transform:uppercase;letter-spacing:0.04em">Multiplicadores por posición</h4>
+                                    <div style="display:flex;flex-wrap:wrap;gap:4px">
+                                        @foreach (var kv in _placementMultipliers.OrderBy(x => x.Key))
+                                        {
+                                            var exPts = Math.Round(10 * kv.Value, 2);
+                                            <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-grid-header-border-color);padding:4px 8px;border-radius:4px;font-size:0.8em;text-align:center;min-width:70px">
+                                                <div style="font-weight:700">
+                                                    @if (kv.Key == 1) { <span>🥇</span> }
+                                                    else if (kv.Key == 2) { <span>🥈</span> }
+                                                    else if (kv.Key == 3) { <span>🥉</span> }
+                                                    #@kv.Key
+                                                </div>
+                                                <div style="color:var(--rz-primary);font-weight:600">×@kv.Value.ToString("0.##")</div>
+                                                <div style="color:var(--rz-text-secondary-color);font-size:0.85em">10k→@exPts.ToString("0.##")</div>
+                                            </div>
+                                        }
+                                    </div>
+                                </RadzenCard>
                             }
                         </div>
-                    }
+
+                        @* Scoring breakdown table *@
+                        @{
+                            var allMaps = _leaderboard
+                                .SelectMany(e => e.MatchScores)
+                                .GroupBy(s => s.MatchId)
+                                .Select(g => g.First())
+                                .OrderBy(s => s.MatchNumber)
+                                .ToList();
+                        }
+
+                        @if (!_leaderboard.Any())
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat">
+                                No hay resultados de mapas aún.
+                            </RadzenAlert>
+                        }
+                        else
+                        {
+                            <div style="overflow-x:auto">
+                                <table class="scoring-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="st-col-team">Equipo / Jugador</th>
+                                            @foreach (var map in allMaps)
+                                            {
+                                                <th class="st-col-map">Mapa @map.MatchNumber</th>
+                                            }
+                                            <th class="st-col-total">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var team in _leaderboard.OrderBy(t => t.Rank))
+                                        {
+                                            var teamPlayers = _playerLeaderboard
+                                                .Where(p => p.TeamId == team.TeamId)
+                                                .OrderByDescending(p => p.TotalKills)
+                                                .ToList();
+
+                                            @* Team header row *@
+                                            <tr class="st-row-team">
+                                                <td class="st-cell-teamname">
+                                                    <span class="st-rank">#@team.Rank</span>
+                                                    @if (!string.IsNullOrEmpty(team.TeamTag))
+                                                    { <span class="st-tag">[@team.TeamTag]</span> }
+                                                    <span class="st-tname">@team.TeamName</span>
+                                                    @if (team.IsMatchPoint)
+                                                    { <span class="mp-badge-inline" style="font-size:0.6em;vertical-align:middle">MP</span> }
+                                                </td>
+                                                @foreach (var map in allMaps)
+                                                {
+                                                    var sc = team.MatchScores.FirstOrDefault(s => s.MatchId == map.MatchId);
+                                                    <td class="st-cell-map st-cell-teammap">
+                                                        @if (sc is not null)
+                                                        {
+                                                            <div class="st-place">@ScoringPlacementIcon(sc.Placement) #@sc.Placement</div>
+                                                            <div class="st-kills">@sc.Kills kills</div>
+                                                            <div class="st-pts">@sc.Points.ToString("0.##") pts</div>
+                                                        }
+                                                        else { <span class="st-dash">—</span> }
+                                                    </td>
+                                                }
+                                                <td class="st-cell-total">
+                                                    <span class="st-total-pts">@team.TotalPoints.ToString("0.##") pts</span>
+                                                    <span class="st-total-sub">@team.TotalKills kills</span>
+                                                </td>
+                                            </tr>
+
+                                            @* Player rows *@
+                                            @foreach (var player in teamPlayers)
+                                            {
+                                                <tr class="st-row-player">
+                                                    <td class="st-cell-playername">
+                                                        <span class="st-indent">↳</span>@player.Username
+                                                    </td>
+                                                    @foreach (var map in allMaps)
+                                                    {
+                                                        var mk = player.MatchKills.FirstOrDefault(k => k.MatchId == map.MatchId);
+                                                        <td class="st-cell-map st-cell-playermap">
+                                                            @if (mk is not null) { <span>@mk.Kills</span> }
+                                                            else { <span class="st-dash">—</span> }
+                                                        </td>
+                                                    }
+                                                    <td class="st-cell-total st-cell-playertotal">@player.TotalKills</td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
                 </RadzenTabsItem>
 
             </Tabs>
@@ -180,37 +391,323 @@
     }
 </div>
 
+<style>
+    /* ── Stats bar ── */
+    .lb-stats-bar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 4px;
+    }
+    .lb-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: var(--rz-base-background-color);
+        border: 1px solid var(--rz-grid-header-border-color);
+        border-radius: 8px;
+        padding: 8px 18px;
+        min-width: 110px;
+        flex: 1;
+    }
+    .lb-stat__n {
+        font-size: 1.5em;
+        font-weight: 800;
+        color: var(--rz-primary);
+        line-height: 1;
+    }
+    .lb-stat__l {
+        font-size: 0.72em;
+        color: var(--rz-text-secondary-color);
+        margin-top: 3px;
+        text-align: center;
+    }
+
+    /* ── Two-column grid ── */
+    .lb-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+        gap: 20px;
+        align-items: start;
+    }
+    @@media (max-width: 860px) {
+        .lb-grid { grid-template-columns: 1fr; }
+        .lb-stats-bar { gap: 8px; }
+        .lb-stat { min-width: 80px; padding: 6px 10px; }
+    }
+
+    .lb-section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.05em;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+
+    /* ── Table ── */
+    .lb-table { border-radius: 10px; overflow: hidden; }
+
+    .lb-thead {
+        display: grid;
+        grid-template-columns: 48px 1fr 72px 60px 60px 52px 52px;
+        background: var(--rz-grid-header-background-color, #1e1e2e);
+        padding: 7px 12px;
+        font-size: 0.78em;
+        color: var(--rz-text-secondary-color);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        gap: 4px;
+    }
+
+    /* Player table has fewer columns */
+    .lb-section:last-child .lb-thead {
+        grid-template-columns: 48px 1fr 68px 60px 52px;
+    }
+    .lb-section:last-child .lb-row {
+        grid-template-columns: 48px 1fr 68px 60px 52px;
+    }
+
+    .lb-row {
+        display: grid;
+        grid-template-columns: 48px 1fr 72px 60px 60px 52px 52px;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--rz-grid-header-border-color);
+        gap: 4px;
+        transition: background 0.15s;
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-row:hover { background: rgba(255,255,255,0.03); }
+
+    .lb-row--mp {
+        border-left: 3px solid #ef4444 !important;
+        background: rgba(239,68,68,0.07) !important;
+    }
+
+    .lbc-rank  { display: flex; align-items: center; justify-content: center; }
+    .lbc-team  { display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+    .lbc-num   { text-align: right; font-size: 0.92em; }
+    .lbc-pts   { font-weight: 700; color: var(--rz-primary); }
+
+    /* MP badges */
+    .mp-active-badge {
+        background: #ef4444;
+        color: #fff;
+        font-size: 0.68em;
+        font-weight: 800;
+        padding: 2px 8px;
+        border-radius: 4px;
+        letter-spacing: 0.04em;
+        animation: mp-pulse 1.5s ease-in-out infinite;
+    }
+    .mp-badge-inline {
+        background: #ef4444;
+        color: #fff;
+        font-size: 0.62em;
+        font-weight: 800;
+        padding: 2px 5px;
+        border-radius: 3px;
+        letter-spacing: 0.05em;
+        margin-left: 5px;
+        vertical-align: middle;
+        animation: mp-pulse 1.5s ease-in-out infinite;
+    }
+
+    @@keyframes mp-pulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.5; }
+    }
+
+    /* ── Overlay ── */
+    .mp-overlay {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        animation: overlay-in 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @@keyframes overlay-in {
+        from { opacity: 0; transform: scale(0.85); }
+        to   { opacity: 1; transform: scale(1); }
+    }
+    .mp-overlay--matchpoint { background: rgba(0,0,0,0.82); }
+    .mp-overlay--winner     { background: rgba(0,0,0,0.88); }
+
+    .mp-overlay__inner {
+        text-align: center; padding: 40px 56px;
+        border-radius: 20px; max-width: 560px; width: 90%;
+        animation: card-bounce 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @@keyframes card-bounce {
+        from { transform: translateY(40px) scale(0.9); }
+        to   { transform: translateY(0) scale(1); }
+    }
+    .mp-overlay--matchpoint .mp-overlay__inner {
+        background: linear-gradient(135deg,#1a0505,#3b0000);
+        border: 2px solid #ef4444;
+        box-shadow: 0 0 60px rgba(239,68,68,0.5), 0 0 120px rgba(239,68,68,0.2);
+    }
+    .mp-overlay--winner .mp-overlay__inner {
+        background: linear-gradient(135deg,#1a1000,#3d2500);
+        border: 2px solid #f59e0b;
+        box-shadow: 0 0 60px rgba(245,158,11,0.5), 0 0 120px rgba(245,158,11,0.2);
+    }
+
+    .mp-overlay__icon {
+        font-size: 4em; margin-bottom: 8px;
+        animation: icon-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.15s both;
+    }
+    @@keyframes icon-pop {
+        from { transform: scale(0); }
+        to   { transform: scale(1); }
+    }
+    .mp-overlay__label {
+        font-size: 1em; font-weight: 900; letter-spacing: 0.25em;
+        text-transform: uppercase; margin-bottom: 12px;
+    }
+    .mp-overlay--matchpoint .mp-overlay__label { color: #ef4444; }
+    .mp-overlay--winner     .mp-overlay__label { color: #f59e0b; }
+
+    .mp-overlay__team {
+        font-size: 2.4em; font-weight: 900; color: #fff;
+        line-height: 1.1; margin-bottom: 12px;
+        animation: glow-text 1.5s ease-in-out infinite alternate;
+    }
+    .mp-overlay--matchpoint .mp-overlay__team { text-shadow: 0 0 30px #ef4444; }
+    .mp-overlay--winner     .mp-overlay__team { text-shadow: 0 0 30px #f59e0b; }
+    @@keyframes glow-text {
+        from { filter: brightness(1); }
+        to   { filter: brightness(1.3); }
+    }
+    .mp-overlay__subtitle { font-size: 0.95em; color: rgba(255,255,255,0.7); margin-bottom: 24px; }
+    .mp-overlay__dismiss  { font-size: 0.75em; color: rgba(255,255,255,0.3); letter-spacing: 0.05em; }
+
+    /* ── Scoring breakdown table ── */
+    .scoring-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.88em;
+        background: var(--rz-base-background-color);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .scoring-table thead th {
+        background: var(--rz-grid-header-background-color, #1e1e2e);
+        color: var(--rz-text-secondary-color);
+        font-weight: 600;
+        font-size: 0.78em;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 8px 10px;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .st-col-team { text-align: left !important; min-width: 160px; }
+    .st-col-map  { min-width: 100px; }
+    .st-col-total { min-width: 90px; }
+
+    /* Team rows */
+    .st-row-team td {
+        background: var(--rz-base-200, rgba(255,255,255,0.04));
+        border-top: 2px solid var(--rz-grid-header-border-color);
+        padding: 8px 10px;
+        vertical-align: middle;
+    }
+    .st-cell-teamname {
+        display: flex; align-items: center; gap: 5px;
+        font-weight: 700; white-space: nowrap;
+    }
+    .st-rank  { color: var(--rz-text-secondary-color); font-size: 0.85em; min-width: 26px; }
+    .st-tag   { color: var(--rz-text-secondary-color); font-size: 0.85em; }
+    .st-tname { color: var(--rz-text-color); }
+
+    .st-cell-teammap {
+        text-align: center;
+        font-size: 0.85em;
+        line-height: 1.35;
+    }
+    .st-place { font-weight: 700; white-space: nowrap; }
+    .st-kills { color: var(--rz-text-secondary-color); }
+    .st-pts   { color: var(--rz-primary); font-weight: 600; }
+
+    .st-cell-total {
+        text-align: center;
+        font-weight: 700;
+    }
+    .st-total-pts { display: block; color: var(--rz-primary); }
+    .st-total-sub { display: block; font-size: 0.82em; color: var(--rz-text-secondary-color); font-weight: 400; }
+
+    /* Player rows */
+    .st-row-player td {
+        border-top: 1px solid var(--rz-grid-header-border-color);
+        padding: 5px 10px;
+        vertical-align: middle;
+    }
+    .st-cell-playername {
+        color: var(--rz-text-secondary-color);
+        white-space: nowrap;
+        padding-left: 18px !important;
+        font-size: 0.92em;
+    }
+    .st-indent { color: var(--rz-text-disabled-color, #555); margin-right: 4px; }
+    .st-cell-playermap {
+        text-align: center;
+        color: var(--rz-text-secondary-color);
+    }
+    .st-cell-playertotal {
+        text-align: center;
+        font-weight: 600;
+        color: var(--rz-text-secondary-color);
+    }
+    .st-cell-map { border-left: 1px solid var(--rz-grid-header-border-color); }
+    .st-dash { color: var(--rz-text-disabled-color, #555); }
+</style>
+
 @code {
     [Parameter] public Guid TournamentId { get; set; }
 
     private bool _loading = false;
     private bool _isConnected = false;
-    private int _tabIndex = 0;
+    private int _activeTab = 0;
     private List<LeaderboardEntryDto> _leaderboard = new();
     private List<PlayerLeaderboardEntryDto> _playerLeaderboard = new();
     private List<TournamentListDto> _tournaments = new();
     private Guid _selectedTournamentId;
     private TournamentDto? _tournamentDto;
+    private Dictionary<int, double> _placementMultipliers = new();
     private HubConnection? _hubConnection;
+
+    // Overlay
+    private bool _showOverlay = false;
+    private bool _overlayIsWinner = false;
+    private string _overlayTeamName = "";
+    private HashSet<Guid> _prevMatchPointIds = new();
+    private bool _prevWasCompleted = false;
+    private bool _isFirstLoad = true;
+    private Queue<(string name, bool isWinner)> _overlayQueue = new();
+    private CancellationTokenSource? _overlayDismissCts;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadTournamentsAsync();
-
         if (TournamentId != Guid.Empty)
         {
             _selectedTournamentId = TournamentId;
             await LoadLeaderboardAsync();
         }
+    }
 
-        await ConnectToSignalRAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await ConnectToSignalRAsync();
     }
 
     private async Task LoadTournamentsAsync()
     {
         var result = await TournamentService.GetTournamentsAsync(new TournamentQueryDto { PageSize = 50 });
-        if (result.IsSuccess)
-            _tournaments = result.Value.Items.ToList();
+        if (result.IsSuccess) _tournaments = result.Value.Items.ToList();
     }
 
     private async Task LoadLeaderboardAsync()
@@ -219,18 +716,92 @@
         _loading = true;
         try
         {
-            var teamResult     = await LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
-            var playerResult   = await LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
+            var teamResult       = await LeaderboardService.GetTournamentLeaderboardAsync(_selectedTournamentId);
+            var playerResult     = await LeaderboardService.GetPlayerLeaderboardAsync(_selectedTournamentId);
             var tournamentResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
 
-            if (teamResult.IsSuccess)       _leaderboard       = teamResult.Value.ToList();
-            if (playerResult.IsSuccess)     _playerLeaderboard = playerResult.Value.ToList();
-            if (tournamentResult.IsSuccess) _tournamentDto     = tournamentResult.Value;
+            bool hasWinner = tournamentResult.IsSuccess && tournamentResult.Value.WinnerTeamId.HasValue;
+
+            if (teamResult.IsSuccess)
+            {
+                var newLb = teamResult.Value.ToList();
+                var newMp = newLb.Where(e => e.IsMatchPoint).Select(e => e.TeamId).ToHashSet();
+
+                if (!_isFirstLoad && !hasWinner)
+                {
+                    foreach (var id in newMp.Except(_prevMatchPointIds))
+                    {
+                        var name = newLb.FirstOrDefault(e => e.TeamId == id)?.TeamName ?? "Equipo";
+                        _overlayQueue.Enqueue((name, false));
+                    }
+                }
+                _prevMatchPointIds = newMp;
+                _leaderboard = newLb;
+            }
+
+            if (playerResult.IsSuccess) _playerLeaderboard = playerResult.Value.ToList();
+
+            if (tournamentResult.IsSuccess)
+            {
+                _tournamentDto = tournamentResult.Value;
+
+                // Parse placement multipliers for Scoring tab
+                try { _placementMultipliers = JsonSerializer.Deserialize<Dictionary<int, double>>(_tournamentDto.PlacementPointsJson) ?? new(); }
+                catch { _placementMultipliers = new(); }
+
+                if (!_prevWasCompleted && _tournamentDto.WinnerTeamId.HasValue)
+                {
+                    var name = _leaderboard.FirstOrDefault(e => e.TeamId == _tournamentDto.WinnerTeamId)?.TeamName ?? "Equipo";
+                    _overlayQueue.Enqueue((name, true));
+                    _prevWasCompleted = true;
+                }
+            }
+
+            _isFirstLoad = false;
+            await ProcessOverlayQueueAsync();
         }
-        finally
+        finally { _loading = false; }
+    }
+
+    private async Task ProcessOverlayQueueAsync()
+    {
+        if (_showOverlay || !_overlayQueue.Any()) return;
+        var (name, isWinner) = _overlayQueue.Dequeue();
+        _overlayTeamName = name;
+        _overlayIsWinner = isWinner;
+        _showOverlay = true;
+        await InvokeAsync(StateHasChanged);
+        try
         {
-            _loading = false;
+            if (isWinner)
+            {
+                await JS.InvokeVoidAsync("launchWinnerConfetti");
+                await JS.InvokeVoidAsync("playWinnerSound");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("launchMatchPointConfetti");
+                await JS.InvokeVoidAsync("playMatchPointSound");
+            }
         }
+        catch { }
+        _overlayDismissCts?.Cancel();
+        _overlayDismissCts = new CancellationTokenSource();
+        var token = _overlayDismissCts.Token;
+        _ = Task.Delay(6000, token).ContinueWith(async _ =>
+        {
+            if (!token.IsCancellationRequested)
+                await InvokeAsync(async () => { await DismissOverlay(); });
+        }, TaskScheduler.Default);
+    }
+
+    private async Task DismissOverlay()
+    {
+        _overlayDismissCts?.Cancel();
+        _showOverlay = false;
+        StateHasChanged();
+        await Task.Delay(200);
+        if (_overlayQueue.Any()) await ProcessOverlayQueueAsync();
     }
 
     private async Task ConnectToSignalRAsync()
@@ -249,8 +820,23 @@
             }
         });
 
+        _hubConnection.On<Guid, string>("TournamentStatusChanged", async (tournamentId, status) =>
+        {
+            if (tournamentId == _selectedTournamentId && status == "Completed")
+            {
+                await LoadLeaderboardAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
         _hubConnection.Reconnecting += _ => { _isConnected = false; InvokeAsync(StateHasChanged); return Task.CompletedTask; };
-        _hubConnection.Reconnected  += _ => { _isConnected = true;  InvokeAsync(StateHasChanged); return Task.CompletedTask; };
+        _hubConnection.Reconnected  += async _ =>
+        {
+            _isConnected = true;
+            if (_selectedTournamentId != Guid.Empty)
+                await _hubConnection.SendAsync("JoinTournamentGroup", _selectedTournamentId.ToString());
+            await InvokeAsync(StateHasChanged);
+        };
 
         try
         {
@@ -259,14 +845,17 @@
             if (_selectedTournamentId != Guid.Empty)
                 await _hubConnection.SendAsync("JoinTournamentGroup", _selectedTournamentId.ToString());
         }
-        catch
-        {
-            _isConnected = false;
-        }
+        catch { _isConnected = false; }
     }
 
     private async Task OnTournamentChanged(object? _)
     {
+        _prevMatchPointIds.Clear();
+        _prevWasCompleted = false;
+        _isFirstLoad = true;
+        _overlayQueue.Clear();
+        _showOverlay = false;
+        _placementMultipliers.Clear();
         if (_hubConnection?.State == HubConnectionState.Connected && _selectedTournamentId != Guid.Empty)
             await _hubConnection.SendAsync("JoinTournamentGroup", _selectedTournamentId.ToString());
         await LoadLeaderboardAsync();
@@ -282,9 +871,17 @@
         _ => ""
     };
 
+    private static string ScoringPlacementIcon(int placement) => placement switch
+    {
+        1 => "🥇",
+        2 => "🥈",
+        3 => "🥉",
+        _ => ""
+    };
+
     public async ValueTask DisposeAsync()
     {
-        if (_hubConnection is not null)
-            await _hubConnection.DisposeAsync();
+        _overlayDismissCts?.Cancel();
+        if (_hubConnection is not null) await _hubConnection.DisposeAsync();
     }
 }

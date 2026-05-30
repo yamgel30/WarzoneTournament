@@ -13,7 +13,7 @@ public class TeamDto
     public string? ContactEmail { get; set; }
     public Platform PreferredPlatform { get; set; }
     public string PlatformName => PreferredPlatform.ToString();
-    public Guid CaptainId { get; set; }
+    public Guid? CaptainId { get; set; }
     public string? CaptainUsername { get; set; }
     public int PlayerCount { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -26,12 +26,14 @@ public class TournamentDto
     public string? StreamUrl { get; set; }
     public string? DiscordChannelId { get; set; }
     public string? DiscordGuildId { get; set; }
+    public string? DiscordEvidenceChannelId { get; set; }
     public int KillPoints { get; set; }
     public string PlacementPointsJson { get; set; } = "{}";
     public bool IsPrivate { get; set; }
     public string? LobbyCode { get; set; }
     public string? LobbyPassword { get; set; }
     public string? BannerImageUrl { get; set; }
+    public string? LogoUrl { get; set; }
     public string? OrganizerName { get; set; }
     public int? MatchPointThreshold { get; set; }
     public Guid? WinnerTeamId { get; set; }

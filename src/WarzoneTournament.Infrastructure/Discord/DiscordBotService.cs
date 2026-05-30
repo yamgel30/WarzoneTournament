@@ -4,6 +4,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
+using WarzoneTournament.Application.Common.Models;
+using WarzoneTournament.Application.DTOs.Discord;
+using WarzoneTournament.Application.DTOs.Evidence;
+using WarzoneTournament.Domain.Enums;
 using WarzoneTournament.Domain.Interfaces;
 
 namespace WarzoneTournament.Infrastructure.Discord;
@@ -15,8 +19,11 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     private readonly ILogger<DiscordBotService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private bool _isReady = false;
+    private string _connectionStatus = "Not configured";
 
-    private string BotToken => _config["Discord:BotToken"] ?? string.Empty;
+    public bool IsReady => _isReady;
+    public string ConnectionStatus => _connectionStatus;
+    public event Action? OnStatusChanged;
 
     public DiscordBotService(IConfiguration config, ILogger<DiscordBotService> logger,
         IServiceProvider serviceProvider)
@@ -35,19 +42,41 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
 
         _client.Log += OnLog;
         _client.Ready += OnReady;
+        _client.Disconnected += OnDisconnected;
         _client.MessageReceived += OnMessageReceived;
+    }
+
+    private void SetStatus(bool ready, string status)
+    {
+        _isReady = ready;
+        _connectionStatus = status;
+        OnStatusChanged?.Invoke();
+    }
+
+    // Resolve token: DB (SiteSettings) → appsettings fallback
+    private async Task<string> GetBotTokenAsync()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var settings = scope.ServiceProvider.GetRequiredService<ISiteSettingsService>();
+        var dto = await settings.GetAsync();
+        return !string.IsNullOrWhiteSpace(dto.DiscordBotToken)
+            ? dto.DiscordBotToken
+            : _config["Discord:BotToken"] ?? string.Empty;
     }
 
     // ── Bot lifecycle ──────────────────────────────────────────────────────
 
     public async Task StartBotAsync(CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(BotToken))
+        var token = await GetBotTokenAsync();
+        if (string.IsNullOrEmpty(token))
         {
-            _logger.LogWarning("Discord:BotToken not configured — bot will not start.");
+            _logger.LogWarning("Discord bot token not configured — bot will not start. Set it in Global Settings.");
+            SetStatus(false, "Not configured");
             return;
         }
-        await _client.LoginAsync(TokenType.Bot, BotToken);
+        SetStatus(false, "Connecting");
+        await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
         _logger.LogInformation("Discord bot started.");
     }
@@ -55,6 +84,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     public async Task StopBotAsync(CancellationToken ct = default)
     {
         await _client.StopAsync();
+        SetStatus(false, "Disconnected");
         _logger.LogInformation("Discord bot stopped.");
     }
 
@@ -230,6 +260,56 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
     }
 
+    public Task<Result<IReadOnlyList<DiscordChannelDto>>> GetGuildChannelsAsync(string guildId, CancellationToken ct = default)
+    {
+        if (!_isReady)
+            return Task.FromResult(Result.Failure<IReadOnlyList<DiscordChannelDto>>("El bot de Discord no está conectado."));
+
+        if (!ulong.TryParse(guildId, out var guildIdParsed))
+            return Task.FromResult(Result.Failure<IReadOnlyList<DiscordChannelDto>>("Guild ID inválido."));
+
+        var guild = _client.GetGuild(guildIdParsed);
+        if (guild is null)
+            return Task.FromResult(Result.Failure<IReadOnlyList<DiscordChannelDto>>(
+                "Servidor no encontrado. Verifica que el bot esté en el servidor."));
+
+        IReadOnlyList<DiscordChannelDto> channels = guild.TextChannels
+            .OrderBy(c => c.Position)
+            .Select(c => new DiscordChannelDto { Id = c.Id.ToString(), Name = c.Name })
+            .ToList();
+
+        return Task.FromResult(Result.Success(channels));
+    }
+
+    public async Task<Result<DiscordUserDto>> GetDiscordUserAsync(string discordId, CancellationToken ct = default)
+    {
+        if (!_isReady)
+            return Result.Failure<DiscordUserDto>("El bot de Discord no está configurado o no está listo.");
+
+        if (!ulong.TryParse(discordId, out var userId))
+            return Result.Failure<DiscordUserDto>("Discord ID inválido. Debe ser un número de 17–20 dígitos.");
+
+        try
+        {
+            var user = await _client.Rest.GetUserAsync(userId);
+            if (user is null)
+                return Result.Failure<DiscordUserDto>("Usuario no encontrado en Discord.");
+
+            return Result.Success(new DiscordUserDto
+            {
+                Id         = discordId,
+                Username   = user.Username,
+                GlobalName = user.GlobalName,
+                AvatarUrl  = user.GetAvatarUrl(size: 256) ?? user.GetDefaultAvatarUrl()
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Discord: error buscando usuario {DiscordId}: {Msg}", discordId, ex.Message);
+            return Result.Failure<DiscordUserDto>("No se pudo obtener la información. Verifica que el ID sea correcto.");
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private async Task<ITextChannel?> GetTournamentChannelAsync(Guid tournamentId, IUnitOfWork uow)
@@ -254,8 +334,14 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
 
     private Task OnReady()
     {
-        _isReady = true;
+        SetStatus(true, "Connected");
         _logger.LogInformation("Discord bot ready. Connected as {User}.", _client.CurrentUser.Username);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDisconnected(Exception _)
+    {
+        SetStatus(false, "Disconnected");
         return Task.CompletedTask;
     }
 
@@ -264,22 +350,107 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         if (message.Author.IsBot) return;
         if (message.Channel is not ITextChannel) return;
 
-        var channelIdStr = message.Channel.Id.ToString();
+        var images = message.Attachments.Where(IsImageAttachment).ToList();
+        if (!images.Any()) return;
 
-        // Check if this channel belongs to any active tournament
+        var channelIdStr = message.Channel.Id.ToString();
+        var authorDiscordId = message.Author.Id.ToString();
+
         using var scope = _serviceProvider.CreateScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var tournaments = await uow.Tournaments.FindAsync(t => t.DiscordChannelId == channelIdStr);
-        if (!tournaments.Any()) return;
 
-        // Process image attachments as evidence
-        var images = message.Attachments.Where(IsImageAttachment).ToList();
-        if (images.Any())
+        // Accept evidence from: (a) global evidence channel (DB), (b) tournament evidence channel, or (c) tournament announcement channel (fallback)
+        var siteSettingsSvc = scope.ServiceProvider.GetRequiredService<ISiteSettingsService>();
+        var siteSettings = await siteSettingsSvc.GetAsync();
+        var globalEvidenceChannelId = !string.IsNullOrWhiteSpace(siteSettings.DefaultDiscordEvidenceChannelId)
+            ? siteSettings.DefaultDiscordEvidenceChannelId
+            : _config["Discord:EvidenceChannelId"];
+        bool isEvidenceChannel = channelIdStr == globalEvidenceChannelId;
+
+        if (!isEvidenceChannel)
         {
-            _logger.LogInformation("Discord evidence image from {Author} in channel {Channel}",
-                message.Author.Username, message.Channel.Name);
+            var tournament = await uow.Tournaments.FirstOrDefaultAsync(
+                t => t.Status == TournamentStatus.InProgress &&
+                     (t.DiscordEvidenceChannelId == channelIdStr ||
+                      (t.DiscordEvidenceChannelId == null && t.DiscordChannelId == channelIdStr)));
+            isEvidenceChannel = tournament is not null;
+        }
+
+        if (!isEvidenceChannel) return;
+
+        _logger.LogInformation("Discord: {Count} imagen(es) de evidencia de {Author} en #{Channel}",
+            images.Count, message.Author.Username, message.Channel.Name);
+
+        // Identify player by Discord ID
+        var playerService = scope.ServiceProvider.GetRequiredService<IPlayerService>();
+        var playerResult = await playerService.GetPlayerByDiscordIdAsync(authorDiscordId);
+
+        if (playerResult.IsFailure)
+        {
             await message.Channel.SendMessageAsync(
-                $"{message.Author.Mention} Screenshot recibido ✅. El admin lo revisará.");
+                $"{message.Author.Mention} ❌ No encontré tu jugador registrado (Discord ID: `{authorDiscordId}`). " +
+                $"Pide al administrador que te registre en el sistema.");
+            return;
+        }
+
+        // Resolve active tournament + match for this player
+        var contextResult = await playerService.GetPlayerTournamentContextAsync(playerResult.Value.Id);
+        if (contextResult.IsFailure)
+        {
+            await message.Channel.SendMessageAsync(
+                $"{message.Author.Mention} ⚠️ {contextResult.Error}");
+            return;
+        }
+
+        var ctx = contextResult.Value;
+        if (ctx.ActiveMatchId is null)
+        {
+            await message.Channel.SendMessageAsync(
+                $"{message.Author.Mention} ⚠️ No hay mapa activo para el equipo **{ctx.TeamName}** en este momento.");
+            return;
+        }
+
+        // Submit each image as a separate evidence record
+        var evidenceService = scope.ServiceProvider.GetRequiredService<IEvidenceService>();
+        int submitted = 0;
+
+        foreach (var img in images)
+        {
+            // Use "{messageId}_{attachmentId}" so multiple images in one message each get a unique key
+            var attachmentKey = $"{message.Id}_{img.Id}";
+
+            var dto = new DiscordEvidenceDto
+            {
+                MatchId            = ctx.ActiveMatchId.Value,
+                SubmittedByTeamId  = ctx.TeamId,
+                SubmittedByPlayerId = ctx.PlayerId,
+                ImageUrl           = img.Url,
+                DiscordMessageId   = attachmentKey,
+                DiscordChannelId   = channelIdStr,
+                DiscordUsername    = message.Author.Username,
+                OriginalFileName   = img.Filename,
+                FileSizeBytes      = img.Size
+            };
+
+            var result = await evidenceService.SubmitEvidenceFromDiscordAsync(dto);
+            if (result.IsSuccess)
+            {
+                submitted++;
+            }
+            else
+            {
+                _logger.LogWarning("Discord evidence submit failed for {Author}: {Error}",
+                    message.Author.Username, result.Error);
+            }
+        }
+
+        if (submitted > 0)
+        {
+            var word = submitted == 1 ? "imagen registrada" : "imágenes registradas";
+            await message.Channel.SendMessageAsync(
+                $"{message.Author.Mention} ✅ **{submitted} {word}** para el " +
+                $"**Mapa #{ctx.ActiveMatchNumber}** — equipo **{ctx.TeamName}**.\n" +
+                $"El administrador revisará la evidencia y confirmará los resultados.");
         }
     }
 
@@ -299,6 +470,7 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
     {
         _client.Log -= OnLog;
         _client.Ready -= OnReady;
+        _client.Disconnected -= OnDisconnected;
         _client.MessageReceived -= OnMessageReceived;
         await _client.DisposeAsync();
     }

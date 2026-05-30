@@ -1,12 +1,13 @@
 using Hangfire;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Radzen;
 using WarzoneTournament.Infrastructure;
 using WEB.Components;
 using WarzoneTournament.Infrastructure.Hubs;
 using WarzoneTournament.Application;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddRadzenComponents();
@@ -18,6 +19,22 @@ builder.Services.AddSignalR(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// Cookie authentication (no Identity DB — credentials in appsettings)
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/admin/login";
+        options.AccessDeniedPath = "/admin/login";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddRazorPages(); // For Login/Logout pages
+builder.Services.AddCascadingAuthenticationState();
+
+// In-memory cache (used by SiteSettingsService)
+builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
@@ -40,8 +57,9 @@ var discordBot = app.Services.GetRequiredService<WarzoneTournament.Application.C
 await discordBot.StartBotAsync();
 
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 
@@ -51,6 +69,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
     DashboardTitle = "Warzone Tournament Jobs",
     IsReadOnlyFunc = _ => false
 });
+app.MapRazorPages();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

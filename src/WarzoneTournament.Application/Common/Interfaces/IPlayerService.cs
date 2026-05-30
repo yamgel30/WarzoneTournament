@@ -1,5 +1,6 @@
 using WarzoneTournament.Application.Common.Models;
 using WarzoneTournament.Application.DTOs.Player;
+using WarzoneTournament.Application.DTOs.Team;
 
 namespace WarzoneTournament.Application.Common.Interfaces;
 
@@ -13,4 +14,5 @@ public interface IPlayerService
     Task<Result<PlayerStatsDto>> GetPlayerStatsAsync(Guid playerId, Guid? tournamentId = null, CancellationToken ct = default);
     Task<Result> BanPlayerAsync(Guid playerId, string reason, CancellationToken ct = default);
     Task<Result> UnbanPlayerAsync(Guid playerId, CancellationToken ct = default);
+    Task<Result<PlayerContextDto>> GetPlayerTournamentContextAsync(Guid playerId, CancellationToken ct = default);
 }

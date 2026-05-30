@@ -1,14 +1,20 @@
 @page "/admin/setup/{Id:guid}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Team
 @using WarzoneTournament.Application.DTOs.Round
 @using WarzoneTournament.Application.DTOs.Match
 @using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Application.DTOs.Discord
+@using WarzoneTournament.Application.DTOs.Settings
 @using WarzoneTournament.Domain.Enums
 @inject ITournamentService TournamentService
 @inject ITeamService TeamService
 @inject IRoundService RoundService
 @inject IMatchService MatchService
+@inject IDiscordNotificationService DiscordService
+@inject ISiteSettingsService SettingsService
 @inject NavigationManager NavManager
 
 <PageTitle>Tournament Setup - Admin</PageTitle>
@@ -45,6 +51,31 @@ else
             </div>
         </div>
 
+        @* ── Control rápido de estado ──────────────────────────────────── *@
+        @if (_tournament.Status != TournamentStatus.InProgress &&
+             _tournament.Status != TournamentStatus.Completed &&
+             _tournament.Status != TournamentStatus.Cancelled)
+        {
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--rz-base-background-color);border:1px solid var(--rz-border-disabled-color);border-radius:8px;padding:10px 16px;margin-bottom:12px">
+                <span style="font-size:0.85em;color:var(--rz-text-secondary-color)">Estado:</span>
+                @if (_tournament.Status == TournamentStatus.Draft)
+                {
+                    <RadzenButton Text="Abrir Inscripción" Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
+                                  Size="ButtonSize.Small" Click="@OpenRegistration" Disabled="@_busy" />
+                }
+                @if (_tournament.Status == TournamentStatus.Registration)
+                {
+                    <RadzenButton Text="Iniciar Check-In" Icon="checklist" ButtonStyle="ButtonStyle.Warning"
+                                  Size="ButtonSize.Small" Click="@StartCheckIn" Disabled="@_busy" />
+                }
+                @if (_tournament.Status == TournamentStatus.CheckIn || _tournament.Status == TournamentStatus.Registration)
+                {
+                    <RadzenButton Text="Iniciar Torneo" Icon="play_arrow" ButtonStyle="ButtonStyle.Danger"
+                                  Size="ButtonSize.Small" Click="@StartTournament" Disabled="@_busy" />
+                }
+            </div>
+        }
+
         @if (!string.IsNullOrEmpty(_globalError))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_globalError</RadzenAlert>
@@ -62,10 +93,35 @@ else
                    ══════════════════════════════════════════ *@
                 <RadzenTabsItem Text="Equipos" Icon="groups">
                     <div style="margin-top:16px">
-                        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-3">
-                            Registra los equipos en el torneo y confirma su check-in. El torneo debe estar en
-                            <strong>Registration</strong> para inscribir y en <strong>CheckIn</strong> para confirmar asistencia.
-                        </RadzenAlert>
+                        @* ── Acciones masivas ────────────────────────────────────────── *@
+                        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+                            <RadzenButton Text="@($"Inscribir todos ({UnregisteredCount})")"
+                                          Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
+                                          Click="@RegisterAllTeams"
+                                          Disabled="@(_busy || _tournament.Status != TournamentStatus.Registration || UnregisteredCount == 0)" />
+                            <RadzenButton Text="@($"Check-In todos ({PendingCheckInCount})")"
+                                          Icon="check_circle" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@CheckInAllTeams"
+                                          Disabled="@(_busy || _tournament.Status != TournamentStatus.CheckIn || PendingCheckInCount == 0)" />
+                            @if (_selectedTeamIds.Count > 0)
+                            {
+                                <RadzenButton Text="@($"Inscribir seleccionados ({SelectedForRegistration})")"
+                                              Icon="how_to_reg" ButtonStyle="ButtonStyle.Success" Variant="Variant.Outlined"
+                                              Click="@RegisterSelectedTeams"
+                                              Disabled="@(_busy || _tournament.Status != TournamentStatus.Registration || SelectedForRegistration == 0)" />
+                                <RadzenButton Text="@($"Check-In seleccionados ({SelectedForCheckIn})")"
+                                              Icon="check_circle" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Outlined"
+                                              Click="@CheckInSelectedTeams"
+                                              Disabled="@(_busy || _tournament.Status != TournamentStatus.CheckIn || SelectedForCheckIn == 0)" />
+                            }
+                            <span style="font-size:0.82em;color:var(--rz-text-secondary-color)">
+                                @_teamStatuses.Count(t => t.IsRegistered) inscritos · @_teamStatuses.Count(t => t.CheckedIn) con check-in
+                                @if (_selectedTeamIds.Count > 0)
+                                {
+                                    <strong style="margin-left:6px">· @_selectedTeamIds.Count seleccionado(s)</strong>
+                                }
+                            </span>
+                        </div>
 
                         <RadzenDataGrid Data="@_teamStatuses" TItem="TournamentTeamStatusDto"
                                         AllowPaging="true" PageSize="15"
@@ -74,6 +130,18 @@ else
                                         FilterMode="FilterMode.Simple"
                                         GridLines="DataGridGridLines.Horizontal">
                             <Columns>
+                                <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Width="48px" Sortable="false" Filterable="false">
+                                    <HeaderTemplate>
+                                        <RadzenCheckBox TriState="false" TValue="bool"
+                                            Value="@(_teamStatuses.Count > 0 && _selectedTeamIds.Count == _teamStatuses.Count)"
+                                            Change="@((bool v) => ToggleSelectAll(v))" />
+                                    </HeaderTemplate>
+                                    <Template Context="t">
+                                        <RadzenCheckBox TriState="false" TValue="bool"
+                                            Value="@(_selectedTeamIds.Contains(t.TeamId))"
+                                            Change="@((bool v) => ToggleTeamSelection(t.TeamId, v))" />
+                                    </Template>
+                                </RadzenDataGridColumn>
                                 <RadzenDataGridColumn TItem="TournamentTeamStatusDto" Title="Equipo" Property="TeamName" Width="200px">
                                     <Template Context="t">
                                         <div style="display:flex;align-items:center;gap:10px">
@@ -361,6 +429,27 @@ else
                 <RadzenTabsItem Text="Configuración" Icon="settings">
                     <div style="margin-top:16px;max-width:520px">
                         <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Leaderboard — Media</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Selecciona un archivo desde tu PC o pega una URL.
+                            </small>
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Logo del torneo (imagen o GIF animado)" />
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_configLogoUrl" />
+                                </div>
+                            </div>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Imagen de fondo del leaderboard" />
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_configBannerUrl" />
+                                </div>
+                            </div>
+                            <RadzenButton Text="Guardar media" Icon="image" ButtonStyle="ButtonStyle.Light"
+                                          Click="@SaveMedia" Disabled="@_busy" />
+                        </RadzenCard>
+
+                        <RadzenCard class="mb-3">
                             <h3 style="margin-bottom:16px">Match Point</h3>
                             <div style="margin-bottom:16px">
                                 <RadzenLabel Text="Umbral de puntos (Match Point Threshold)" />
@@ -377,15 +466,65 @@ else
                         </RadzenCard>
 
                         <RadzenCard>
-                            <h3 style="margin-bottom:16px">Discord</h3>
+                            <h3 style="margin-bottom:6px">Discord</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Ingresa el ID del servidor y haz clic en <strong>Buscar canales</strong> para seleccionar los canales desde un dropdown.
+                            </small>
+
                             <div style="margin-bottom:12px">
-                                <RadzenLabel Text="Discord Guild ID" />
-                                <RadzenTextBox @bind-Value="_configGuildId" Style="width:100%;margin-top:6px" Placeholder="ID del servidor Discord" />
+                                <RadzenLabel Text="Discord Guild ID (ID del servidor)" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_configGuildId" Style="flex:1" Placeholder="Ej: 123456789012345678" />
+                                    <RadzenButton Text="Buscar canales" Icon="search" ButtonStyle="ButtonStyle.Primary"
+                                                  Size="ButtonSize.Small"
+                                                  Click="@LoadDiscordChannelsAsync"
+                                                  Disabled="@(_loadingChannels || string.IsNullOrWhiteSpace(_configGuildId))" />
+                                </div>
+                                @if (_channelError is not null)
+                                {
+                                    <small style="color:var(--rz-danger);display:block;margin-top:4px">@_channelError</small>
+                                }
                             </div>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Canal de anuncios" />
+                                @if (_discordChannels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_configChannelId"
+                                                    Data="@_discordChannels"
+                                                    TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal de anuncios..."
+                                                    Style="width:100%;margin-top:6px"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_configChannelId" Style="width:100%;margin-top:6px"
+                                                   Placeholder="Busca canales arriba o escribe el ID manualmente" />
+                                }
+                            </div>
+
                             <div style="margin-bottom:16px">
-                                <RadzenLabel Text="Discord Channel ID" />
-                                <RadzenTextBox @bind-Value="_configChannelId" Style="width:100%;margin-top:6px" Placeholder="ID del canal de anuncios" />
+                                <RadzenLabel Text="Canal de evidencia" />
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:4px">
+                                    Canal donde los jugadores subirán sus capturas de pantalla.
+                                </small>
+                                @if (_discordChannels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_configEvidenceChannelId"
+                                                    Data="@_discordChannels"
+                                                    TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal de evidencia..."
+                                                    Style="width:100%"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_configEvidenceChannelId" Style="width:100%"
+                                                   Placeholder="Busca canales arriba o escribe el ID manualmente" />
+                                }
                             </div>
+
                             <RadzenButton Text="Guardar Discord" Icon="save" ButtonStyle="ButtonStyle.Light"
                                           Click="@SaveConfig" Disabled="@_busy" />
                         </RadzenCard>
@@ -408,9 +547,17 @@ else
     private string? _globalError;
     private string? _globalSuccess;
 
+    private HashSet<Guid> _selectedTeamIds = new();
+
     private int? _configThreshold;
     private string? _configGuildId;
     private string? _configChannelId;
+    private string? _configEvidenceChannelId;
+    private string? _configLogoUrl;
+    private string? _configBannerUrl;
+    private List<DiscordChannelDto> _discordChannels = new();
+    private bool _loadingChannels = false;
+    private string? _channelError;
 
     private CreateRoundDto _newRound = new();
     private CreateMatchDto _newMatch = new();
@@ -432,9 +579,25 @@ else
         if (_tournament != null)
         {
             _newRound.TournamentId = Id;
-            _configThreshold = _tournament.MatchPointThreshold;
-            _configGuildId   = _tournament.DiscordGuildId;
-            _configChannelId = _tournament.DiscordChannelId;
+            _configThreshold         = _tournament.MatchPointThreshold;
+            _configGuildId           = _tournament.DiscordGuildId;
+            _configChannelId         = _tournament.DiscordChannelId;
+            _configEvidenceChannelId = _tournament.DiscordEvidenceChannelId;
+            _configLogoUrl           = _tournament.LogoUrl;
+            _configBannerUrl         = _tournament.BannerImageUrl;
+
+            // Fill blanks from GlobalSettings so the admin never starts from scratch
+            var defaults = await SettingsService.GetAsync();
+            if (string.IsNullOrEmpty(_configGuildId))           _configGuildId           = defaults.DefaultDiscordGuildId;
+            if (string.IsNullOrEmpty(_configChannelId))         _configChannelId         = defaults.DefaultDiscordAnnouncementChannelId;
+            if (string.IsNullOrEmpty(_configEvidenceChannelId)) _configEvidenceChannelId = defaults.DefaultDiscordEvidenceChannelId;
+            if (string.IsNullOrEmpty(_configLogoUrl))           _configLogoUrl           = defaults.DefaultLogoUrl;
+            if (string.IsNullOrEmpty(_configBannerUrl))         _configBannerUrl         = defaults.DefaultBannerUrl;
+            if (_configThreshold is null && defaults.DefaultMatchPointThreshold.HasValue)
+                _configThreshold = defaults.DefaultMatchPointThreshold;
+
+            if (!string.IsNullOrWhiteSpace(_configGuildId))
+                await LoadDiscordChannelsAsync();
 
             await LoadTeams();
             await LoadRounds();
@@ -446,7 +609,11 @@ else
     private async Task LoadTeams()
     {
         var result = await TeamService.GetTeamsWithTournamentStatusAsync(Id);
-        if (result.IsSuccess) _teamStatuses = result.Value.ToList();
+        if (result.IsSuccess)
+        {
+            _teamStatuses = result.Value.ToList();
+            _selectedTeamIds.IntersectWith(_teamStatuses.Select(t => t.TeamId));
+        }
     }
 
     private async Task LoadRounds()
@@ -457,14 +624,29 @@ else
 
     // ── Config ─────────────────────────────────────────────────────────────
 
+    private async Task SaveMedia()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var dto = new UpdateTournamentDto
+        {
+            LogoUrl       = _configLogoUrl,
+            BannerImageUrl = _configBannerUrl
+        };
+        var result = await TournamentService.UpdateTournamentAsync(Id, dto);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Media guardada."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
     private async Task SaveConfig()
     {
         _busy = true; _globalError = null; _globalSuccess = null;
         var dto = new UpdateTournamentDto
         {
-            MatchPointThreshold = _configThreshold,
-            DiscordGuildId      = _configGuildId,
-            DiscordChannelId    = _configChannelId
+            MatchPointThreshold      = _configThreshold,
+            DiscordGuildId           = _configGuildId,
+            DiscordChannelId         = _configChannelId,
+            DiscordEvidenceChannelId = _configEvidenceChannelId
         };
         var result = await TournamentService.UpdateTournamentAsync(Id, dto);
         if (result.IsSuccess)
@@ -472,6 +654,53 @@ else
             _tournament = result.Value;
             _globalSuccess = "Configuración guardada.";
         }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task LoadDiscordChannelsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_configGuildId)) return;
+        _loadingChannels = true; _channelError = null;
+        var result = await DiscordService.GetGuildChannelsAsync(_configGuildId);
+        if (result.IsSuccess)
+            _discordChannels = result.Value.ToList();
+        else
+            _channelError = result.Error;
+        _loadingChannels = false;
+    }
+
+    // ── Helpers (computed) ─────────────────────────────────────────────────
+    private int UnregisteredCount    => _teamStatuses.Count(t => !t.IsRegistered);
+    private int PendingCheckInCount  => _teamStatuses.Count(t => t.IsRegistered && !t.CheckedIn);
+    private int SelectedForRegistration => _teamStatuses.Count(t => _selectedTeamIds.Contains(t.TeamId) && !t.IsRegistered);
+    private int SelectedForCheckIn      => _teamStatuses.Count(t => _selectedTeamIds.Contains(t.TeamId) && t.IsRegistered && !t.CheckedIn);
+
+    // ── Tournament status ──────────────────────────────────────────────────
+
+    private async Task OpenRegistration()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TournamentService.OpenRegistrationAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Inscripción abierta."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task StartCheckIn()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TournamentService.StartCheckInAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Fase de Check-In iniciada."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task StartTournament()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var result = await TournamentService.StartTournamentAsync(Id);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "¡Torneo iniciado!"; }
         else _globalError = result.Error;
         _busy = false;
     }
@@ -502,6 +731,78 @@ else
         var result = await TeamService.UnregisterTeamFromTournamentAsync(teamId, Id);
         if (result.IsSuccess) { _globalSuccess = "Equipo eliminado del torneo."; await LoadTeams(); }
         else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private void ToggleTeamSelection(Guid teamId, bool selected)
+    {
+        if (selected) _selectedTeamIds.Add(teamId);
+        else _selectedTeamIds.Remove(teamId);
+    }
+
+    private void ToggleSelectAll(bool selected)
+    {
+        if (selected) _selectedTeamIds = _teamStatuses.Select(t => t.TeamId).ToHashSet();
+        else _selectedTeamIds.Clear();
+    }
+
+    private async Task RegisterSelectedTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => _selectedTeamIds.Contains(t.TeamId) && !t.IsRegistered).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.RegisterTeamForTournamentAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} inscrito{(ok != 1 ? "s" : "")} correctamente.";
+        await LoadTeams();
+        _busy = false;
+    }
+
+    private async Task CheckInSelectedTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => _selectedTeamIds.Contains(t.TeamId) && t.IsRegistered && !t.CheckedIn).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.CheckInTeamAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} con check-in confirmado.";
+        await LoadTeams();
+        _busy = false;
+    }
+
+    private async Task RegisterAllTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => !t.IsRegistered).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.RegisterTeamForTournamentAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} inscrito{(ok != 1 ? "s" : "")} correctamente.";
+        await LoadTeams();
+        _busy = false;
+    }
+
+    private async Task CheckInAllTeams()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var targets = _teamStatuses.Where(t => t.IsRegistered && !t.CheckedIn).ToList();
+        int ok = 0;
+        foreach (var t in targets)
+        {
+            var r = await TeamService.CheckInTeamAsync(t.TeamId, Id);
+            if (r.IsSuccess) ok++;
+        }
+        _globalSuccess = $"{ok} de {targets.Count} equipo{(targets.Count != 1 ? "s" : "")} con check-in confirmado.";
+        await LoadTeams();
         _busy = false;
     }
 

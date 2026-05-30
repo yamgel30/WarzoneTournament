@@ -24,6 +24,7 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<OCRExtractionResult>? _ocrExtractionResults;
     private IRepository<TeamPlayer>? _teamPlayers;
     private IRepository<TournamentTeam>? _tournamentTeams;
+    private IRepository<SiteSettings>? _siteSettings;
 
     public UnitOfWork(AppDbContext context)
     {
@@ -71,6 +72,9 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<TournamentTeam> TournamentTeams
         => _tournamentTeams ??= new Repository<TournamentTeam>(_context);
+
+    public IRepository<SiteSettings> SiteSettings
+        => _siteSettings ??= new Repository<SiteSettings>(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);

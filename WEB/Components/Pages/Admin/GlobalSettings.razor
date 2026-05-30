@@ -1,0 +1,424 @@
+@page "/admin/settings"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Settings
+@using WarzoneTournament.Application.DTOs.Discord
+@using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Domain.Enums
+@implements IDisposable
+@inject ISiteSettingsService SettingsService
+@inject IDiscordNotificationService DiscordService
+@inject ITournamentService TournamentService
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+
+<PageTitle>Configuración Global - Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">⚙️ Configuración Global</h1>
+        <RadzenButton Text="Volver" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => NavManager.NavigateTo("/admin"))" />
+    </div>
+
+    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-3">
+        Estas configuraciones aplican como <strong>valores predeterminados</strong> para nuevos torneos.
+        Cada torneo puede sobreescribir estos valores en su propia página de Setup.
+    </RadzenAlert>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_error</RadzenAlert>
+    }
+    @if (!string.IsNullOrEmpty(_success))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_success</RadzenAlert>
+    }
+
+    @if (_loading)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <RadzenTabs style="margin-top:4px">
+            <Tabs>
+
+                @* ── Tab 1: Branding ── *@
+                <RadzenTabsItem Text="🏷️ Branding" Icon="palette">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard>
+                            <h3 style="margin-bottom:16px">Identidad de la aplicación</h3>
+
+                            <div style="margin-bottom:14px">
+                                <RadzenLabel Text="Nombre de la aplicación / organización" />
+                                <RadzenTextBox @bind-Value="_dto.AppName" Style="width:100%;margin-top:6px"
+                                               Placeholder="ej: WZ League PRO" />
+                                <small style="color:var(--rz-text-secondary-color)">
+                                    Aparece en cabeceras y notificaciones de Discord.
+                                </small>
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Email de soporte" />
+                                <RadzenTextBox @bind-Value="_dto.SupportEmail" Style="width:100%;margin-top:6px"
+                                               Placeholder="admin@miliga.com" />
+                            </div>
+
+                            <RadzenButton Text="Guardar branding" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 2: Leaderboard defaults ── *@
+                <RadzenTabsItem Text="🏆 Torneo (defaults)" Icon="emoji_events">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Media predeterminada</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Selecciona un archivo desde tu PC o pega una URL.
+                                Nuevos torneos heredarán estos valores.
+                            </small>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Logo predeterminado (imagen o GIF animado)" />
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_dto.DefaultLogoUrl" />
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Imagen de fondo predeterminada" />
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_dto.DefaultBannerUrl" />
+                                </div>
+                            </div>
+
+                            <RadzenButton Text="Guardar media" Icon="image" ButtonStyle="ButtonStyle.Light"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+
+                        <RadzenCard>
+                            <h3 style="margin-bottom:16px">Puntuación predeterminada</h3>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Match Point Threshold (puntos)" />
+                                <RadzenNumeric @bind-Value="_dto.DefaultMatchPointThreshold"
+                                               Min="1" Max="9999" TValue="int?"
+                                               Style="width:180px;margin-top:6px"
+                                               Placeholder="ej: 120" />
+                                <small style="display:block;margin-top:4px;color:var(--rz-text-secondary-color)">
+                                    Puntos necesarios para entrar en Match Point. Deja vacío para sin Match Point.
+                                </small>
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Multiplicadores de posición (JSON)" />
+                                <RadzenTextArea @bind-Value="_dto.DefaultPlacementPointsJson"
+                                                Style="width:100%;margin-top:6px;font-family:monospace;font-size:0.85em"
+                                                Rows="4"
+                                                Placeholder='{"1":1.6,"2":1.4,"3":1.2,"4":1.0}' />
+                                <small style="color:var(--rz-text-secondary-color)">
+                                    Formato JSON: posición → multiplicador. Aplica a nuevos torneos.
+                                </small>
+                            </div>
+
+                            <RadzenButton Text="Guardar puntuación" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 3: Discord defaults ── *@
+                <RadzenTabsItem Text="🤖 Discord (defaults)" Icon="chat">
+                    <div style="margin-top:16px;max-width:520px">
+
+                        <RadzenCard class="mb-3">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                                <h3 style="margin:0">Credenciales del Bot</h3>
+                                <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(255,255,255,0.06);border-radius:20px;font-size:0.85em">
+                                    <span>@(DiscordService.ConnectionStatus switch {
+                                        "Connected"      => "✅",
+                                        "Connecting"     => "⏳",
+                                        "Disconnected"   => "❌",
+                                        _                => "⚫"
+                                    })</span>
+                                    <span style="color:var(--rz-text-secondary-color)">@DiscordService.ConnectionStatus</span>
+                                </div>
+                            </div>
+                            <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat"
+                                         style="margin-bottom:14px;font-size:0.85em">
+                                El token del bot se guarda <strong>cifrado en la base de datos</strong>.
+                                No lo compartas ni lo incluyas en código fuente o appsettings.
+                            </RadzenAlert>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Discord Bot Token" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_dto.DiscordBotToken"
+                                                   Style="flex:1;font-family:monospace"
+                                                   Placeholder="@(_showToken ? "MTIzNDU2..." : "••••••••••••••••••••")"
+                                                   InputAttributes="@(new Dictionary<string,object>{{ "type", _showToken ? "text" : "password" }})" />
+                                    <RadzenButton Icon="@(_showToken ? "visibility_off" : "visibility")"
+                                                  ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                                  Click="@(() => _showToken = !_showToken)"
+                                                  title="@(_showToken ? "Ocultar token" : "Mostrar token")" />
+                                </div>
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-top:4px">
+                                    Token de tu Discord Application Bot. Reemplaza el valor configurado en appsettings.
+                                </small>
+                            </div>
+
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                                <RadzenButton Text="Guardar token" Icon="vpn_key" ButtonStyle="ButtonStyle.Primary"
+                                              Click="@Save" Disabled="@_saving" />
+                                <RadzenButton Text="@(_restartingBot ? "Reiniciando..." : "Reiniciar Bot")"
+                                              Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                                              Click="@RestartBotAsync" Disabled="@_restartingBot"
+                                              title="Detiene y vuelve a iniciar el bot con el token guardado en base de datos" />
+                            </div>
+                            @if (_botRestartError is not null)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat"
+                                             style="margin-top:10px;font-size:0.85em">@_botRestartError</RadzenAlert>
+                            }
+                            @if (_botRestartOk)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat"
+                                             style="margin-top:10px;font-size:0.85em">Bot reiniciado — espera unos segundos hasta que el estado cambie a Connected.</RadzenAlert>
+                            }
+                        </RadzenCard>
+
+                        <RadzenCard>
+                            <h3 style="margin-bottom:6px">Servidor y canales predeterminados</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Estos valores se pre-cargan al crear un nuevo torneo.
+                                Puedes sobreescribirlos por torneo desde la página de Setup.
+                            </small>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Discord Guild ID (ID del servidor)" />
+                                <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                                    <RadzenTextBox @bind-Value="_dto.DefaultDiscordGuildId" Style="flex:1"
+                                                   Placeholder="Ej: 123456789012345678" />
+                                    <RadzenButton Text="Buscar canales" Icon="search"
+                                                  ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                                                  Click="@LoadChannelsAsync"
+                                                  Disabled="@(_loadingChannels || string.IsNullOrWhiteSpace(_dto.DefaultDiscordGuildId))" />
+                                </div>
+                                @if (_channelError is not null)
+                                {
+                                    <small style="color:var(--rz-danger);display:block;margin-top:4px">@_channelError</small>
+                                }
+                            </div>
+
+                            <div style="margin-bottom:12px">
+                                <RadzenLabel Text="Canal de anuncios predeterminado" />
+                                @if (_channels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_dto.DefaultDiscordAnnouncementChannelId"
+                                                    Data="@_channels" TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal..." Style="width:100%;margin-top:6px"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_dto.DefaultDiscordAnnouncementChannelId"
+                                                   Style="width:100%;margin-top:6px"
+                                                   Placeholder="ID del canal o busca arriba" />
+                                }
+                            </div>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Canal de evidencia predeterminado" />
+                                <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:4px">
+                                    Canal donde los jugadores subirán sus capturas.
+                                </small>
+                                @if (_channels.Any())
+                                {
+                                    <RadzenDropDown @bind-Value="_dto.DefaultDiscordEvidenceChannelId"
+                                                    Data="@_channels" TextProperty="Name" ValueProperty="Id"
+                                                    Placeholder="Selecciona canal..." Style="width:100%"
+                                                    AllowClear="true" />
+                                }
+                                else
+                                {
+                                    <RadzenTextBox @bind-Value="_dto.DefaultDiscordEvidenceChannelId"
+                                                   Style="width:100%"
+                                                   Placeholder="ID del canal o busca arriba" />
+                                }
+                            </div>
+
+                            <RadzenButton Text="Guardar Discord" Icon="save" ButtonStyle="ButtonStyle.Light"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 4: Public leaderboard ── *@
+                <RadzenTabsItem Text="📡 Página Pública" Icon="public">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard>
+                            <h3 style="margin-bottom:6px">Leaderboard Público — /live</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Selecciona el torneo que se mostrará en <strong>/live</strong>.
+                                Esta URL es fija y apta para compartir en Discord con los participantes.
+                                No tienen selector ni controles de administración.
+                            </small>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Torneo a mostrar" />
+                                <RadzenDropDown @bind-Value="_dto.FeaturedTournamentId"
+                                                Data="@_tournaments"
+                                                TextProperty="Name" ValueProperty="Id"
+                                                Placeholder="Sin torneo destacado…"
+                                                AllowClear="true"
+                                                Style="width:100%;margin-top:6px" />
+                            </div>
+
+                            @if (_dto.FeaturedTournamentId.HasValue && _dto.FeaturedTournamentId != Guid.Empty)
+                            {
+                                var publicUrl = NavManager.ToAbsoluteUri("/live").ToString();
+                                <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;padding:10px 14px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:8px;font-family:monospace;font-size:0.85em;overflow:hidden">
+                                    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a78bfa">@publicUrl</span>
+                                    <RadzenButton Icon="content_copy" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                  Click="@(() => CopyLiveUrl(publicUrl))" title="Copiar URL" />
+                                    <RadzenButton Icon="open_in_new" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                  Click="@(() => NavManager.NavigateTo("/live", forceLoad: true))" title="Abrir en nueva pestaña" />
+                                </div>
+                            }
+
+                            <RadzenButton Text="Guardar" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 5: Futuro multi-tenant ── *@
+                <RadzenTabsItem Text="🌐 Multi-Tenant" Icon="people">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard style="border-left:4px solid var(--rz-warning)">
+                            <h3 style="margin:0 0 12px">Próximamente: Multi-Tenant</h3>
+                            <p style="margin:0 0 12px">
+                                La plataforma está preparada para evolucionar a multi-tenant donde cada
+                                organizador tendrá su propio espacio aislado:
+                            </p>
+                            <div style="display:flex;flex-direction:column;gap:10px">
+                                <div style="display:flex;align-items:flex-start;gap:10px">
+                                    <span style="color:#22c55e;font-weight:700;min-width:20px">✓</span>
+                                    <div>
+                                        <strong>Fase 1: Autenticación</strong><br />
+                                        <small style="color:var(--rz-text-secondary-color)">
+                                            Login con usuario/contraseña via ASP.NET Core Identity.
+                                            Páginas admin protegidas con [Authorize].
+                                        </small>
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:flex-start;gap:10px">
+                                    <span style="color:var(--rz-warning);font-weight:700;min-width:20px">○</span>
+                                    <div>
+                                        <strong>Fase 2: Aislamiento de datos</strong><br />
+                                        <small style="color:var(--rz-text-secondary-color)">
+                                            Cada organizador solo ve sus torneos, equipos y jugadores.
+                                            Se añade OrganizerId a Tournament.
+                                        </small>
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:flex-start;gap:10px">
+                                    <span style="color:var(--rz-warning);font-weight:700;min-width:20px">○</span>
+                                    <div>
+                                        <strong>Fase 3: Self-registration de jugadores</strong><br />
+                                        <small style="color:var(--rz-text-secondary-color)">
+                                            Los jugadores se registran ellos mismos con Discord OAuth.
+                                            El admin solo aprueba.
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top:16px;font-size:0.85em;color:var(--rz-text-secondary-color)">
+                                Di "quiero autenticación" para comenzar la Fase 1.
+                            </div>
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+            </Tabs>
+        </RadzenTabs>
+    }
+</div>
+
+@code {
+    private SiteSettingsDto _dto = new();
+    private bool _loading = true;
+    private bool _saving = false;
+    private string? _error;
+    private string? _success;
+
+    private List<DiscordChannelDto> _channels = new();
+    private bool _loadingChannels = false;
+    private string? _channelError;
+    private bool _showToken = false;
+    private List<TournamentListDto> _tournaments = new();
+    private bool _restartingBot = false;
+    private string? _botRestartError;
+    private bool _botRestartOk = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dto = await SettingsService.GetAsync();
+        var t = await TournamentService.GetTournamentsAsync(new TournamentQueryDto { PageSize = 100 });
+        if (t.IsSuccess) _tournaments = t.Value.Items.ToList();
+        _loading = false;
+        DiscordService.OnStatusChanged += OnBotStatusChanged;
+    }
+
+    private void OnBotStatusChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => DiscordService.OnStatusChanged -= OnBotStatusChanged;
+
+    private async Task Save()
+    {
+        _saving = true; _error = null; _success = null;
+        var result = await SettingsService.SaveAsync(_dto);
+        if (result.IsSuccess) _success = "✓ Configuración guardada correctamente.";
+        else _error = result.Error;
+        _saving = false;
+    }
+
+    private async Task LoadChannelsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_dto.DefaultDiscordGuildId)) return;
+        _loadingChannels = true; _channelError = null;
+        var result = await DiscordService.GetGuildChannelsAsync(_dto.DefaultDiscordGuildId);
+        if (result.IsSuccess) _channels = result.Value.ToList();
+        else _channelError = result.Error;
+        _loadingChannels = false;
+    }
+
+    private async Task CopyLiveUrl(string url)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", url); }
+        catch { }
+    }
+
+    private async Task RestartBotAsync()
+    {
+        _restartingBot = true; _botRestartError = null; _botRestartOk = false;
+        try
+        {
+            await DiscordService.StopBotAsync();
+            await DiscordService.StartBotAsync();
+            _botRestartOk = true;
+        }
+        catch (Exception ex)
+        {
+            _botRestartError = $"Error al reiniciar el bot: {ex.Message}";
+        }
+        finally
+        {
+            _restartingBot = false;
+        }
+    }
+}

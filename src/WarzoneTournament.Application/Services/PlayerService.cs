@@ -3,7 +3,9 @@ using Microsoft.Extensions.Logging;
 using WarzoneTournament.Application.Common.Interfaces;
 using WarzoneTournament.Application.Common.Models;
 using WarzoneTournament.Application.DTOs.Player;
+using WarzoneTournament.Application.DTOs.Team;
 using WarzoneTournament.Domain.Entities;
+using WarzoneTournament.Domain.Enums;
 using WarzoneTournament.Domain.Interfaces;
 
 namespace WarzoneTournament.Application.Services;
@@ -170,5 +172,71 @@ public class PlayerService : IPlayerService
         _uow.Players.Update(player);
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    public async Task<Result<PlayerContextDto>> GetPlayerTournamentContextAsync(Guid playerId, CancellationToken ct = default)
+    {
+        var player = await _uow.Players.GetByIdAsync(playerId, ct);
+        if (player is null) return Result.Failure<PlayerContextDto>("Jugador no encontrado.");
+
+        var teamPlayers = await _uow.TeamPlayers.FindAsNoTrackingAsync(
+            tp => tp.PlayerId == playerId && tp.IsActive, ct);
+
+        if (!teamPlayers.Any())
+            return Result.Failure<PlayerContextDto>("No estás en ningún equipo activo.");
+
+        foreach (var tp in teamPlayers)
+        {
+            var tournamentTeams = await _uow.TournamentTeams.FindAsNoTrackingAsync(
+                x => x.TeamId == tp.TeamId, ct);
+
+            foreach (var tt in tournamentTeams)
+            {
+                var tournament = await _uow.Tournaments.GetByIdAsync(tt.TournamentId, ct);
+                if (tournament?.Status != TournamentStatus.InProgress) continue;
+
+                var team = await _uow.Teams.GetByIdAsync(tp.TeamId, ct);
+
+                // Active match = first non-completed match by MatchNumber, prioritising
+                // InProgress/WaitingEvidence/UnderReview over Pending so evidence always
+                // lands on the map that is actually being played right now.
+                var matches = await _uow.Matches.FindAsNoTrackingAsync(
+                    m => m.TournamentId == tt.TournamentId &&
+                         m.Status != Domain.Enums.MatchStatus.Completed &&
+                         m.Status != Domain.Enums.MatchStatus.Cancelled, ct);
+                var activeMatch = matches
+                    .OrderBy(m => m.Status == Domain.Enums.MatchStatus.InProgress    ? 0 :
+                                  m.Status == Domain.Enums.MatchStatus.WaitingEvidence ? 1 :
+                                  m.Status == Domain.Enums.MatchStatus.UnderReview     ? 2 :
+                                  m.Status == Domain.Enums.MatchStatus.Pending         ? 3 : 4)
+                    .ThenBy(m => m.MatchNumber)
+                    .FirstOrDefault();
+
+                var allTeamPlayers = await _uow.TeamPlayers.FindAsNoTrackingAsync(
+                    x => x.TeamId == tp.TeamId && x.IsActive, ct);
+                var playerSimples = new List<TeamPlayerSimpleDto>();
+                foreach (var p in allTeamPlayers)
+                {
+                    var pl = await _uow.Players.GetByIdAsync(p.PlayerId, ct);
+                    if (pl is not null)
+                        playerSimples.Add(new TeamPlayerSimpleDto { PlayerId = p.PlayerId, Username = pl.Username });
+                }
+
+                return Result.Success(new PlayerContextDto
+                {
+                    PlayerId = playerId,
+                    PlayerName = player.Username,
+                    TeamId = tp.TeamId,
+                    TeamName = team?.Name ?? "Desconocido",
+                    TournamentId = tt.TournamentId,
+                    TournamentName = tournament.Name,
+                    ActiveMatchId = activeMatch?.Id,
+                    ActiveMatchNumber = activeMatch?.MatchNumber ?? 0,
+                    Players = playerSimples
+                });
+            }
+        }
+
+        return Result.Failure<PlayerContextDto>("Tu equipo no está participando en ningún torneo activo en este momento.");
     }
 }

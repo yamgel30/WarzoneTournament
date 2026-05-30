@@ -1,23 +1,41 @@
 @page "/admin/manual-points"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Match
 @using WarzoneTournament.Application.DTOs.Round
 @using WarzoneTournament.Application.DTOs.Tournament
 @using WarzoneTournament.Domain.Enums
+@using Microsoft.AspNetCore.SignalR.Client
 @inject ITournamentService TournamentService
 @inject ITeamService TeamService
 @inject IMatchService MatchService
 @inject IRoundService RoundService
 @inject NavigationManager NavManager
+@implements IAsyncDisposable
 
 <PageTitle>Ingresar Kills - Admin</PageTitle>
 
 <div class="page-container">
     <div class="page-header">
         <h1 class="page-title">Ingresar Kills</h1>
-        <RadzenButton Text="Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
-                      Click="@(() => NavManager.NavigateTo("/admin"))" />
+        <div style="display:flex;gap:8px;align-items:center">
+            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light"
+                          Click="@(()=>RefreshAsync())"
+                          Disabled="@(_selectedTournamentId == Guid.Empty || _loadingMatches)"
+                          title="Actualizar datos" />
+            <RadzenButton Text="Admin" Icon="arrow_back" ButtonStyle="ButtonStyle.Light"
+                          Click="@(() => NavManager.NavigateTo("/admin"))" />
+        </div>
     </div>
+
+    @if (_refreshNotice is not null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Flat" class="mb-2"
+                     Close="@(() => _refreshNotice = null)">
+            @_refreshNotice
+        </RadzenAlert>
+    }
 
     @* ── Selección de torneo ── *@
     <RadzenCard class="mb-3">
@@ -66,6 +84,12 @@
                               Click="@AddMap" Disabled="@_addingMap" />
             </div>
 
+            @if (!string.IsNullOrEmpty(_saveError) && _editingMatch is null)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-2"
+                             Close="@(() => _saveError = null)">@_saveError</RadzenAlert>
+            }
+
             @if (_loadingMatches || _addingMap)
             {
                 <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
@@ -79,16 +103,55 @@
             }
             else
             {
+                @* Current active = first non-Completed/Cancelled match by MatchNumber *@
+                var currentMatch = _matches
+                    .Where(m => m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed && m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Cancelled)
+                    .OrderBy(m => m.MatchNumber)
+                    .FirstOrDefault();
+
                 <div style="display:flex;flex-wrap:wrap;gap:8px">
                     @foreach (var m in _matches.OrderBy(x => x.MatchNumber))
                     {
-                        var isSelected = _editingMatch?.Id == m.Id;
-                        <div @onclick="@(() => SelectMatch(m))"
-                             style="cursor:pointer;padding:10px 18px;border-radius:8px;border:2px solid @(isSelected ? "var(--rz-primary)" : "var(--rz-grid-header-border-color)");background:@(isSelected ? "var(--rz-primary-light)" : "transparent");display:flex;flex-direction:column;align-items:center;min-width:90px;transition:all 0.15s">
-                            <span style="font-weight:700;font-size:1.1em;color:@(isSelected ? "var(--rz-primary)" : "inherit")">Mapa @m.MatchNumber</span>
-                            <RadzenBadge Text="@(m.ResultsConfirmed ? "✓" : (m.TeamResults.Count > 0 ? "Parcial" : "Vacío"))"
-                                         BadgeStyle="@(m.ResultsConfirmed ? BadgeStyle.Success : (m.TeamResults.Count > 0 ? BadgeStyle.Warning : BadgeStyle.Light))"
-                                         style="margin-top:4px;font-size:0.75em" />
+                        var isSelected   = _editingMatch?.Id == m.Id;
+                        var isConfirming = _confirmDeleteMatchId == m.Id;
+                        var isCompleted = m.Status == WarzoneTournament.Domain.Enums.MatchStatus.Completed || m.Status == WarzoneTournament.Domain.Enums.MatchStatus.Cancelled;
+                        var isLocked     = !isCompleted && m.Id != currentMatch?.Id;
+
+                        <div style="position:relative;display:inline-flex">
+                            <div @onclick="@(() => isLocked ? Task.CompletedTask : SelectMatch(m))"
+                                 title="@(isLocked ? "Confirma el mapa anterior antes de continuar" : null)"
+                                 style="cursor:@(isLocked ? "not-allowed" : "pointer");opacity:@(isLocked ? "0.45" : "1");padding:10px 18px;border-radius:8px;border:2px solid @(isSelected ? "var(--rz-primary)" : "var(--rz-grid-header-border-color)");background:@(isSelected ? "var(--rz-primary-light)" : "transparent");display:flex;flex-direction:column;align-items:center;min-width:90px;transition:all 0.15s">
+                                <span style="font-weight:700;font-size:1.1em;color:@(isSelected ? "var(--rz-primary)" : "inherit")">
+                                    @if (isLocked) {<span style="margin-right:4px;font-size:.85em">🔒</span>}
+                                    Mapa @m.MatchNumber
+                                </span>
+                                <RadzenBadge Text="@(m.ResultsConfirmed ? "✓ Confirmado" : (m.TeamResults.Count > 0 ? "Parcial" : "Pendiente"))"
+                                             BadgeStyle="@(m.ResultsConfirmed ? BadgeStyle.Success : (m.TeamResults.Count > 0 ? BadgeStyle.Warning : BadgeStyle.Light))"
+                                             style="margin-top:4px;font-size:0.75em" />
+                            </div>
+                            @if (!isCompleted && !isLocked)
+                            {
+                                @if (isConfirming)
+                                {
+                                    <div style="position:absolute;top:-38px;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--rz-danger);color:#fff;border-radius:6px;padding:4px 8px;display:flex;align-items:center;gap:6px;font-size:0.8em;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.3)">
+                                        ¿Eliminar?
+                                        <span @onclick:stopPropagation="true">
+                                            <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                                          Click="@(() => DeleteMap(m.Id))" Disabled="@_deletingMap" />
+                                        </span>
+                                        <span @onclick:stopPropagation="true">
+                                            <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                          Click="@(() => _confirmDeleteMatchId = null)" />
+                                        </span>
+                                    </div>
+                                }
+                                <span @onclick:stopPropagation="true"
+                                      style="position:absolute;top:-8px;right:-8px">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                                  title="Eliminar mapa"
+                                                  Click="@(() => _confirmDeleteMatchId = (_confirmDeleteMatchId == m.Id ? null : m.Id))" />
+                                </span>
+                            }
                         </div>
                     }
                 </div>
@@ -118,6 +181,25 @@
                 Posición = lugar del equipo (1 = 1er lugar). Puedes guardar parcialmente.
             </small>
 
+            @* ── Match Point finalization confirmation ── *@
+            @if (_showMpWinConfirm)
+            {
+                <div style="background:linear-gradient(135deg,#1a0505,#3b0000);border:2px solid #ef4444;border-radius:12px;padding:20px 24px;margin:12px 0;box-shadow:0 0 24px rgba(239,68,68,0.3)">
+                    <div style="font-size:1.05em;font-weight:700;color:#ef4444;margin-bottom:10px">⚡ MATCH POINT — CONFIRMACIÓN FINAL</div>
+                    <div style="margin-bottom:16px;line-height:1.55">
+                        El equipo <strong>@_mpWinnerName</strong> está en <strong>Match Point</strong> y obtuvo el <strong>1er lugar</strong> en este mapa.
+                        Al confirmar, el torneo quedará <strong>finalizado</strong> y este equipo será declarado campeón.
+                        ¿Estás seguro?
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <RadzenButton Text="Sí, finalizar torneo" Icon="emoji_events" ButtonStyle="ButtonStyle.Danger"
+                                      Click="@ExecuteConfirmResults" Disabled="@_saving" />
+                        <RadzenButton Text="Cancelar" Icon="close" ButtonStyle="ButtonStyle.Light"
+                                      Click="@(() => _showMpWinConfirm = false)" Disabled="@_saving" />
+                    </div>
+                </div>
+            }
+
             @if (_loadingTeams)
             {
                 <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
@@ -131,7 +213,7 @@
             }
             else
             {
-                @foreach (var team in _editTeams.OrderBy(t => t.Placement == 0 ? 999 : t.Placement))
+                @foreach (var team in _editTeams)
                 {
                     <div style="margin-bottom:16px;border:1px solid var(--rz-grid-header-border-color);border-radius:8px;overflow:hidden">
                         @* Cabecera del equipo *@
@@ -241,6 +323,12 @@
     private Dictionary<int, double> _placementMap = new();
     private string? _saveError;
     private string? _saveSuccess;
+    private bool _showMpWinConfirm = false;
+    private string _mpWinnerName = string.Empty;
+    private HubConnection? _hubConnection;
+    private string? _refreshNotice;
+    private Guid? _confirmDeleteMatchId;
+    private bool _deletingMap = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -248,6 +336,58 @@
         if (result.IsSuccess)
             _tournaments = result.Value.Items.ToList();
         _loadingTournaments = false;
+        await ConnectSignalRAsync();
+    }
+
+    private async Task ConnectSignalRAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavManager.ToAbsoluteUri("/hubs/tournament"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<Guid, string>("EvidenceReviewed", async (evidenceId, status) =>
+        {
+            if (status == "Approved" && _selectedTournamentId != Guid.Empty)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync(quiet: true);
+                    _refreshNotice = "Evidencia aprobada — datos del mapa actualizados.";
+                    StateHasChanged();
+                });
+            }
+        });
+
+        try { await _hubConnection.StartAsync(); }
+        catch { /* SignalR is optional for this page */ }
+    }
+
+    private async Task RefreshAsync(bool quiet = false)
+    {
+        if (_selectedTournamentId == Guid.Empty) return;
+        if (!quiet) _loadingMatches = true;
+        _refreshNotice = null;
+
+        var result = await MatchService.GetMatchesByTournamentAsync(_selectedTournamentId);
+        if (result.IsSuccess)
+        {
+            _matches = result.Value.ToList();
+            if (_editingMatch is not null)
+            {
+                var fresh = _matches.FirstOrDefault(m => m.Id == _editingMatch.Id);
+                if (fresh is not null)
+                    await SelectMatch(fresh);
+            }
+        }
+
+        if (!quiet) _loadingMatches = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+            await _hubConnection.DisposeAsync();
     }
 
     private async Task OnTournamentSelected(object? _)
@@ -280,6 +420,18 @@
         _addingMap = true;
         _saveError = null;
         _saveSuccess = null;
+
+        // Block if any existing map is not Completed or Cancelled
+        var unconfirmed = _matches.Where(m =>
+            m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Completed &&
+            m.Status != WarzoneTournament.Domain.Enums.MatchStatus.Cancelled).ToList();
+        if (unconfirmed.Any())
+        {
+            var mapNums = string.Join(", ", unconfirmed.Select(m => $"Mapa {m.MatchNumber}"));
+            _saveError = $"No puedes agregar otro mapa hasta confirmar el anterior. Pendiente: {mapNums}.";
+            _addingMap = false;
+            return;
+        }
 
         Guid roundId;
         var roundsResult = await RoundService.GetRoundsByTournamentAsync(_selectedTournamentId);
@@ -362,6 +514,9 @@
                     }).ToList()
                 };
             }).ToList();
+
+            // Sort once on load: by existing placement if set, otherwise alphabetically
+            SortEditTeams();
         }
 
         _loadingTeams = false;
@@ -371,12 +526,9 @@
     {
         if (_editingMatch == null) return;
 
-        var validationError = ValidatePlacements();
-        if (validationError is not null)
-        {
-            _saveError = validationError;
-            return;
-        }
+        // Only block on duplicate placements (among placed teams); missing placements are allowed — show as warning
+        var dupError = ValidatePlacementDuplicates();
+        if (dupError is not null) { _saveError = dupError; return; }
 
         _saving = true;
         _saveError = null;
@@ -385,7 +537,7 @@
         var teamResults = _editTeams.Select(t => new TeamResultDto
         {
             TeamId      = t.TeamId,
-            Placement   = t.Placement > 0 ? t.Placement : 1,
+            Placement   = t.Placement,   // 0 = not yet assigned; backend treats as pending
             Kills       = t.Players.Any() ? t.Players.Sum(p => p.Kills) : t.DirectKills,
             Deaths      = 0,
             BonusPoints = t.BonusPoints,
@@ -413,7 +565,11 @@
             var idx = _matches.FindIndex(m => m.Id == result.Value.Id);
             if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
-            _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado.";
+            var unplaced = _editTeams.Count(t => t.Placement <= 0);
+            _saveSuccess = unplaced > 0
+                ? $"✓ Mapa {_editingMatch.MatchNumber} guardado (kills actualizados). {unplaced} equipo(s) sin posición — los kills se muestran sin multiplicador hasta asignar posición."
+                : $"✓ Mapa {_editingMatch.MatchNumber} guardado. Leaderboard actualizado con posiciones y puntos.";
+            SortEditTeams();
         }
         else
         {
@@ -425,7 +581,32 @@
     private async Task ConfirmResults()
     {
         if (_editingMatch == null) return;
+
+        // Full placement validation before confirming
+        var validationError = ValidatePlacements();
+        if (validationError is not null) { _saveError = validationError; return; }
+
+        // Show a warning if a Match Point team placed 1st — the backend will verify
+        // whether they were truly in MP *before* this map and finalize accordingly.
+        var mpWinner = _editTeams.FirstOrDefault(t => t.IsMatchPoint && t.Placement == 1);
+        if (mpWinner != null)
+        {
+            _mpWinnerName = mpWinner.TeamName;
+            _showMpWinConfirm = true;
+            return;
+        }
+
+        await ExecuteConfirmResults();
+    }
+
+    private async Task ExecuteConfirmResults()
+    {
+        if (_editingMatch == null) return;
+        _showMpWinConfirm = false;
         _saving = true;
+        _saveError = null;
+        _saveSuccess = null;
+
         var result = await MatchService.ConfirmMatchResultsAsync(_editingMatch.Id);
         if (result.IsSuccess)
         {
@@ -433,6 +614,13 @@
             if (idx >= 0) _matches[idx] = result.Value;
             _editingMatch = result.Value;
             _saveSuccess = $"✓ Mapa {_editingMatch.MatchNumber} confirmado.";
+
+            // Reload tournament so winner banner appears immediately
+            var tResult = await TournamentService.GetTournamentByIdAsync(_selectedTournamentId);
+            if (tResult.IsSuccess)
+                _tournamentDetails = tResult.Value;
+
+            SortEditTeams();
         }
         else
         {
@@ -441,13 +629,44 @@
         _saving = false;
     }
 
+    private async Task DeleteMap(Guid matchId)
+    {
+        _deletingMap = true;
+        _confirmDeleteMatchId = null;
+        var result = await MatchService.DeleteMatchAsync(matchId);
+        if (result.IsSuccess)
+        {
+            _matches.RemoveAll(m => m.Id == matchId);
+            if (_editingMatch?.Id == matchId)
+            {
+                _editingMatch = null;
+                _saveError = null;
+                _saveSuccess = null;
+            }
+        }
+        else
+        {
+            _saveError = result.Error;
+        }
+        _deletingMap = false;
+    }
+
+    private void SortEditTeams()
+    {
+        _editTeams = _editTeams
+            .OrderBy(t => t.Placement == 0 ? 999 : t.Placement)
+            .ThenBy(t => t.TeamName)
+            .ToList();
+    }
+
+    // Used at Confirm time — all placements must be set and unique
     private string? ValidatePlacements()
     {
         var placements = _editTeams.Select(t => t.Placement).ToList();
         int teamCount  = _editTeams.Count;
 
         if (placements.Any(p => p <= 0))
-            return "Todos los equipos deben tener una posición mayor a 0.";
+            return "Para confirmar, todos los equipos deben tener una posición asignada (> 0).";
 
         if (placements.Any(p => p > teamCount))
             return $"La posición máxima es {teamCount} (número de equipos).";
@@ -455,6 +674,22 @@
         var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
         if (duplicates.Any())
             return $"Posición duplicada: #{string.Join(", #", duplicates)}. Cada equipo debe tener una posición única.";
+
+        return null;
+    }
+
+    // Used at Save time — only blocks on duplicates among placed teams
+    private string? ValidatePlacementDuplicates()
+    {
+        var placed = _editTeams.Where(t => t.Placement > 0).ToList();
+        int teamCount = _editTeams.Count;
+
+        if (placed.Any(t => t.Placement > teamCount))
+            return $"La posición máxima es {teamCount} (número de equipos).";
+
+        var duplicates = placed.GroupBy(t => t.Placement).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Any())
+            return $"Posición duplicada: #{string.Join(", #", duplicates)}. Corrígela antes de guardar.";
 
         return null;
     }

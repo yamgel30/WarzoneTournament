@@ -84,6 +84,23 @@ public class MatchService : IMatchService
         if (match is null) return Result.Failure<MatchDto>("Match not found.");
 
         var domainStatus = (DomainMatchStatus)(int)status;
+
+        if (domainStatus == DomainMatchStatus.InProgress)
+        {
+            // Any match that is not Pending, Completed or Cancelled must be resolved before starting a new one.
+            // Exception: the very first match (no completed/confirmed predecessors) can always start.
+            var blocking = await _uow.Matches.FindAsync(
+                m => m.TournamentId == match.TournamentId &&
+                     m.Id != id &&
+                     m.Status != DomainMatchStatus.Pending &&
+                     m.Status != DomainMatchStatus.Completed &&
+                     m.Status != DomainMatchStatus.Cancelled, ct);
+            if (blocking.Any())
+                return Result.Failure<MatchDto>(
+                    "No puedes iniciar este mapa: hay un mapa anterior sin confirmar. " +
+                    "Completa y confirma el mapa actual en Manual Points antes de continuar.");
+        }
+
         match.Status = domainStatus;
         if (domainStatus == DomainMatchStatus.InProgress && match.StartTime is null)
             match.StartTime = DateTime.UtcNow;
@@ -105,16 +122,14 @@ public class MatchService : IMatchService
         var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
         if (tournament is null) return Result.Failure<MatchDto>("Tournament not found.");
 
-        // Validate placements
-        var teamCount  = dto.TeamResults.Count;
-        var placements = dto.TeamResults.Select(r => r.Placement).ToList();
-        if (placements.Any(p => p <= 0))
-            return Result.Failure<MatchDto>("All teams must have a placement greater than 0.");
-        if (placements.Any(p => p > teamCount))
-            return Result.Failure<MatchDto>($"Placement cannot exceed the number of teams ({teamCount}).");
-        var duplicates = placements.GroupBy(p => p).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        // Validate only placed entries (placement > 0) for duplicates — teams with placement = 0 are "pending"
+        var placedResults = dto.TeamResults.Where(r => r.Placement > 0).ToList();
+        var teamCount = dto.TeamResults.Count;
+        if (placedResults.Any(r => r.Placement > teamCount))
+            return Result.Failure<MatchDto>($"La posición máxima es {teamCount} (número de equipos).");
+        var duplicates = placedResults.GroupBy(r => r.Placement).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
         if (duplicates.Any())
-            return Result.Failure<MatchDto>($"Duplicate placement(s): {string.Join(", ", duplicates)}.");
+            return Result.Failure<MatchDto>($"Posición duplicada: #{string.Join(", #", duplicates)}. Cada equipo debe tener una posición única.");
 
         // Parse placement multipliers — formula: TotalPoints = Kills × Multiplier + BonusPoints
         var placementMultipliers = new Dictionary<int, double>();
@@ -137,10 +152,12 @@ public class MatchService : IMatchService
 
             await _uow.SaveChangesAsync(ct);
 
-            // Insert team results with calculated points
+            // Insert team results with calculated points.
+            // Placement = 0 means "not yet assigned" — use multiplier 1.0 so kills still show.
             foreach (var teamResult in dto.TeamResults)
             {
-                var multiplier = placementMultipliers.TryGetValue(teamResult.Placement, out var m) ? m : 1.0;
+                var multiplier = (teamResult.Placement > 0 && placementMultipliers.TryGetValue(teamResult.Placement, out var m))
+                    ? m : 1.0;
                 var killPts = Math.Round(teamResult.Kills * multiplier, 2);
                 var totalPts = killPts + teamResult.BonusPoints;
 
@@ -184,52 +201,16 @@ public class MatchService : IMatchService
             }
 
             match.Status = DomainMatchStatus.WaitingEvidence;
+            match.ResultsConfirmed = false;  // Reset on re-edit so points don't count toward MatchPoint until re-confirmed
             _uow.Matches.Update(match);
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitTransactionAsync(ct);
 
-            // Capture Match Point teams BEFORE recalculating so we can detect a victory
-            var preMatchMPIds = (await _uow.TournamentTeams.FindAsync(
-                tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct))
-                .Select(tt => tt.TeamId).ToHashSet();
-
-            // Update tournament leaderboard (also sets newly-reached IsMatchPoint flags)
+            // Update tournament leaderboard (sets IsMatchPoint flags — announcement deferred to Confirm)
             await _leaderboard.RecalculateLeaderboardAsync(match.TournamentId, ct);
             await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
             await _discord.SendMatchResultsAsync(id, ct);
             await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
-
-            // Match Point victory: a team that WAS already in Match Point placed 1st
-            var firstPlace = dto.TeamResults.FirstOrDefault(r => r.Placement == 1);
-            if (firstPlace != null && preMatchMPIds.Contains(firstPlace.TeamId))
-            {
-                var t = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
-                if (t is { Status: not Domain.Enums.TournamentStatus.Completed })
-                {
-                    t.Status = Domain.Enums.TournamentStatus.Completed;
-                    t.WinnerTeamId = firstPlace.TeamId;
-                    t.EndDate ??= DateTime.UtcNow;
-                    _uow.Tournaments.Update(t);
-                    await _uow.SaveChangesAsync(ct);
-                    var winnerTeam = await _uow.Teams.GetByIdAsync(firstPlace.TeamId, ct);
-                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
-                        $"🏆 ¡**{winnerTeam?.Name ?? "Un equipo"}** gana el torneo con Match Point!", ct);
-                    await _signalR.NotifyTournamentStatusChangedAsync(match.TournamentId, "Completed", ct);
-                }
-            }
-            else
-            {
-                // Notify teams that newly entered Match Point this match
-                var newlyMP = (await _uow.TournamentTeams.FindAsync(
-                    tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct))
-                    .Where(tt => !preMatchMPIds.Contains(tt.TeamId)).ToList();
-                foreach (var mpTeam in newlyMP)
-                {
-                    var team = await _uow.Teams.GetByIdAsync(mpTeam.TeamId, ct);
-                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
-                        $"⚠️ ¡**{team?.Name}** está en **Match Point**! Solo necesitan ganar 1 partida más para ser campeones.", ct);
-                }
-            }
 
             _logger.LogInformation("Results submitted for match {MatchId}", id);
             return Result.Success(await BuildMatchDtoAsync(match, ct));
@@ -247,13 +228,24 @@ public class MatchService : IMatchService
         var match = await _uow.Matches.GetByIdAsync(id, ct);
         if (match is null) return Result.Failure<MatchDto>("Match not found.");
 
+        // Mark team results as verified
+        var results = await _uow.MatchTeamResults.FindAsync(r => r.MatchId == id, ct);
+
+        // Strict placement validation at confirm time
+        var unplaced = results.Where(r => r.Placement <= 0).ToList();
+        if (unplaced.Any())
+            return Result.Failure<MatchDto>(
+                $"No puedes confirmar: {unplaced.Count} equipo(s) sin posición asignada. " +
+                "Asígnalas en Manual Points y guarda antes de confirmar.");
+        var dupPlacements = results.GroupBy(r => r.Placement).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (dupPlacements.Any())
+            return Result.Failure<MatchDto>(
+                $"Posiciones duplicadas: #{string.Join(", #", dupPlacements)}. Corrígelas antes de confirmar.");
+
         match.Status = DomainMatchStatus.Completed;
         match.ResultsConfirmed = true;
         match.EndTime ??= DateTime.UtcNow;
         _uow.Matches.Update(match);
-
-        // Mark team results as verified
-        var results = await _uow.MatchTeamResults.FindAsync(r => r.MatchId == id, ct);
         foreach (var result in results)
         {
             result.IsVerified = true;
@@ -266,6 +258,57 @@ public class MatchService : IMatchService
         await _signalR.NotifyLeaderboardUpdatedAsync(match.TournamentId, ct);
         await _discord.SendMatchResultsAsync(id, ct);
         await _discord.SendLeaderboardUpdateAsync(match.TournamentId, ct);
+
+        // Announce teams that newly entered Match Point due to this confirmed map.
+        // By Confirm time IsMatchPoint is already set from Save's recalculation, so we detect
+        // new entries by checking: TotalPoints − thisMatchPoints < threshold (wasn't there before).
+        var tournament = await _uow.Tournaments.GetByIdAsync(match.TournamentId, ct);
+        if (tournament?.MatchPointThreshold is not null &&
+            tournament.Status != Domain.Enums.TournamentStatus.Completed)
+        {
+            var mpTeams = await _uow.TournamentTeams.FindAsync(
+                tt => tt.TournamentId == match.TournamentId && tt.IsMatchPoint, ct);
+
+            foreach (var mpTeam in mpTeams)
+            {
+                var matchResult = results.FirstOrDefault(r => r.TeamId == mpTeam.TeamId);
+                var pointsBeforeThisMatch = mpTeam.TotalPoints - (matchResult?.TotalPoints ?? 0);
+                if (pointsBeforeThisMatch < tournament.MatchPointThreshold.Value)
+                {
+                    var mpTeamEntity = await _uow.Teams.GetByIdAsync(mpTeam.TeamId, ct);
+                    await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
+                        $"⚠️ ¡**{mpTeamEntity?.Name}** está en **Match Point**! Solo necesitan ganar 1 partida más para ser campeones.", ct);
+                }
+            }
+        }
+
+        // Check for Match Point victory: the 1st-place team must have been above the
+        // threshold BEFORE this map (not just reach it now).
+        // Formula: TournamentTeam.TotalPoints (post-match) − this match's points = pre-match total
+        var firstPlaceResult = results.FirstOrDefault(r => r.Placement == 1);
+        if (firstPlaceResult != null &&
+            tournament is { MatchPointThreshold: not null, Status: not Domain.Enums.TournamentStatus.Completed })
+        {
+            var tt = (await _uow.TournamentTeams.FindAsync(
+                x => x.TournamentId == match.TournamentId && x.TeamId == firstPlaceResult.TeamId, ct))
+                .FirstOrDefault();
+
+            var pointsBeforeThisMatch = (tt?.TotalPoints ?? 0) - firstPlaceResult.TotalPoints;
+
+            if (pointsBeforeThisMatch >= tournament.MatchPointThreshold.Value)
+            {
+                tournament.Status = Domain.Enums.TournamentStatus.Completed;
+                tournament.WinnerTeamId = firstPlaceResult.TeamId;
+                tournament.EndDate ??= DateTime.UtcNow;
+                _uow.Tournaments.Update(tournament);
+                await _uow.SaveChangesAsync(ct);
+                var winnerTeam = await _uow.Teams.GetByIdAsync(firstPlaceResult.TeamId, ct);
+                await _discord.SendTournamentAnnouncementAsync(match.TournamentId,
+                    $"🏆 ¡**{winnerTeam?.Name ?? "Un equipo"}** gana el torneo con Match Point!", ct);
+                await _signalR.NotifyTournamentStatusChangedAsync(match.TournamentId, "Completed", ct);
+                await _leaderboard.UpdatePlayerCareerKillsAsync(match.TournamentId, ct);
+            }
+        }
 
         return Result.Success(await BuildMatchDtoAsync(match, ct));
     }

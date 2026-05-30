@@ -31,12 +31,15 @@ public class TeamService : ITeamService
         if (nameExists)
             return Result.Failure<TeamDto>($"Team name '{dto.Name}' is already taken.");
 
-        var captain = await _uow.Players.GetByIdAsync(dto.CaptainId, ct);
-        if (captain is null)
-            return Result.Failure<TeamDto>("Captain player not found.");
-
-        if (captain.IsBanned)
-            return Result.Failure<TeamDto>("Banned players cannot be team captains.");
+        Player? captain = null;
+        if (dto.CaptainId.HasValue && dto.CaptainId.Value != Guid.Empty)
+        {
+            captain = await _uow.Players.GetByIdAsync(dto.CaptainId.Value, ct);
+            if (captain is null)
+                return Result.Failure<TeamDto>("Captain player not found.");
+            if (captain.IsBanned)
+                return Result.Failure<TeamDto>("Banned players cannot be team captains.");
+        }
 
         await _uow.BeginTransactionAsync(ct);
         try
@@ -55,15 +58,17 @@ public class TeamService : ITeamService
             await _uow.Teams.AddAsync(team, ct);
             await _uow.SaveChangesAsync(ct);
 
-            // Add captain as first team member
-            var captainPlayer = new TeamPlayer
+            // Add captain as first team member if provided
+            if (captain is not null)
             {
-                TeamId = team.Id,
-                PlayerId = dto.CaptainId,
-                Role = "Captain",
-                JoinedAt = DateTime.UtcNow
-            };
-            await _uow.TeamPlayers.AddAsync(captainPlayer, ct);
+                await _uow.TeamPlayers.AddAsync(new TeamPlayer
+                {
+                    TeamId = team.Id,
+                    PlayerId = captain.Id,
+                    Role = "Captain",
+                    JoinedAt = DateTime.UtcNow
+                }, ct);
+            }
 
             // Add additional players
             foreach (var playerId in dto.PlayerIds.Where(id => id != dto.CaptainId))
@@ -85,7 +90,7 @@ public class TeamService : ITeamService
             _logger.LogInformation("Team created: {Name} ({Id})", team.Name, team.Id);
 
             var result = _mapper.Map<TeamDto>(team);
-            result.CaptainUsername = captain.Username;
+            result.CaptainUsername = captain?.Username;
             return Result.Success(result);
         }
         catch (Exception ex)
@@ -127,8 +132,11 @@ public class TeamService : ITeamService
         dto.Players = playerDtos;
         dto.PlayerCount = playerDtos.Count;
 
-        var captain = await _uow.Players.GetByIdAsync(team.CaptainId, ct);
-        dto.CaptainUsername = captain?.Username;
+        if (team.CaptainId.HasValue && team.CaptainId.Value != Guid.Empty)
+        {
+            var captain = await _uow.Players.GetByIdAsync(team.CaptainId.Value, ct);
+            dto.CaptainUsername = captain?.Username;
+        }
 
         return Result.Success(dto);
     }
@@ -175,6 +183,51 @@ public class TeamService : ITeamService
         if (tournament.Status != TournamentStatus.Registration)
             return Result.Failure("Tournament is not currently accepting registrations.");
 
+        // Validate minimum player count
+        if (tournament.PlayersPerTeam > 0)
+        {
+            var playerCount = await _uow.TeamPlayers.CountAsync(
+                tp => tp.TeamId == teamId && tp.IsActive, ct);
+            if (playerCount < tournament.PlayersPerTeam)
+                return Result.Failure(
+                    $"El equipo necesita al menos {tournament.PlayersPerTeam} jugador(es) para inscribirse (tiene {playerCount}).");
+        }
+
+        // Validate no player overlap with teams already registered in this tournament
+        var teamPlayerIds = (await _uow.TeamPlayers.FindAsNoTrackingAsync(
+            tp => tp.TeamId == teamId && tp.IsActive, ct))
+            .Select(tp => tp.PlayerId)
+            .ToList();
+
+        if (teamPlayerIds.Count > 0)
+        {
+            var otherTeamIds = (await _uow.TournamentTeams.FindAsNoTrackingAsync(
+                tt => tt.TournamentId == tournamentId && tt.TeamId != teamId, ct))
+                .Select(tt => tt.TeamId)
+                .ToList();
+
+            if (otherTeamIds.Count > 0)
+            {
+                var conflicts = await _uow.TeamPlayers.FindAsNoTrackingAsync(
+                    tp => otherTeamIds.Contains(tp.TeamId) && tp.IsActive && teamPlayerIds.Contains(tp.PlayerId), ct);
+
+                if (conflicts.Any())
+                {
+                    var lines = new List<string>();
+                    foreach (var c in conflicts)
+                    {
+                        var p = await _uow.Players.GetByIdAsync(c.PlayerId, ct);
+                        var t = await _uow.Teams.GetByIdAsync(c.TeamId, ct);
+                        lines.Add($"• {p?.Username ?? c.PlayerId.ToString()} ya está en \"{t?.Name ?? c.TeamId.ToString()}\"");
+                    }
+                    return Result.Failure(
+                        $"No se puede inscribir: los siguientes jugadores ya están en otro equipo inscrito en este torneo:\n" +
+                        string.Join("\n", lines));
+                }
+            }
+        }
+
+        // Check for an active registration (not soft-deleted)
         var alreadyRegistered = await _uow.TournamentTeams.ExistsAsync(
             tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
         if (alreadyRegistered)
@@ -184,11 +237,18 @@ public class TeamService : ITeamService
         if (registeredCount >= tournament.MaxTeams)
             return Result.Failure("Tournament is full.");
 
+        // Purge any stale soft-deleted rows left by older code (hard delete going forward)
+        var stale = await _uow.TournamentTeams.FindIncludingDeletedAsync(
+            tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
+        foreach (var s in stale)
+            _uow.TournamentTeams.HardRemove(s);
+
         await _uow.TournamentTeams.AddAsync(new TournamentTeam
         {
             TournamentId = tournamentId,
             TeamId = teamId
         }, ct);
+
         await _uow.SaveChangesAsync(ct);
 
         _logger.LogInformation("Team {TeamId} registered for tournament {TournamentId}", teamId, tournamentId);
@@ -249,16 +309,55 @@ public class TeamService : ITeamService
         var team = await _uow.Teams.GetByIdAsync(teamId, ct);
         if (team is null) return Result.Failure("Team not found.");
 
-        if (team.CaptainId == playerId)
-            return Result.Failure("Cannot remove the captain from the team. Transfer captaincy first.");
-
         var teamPlayer = await _uow.TeamPlayers.FirstOrDefaultAsync(
             tp => tp.TeamId == teamId && tp.PlayerId == playerId && tp.IsActive, ct);
         if (teamPlayer is null) return Result.Failure("Player is not a member of this team.");
 
+        // If removing the captain, clear the captain slot
+        if (team.CaptainId == playerId)
+        {
+            team.CaptainId = null;
+            _uow.Teams.Update(team);
+        }
+
         teamPlayer.IsActive = false;
         teamPlayer.LeftAt = DateTime.UtcNow;
         _uow.TeamPlayers.Update(teamPlayer);
+        await _uow.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    public async Task<Result> SetCaptainAsync(Guid teamId, Guid? captainPlayerId, CancellationToken ct = default)
+    {
+        var team = await _uow.Teams.GetByIdAsync(teamId, ct);
+        if (team is null) return Result.Failure("Team not found.");
+
+        // Clear old captain role
+        var oldCaptainEntry = await _uow.TeamPlayers.FirstOrDefaultAsync(
+            tp => tp.TeamId == teamId && tp.Role == "Captain" && tp.IsActive, ct);
+        if (oldCaptainEntry is not null)
+        {
+            oldCaptainEntry.Role = "Member";
+            _uow.TeamPlayers.Update(oldCaptainEntry);
+        }
+
+        if (captainPlayerId.HasValue && captainPlayerId.Value != Guid.Empty)
+        {
+            var newCaptainEntry = await _uow.TeamPlayers.FirstOrDefaultAsync(
+                tp => tp.TeamId == teamId && tp.PlayerId == captainPlayerId.Value && tp.IsActive, ct);
+            if (newCaptainEntry is null)
+                return Result.Failure("El jugador no pertenece a este equipo.");
+
+            newCaptainEntry.Role = "Captain";
+            _uow.TeamPlayers.Update(newCaptainEntry);
+            team.CaptainId = captainPlayerId.Value;
+        }
+        else
+        {
+            team.CaptainId = null;
+        }
+
+        _uow.Teams.Update(team);
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -315,7 +414,8 @@ public class TeamService : ITeamService
             tt => tt.TeamId == teamId && tt.TournamentId == tournamentId, ct);
         if (entry is null) return Result.Failure("Team is not registered for this tournament.");
 
-        _uow.TournamentTeams.Remove(entry);
+        // Hard delete — soft-delete leaves a row that conflicts with the unique index on re-registration
+        _uow.TournamentTeams.HardRemove(entry);
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
     }
