@@ -431,25 +431,19 @@ else
                         <RadzenCard class="mb-3">
                             <h3 style="margin-bottom:6px">Leaderboard — Media</h3>
                             <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
-                                Sube tus archivos a <code>wwwroot/images/</code> y escribe la ruta aquí, ej: <code>/images/logo.gif</code>
+                                Selecciona un archivo desde tu PC o pega una URL.
                             </small>
                             <div style="margin-bottom:12px">
                                 <RadzenLabel Text="Logo del torneo (imagen o GIF animado)" />
-                                <RadzenTextBox @bind-Value="_configLogoUrl" Style="width:100%;margin-top:6px"
-                                               Placeholder="/images/logo.gif  o  https://..." />
-                                @if (!string.IsNullOrEmpty(_configLogoUrl))
-                                {
-                                    <img src="@_configLogoUrl" alt="preview" style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:contain" />
-                                }
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_configLogoUrl" />
+                                </div>
                             </div>
                             <div style="margin-bottom:16px">
                                 <RadzenLabel Text="Imagen de fondo del leaderboard" />
-                                <RadzenTextBox @bind-Value="_configBannerUrl" Style="width:100%;margin-top:6px"
-                                               Placeholder="/images/background.jpg  o  https://..." />
-                                @if (!string.IsNullOrEmpty(_configBannerUrl))
-                                {
-                                    <img src="@_configBannerUrl" alt="preview" style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:cover" />
-                                }
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_configBannerUrl" />
+                                </div>
                             </div>
                             <RadzenButton Text="Guardar media" Icon="image" ButtonStyle="ButtonStyle.Light"
                                           Click="@SaveMedia" Disabled="@_busy" />

@@ -72,6 +72,18 @@
                                 <RadzenLabel Text="Stream URL" />
                                 <RadzenTextBox @bind-Value="_model.StreamUrl" Placeholder="https://twitch.tv/..." Style="width:100%" />
                             </div>
+                            <div class="form-field form-field--full">
+                                <RadzenLabel Text="Logo del torneo (imagen o GIF animado)" />
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_model.LogoUrl" />
+                                </div>
+                            </div>
+                            <div class="form-field form-field--full">
+                                <RadzenLabel Text="Imagen de fondo del leaderboard" />
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_model.BannerImageUrl" />
+                                </div>
+                            </div>
                             <div class="form-field form-field--checkbox">
                                 <RadzenCheckBox @bind-Value="_model.IsPrivate" Name="IsPrivate" />
                                 <RadzenLabel Text="Private Tournament (Lobby Code Required)" Component="IsPrivate" />

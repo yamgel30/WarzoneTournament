@@ -843,8 +843,12 @@
         if (_overlayQueue.Any()) await ProcessOverlayQueueAsync();
     }
 
-    private string? EffectiveBanner => _tournamentDto?.BannerImageUrl ?? _siteSettings.DefaultBannerUrl;
-    private string? EffectiveLogo   => _tournamentDto?.LogoUrl ?? _siteSettings.DefaultLogoUrl;
+    private string? EffectiveBanner => string.IsNullOrEmpty(_tournamentDto?.BannerImageUrl)
+        ? _siteSettings.DefaultBannerUrl
+        : _tournamentDto!.BannerImageUrl;
+    private string? EffectiveLogo => string.IsNullOrEmpty(_tournamentDto?.LogoUrl)
+        ? _siteSettings.DefaultLogoUrl
+        : _tournamentDto!.LogoUrl;
 
     private List<MatchScoreDto> AllMaps => _leaderboard
         .SelectMany(e => e.MatchScores)
