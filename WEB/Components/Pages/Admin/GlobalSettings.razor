@@ -4,11 +4,14 @@
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Settings
 @using WarzoneTournament.Application.DTOs.Discord
+@using WarzoneTournament.Application.DTOs.Tournament
 @using WarzoneTournament.Domain.Enums
 @implements IDisposable
 @inject ISiteSettingsService SettingsService
 @inject IDiscordNotificationService DiscordService
+@inject ITournamentService TournamentService
 @inject NavigationManager NavManager
+@inject IJSRuntime JS
 
 <PageTitle>Configuración Global - Admin</PageTitle>
 
@@ -262,7 +265,46 @@
                     </div>
                 </RadzenTabsItem>
 
-                @* ── Tab 4: Futuro multi-tenant ── *@
+                @* ── Tab 4: Public leaderboard ── *@
+                <RadzenTabsItem Text="📡 Página Pública" Icon="public">
+                    <div style="margin-top:16px;max-width:520px">
+                        <RadzenCard>
+                            <h3 style="margin-bottom:6px">Leaderboard Público — /live</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Selecciona el torneo que se mostrará en <strong>/live</strong>.
+                                Esta URL es fija y apta para compartir en Discord con los participantes.
+                                No tienen selector ni controles de administración.
+                            </small>
+
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Torneo a mostrar" />
+                                <RadzenDropDown @bind-Value="_dto.FeaturedTournamentId"
+                                                Data="@_tournaments"
+                                                TextProperty="Name" ValueProperty="Id"
+                                                Placeholder="Sin torneo destacado…"
+                                                AllowClear="true"
+                                                Style="width:100%;margin-top:6px" />
+                            </div>
+
+                            @if (_dto.FeaturedTournamentId.HasValue && _dto.FeaturedTournamentId != Guid.Empty)
+                            {
+                                var publicUrl = NavManager.ToAbsoluteUri("/live").ToString();
+                                <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;padding:10px 14px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:8px;font-family:monospace;font-size:0.85em;overflow:hidden">
+                                    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a78bfa">@publicUrl</span>
+                                    <RadzenButton Icon="content_copy" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                  Click="@(() => CopyLiveUrl(publicUrl))" title="Copiar URL" />
+                                    <RadzenButton Icon="open_in_new" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                                  Click="@(() => NavManager.NavigateTo("/live", forceLoad: true))" title="Abrir en nueva pestaña" />
+                                </div>
+                            }
+
+                            <RadzenButton Text="Guardar" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                          Click="@Save" Disabled="@_saving" />
+                        </RadzenCard>
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 5: Futuro multi-tenant ── *@
                 <RadzenTabsItem Text="🌐 Multi-Tenant" Icon="people">
                     <div style="margin-top:16px;max-width:520px">
                         <RadzenCard style="border-left:4px solid var(--rz-warning)">
@@ -326,6 +368,7 @@
     private bool _loadingChannels = false;
     private string? _channelError;
     private bool _showToken = false;
+    private List<TournamentListDto> _tournaments = new();
     private bool _restartingBot = false;
     private string? _botRestartError;
     private bool _botRestartOk = false;
@@ -333,6 +376,8 @@
     protected override async Task OnInitializedAsync()
     {
         _dto = await SettingsService.GetAsync();
+        var t = await TournamentService.GetTournamentsAsync(new TournamentQueryDto { PageSize = 100 });
+        if (t.IsSuccess) _tournaments = t.Value.Items.ToList();
         _loading = false;
         DiscordService.OnStatusChanged += OnBotStatusChanged;
     }
@@ -358,6 +403,12 @@
         if (result.IsSuccess) _channels = result.Value.ToList();
         else _channelError = result.Error;
         _loadingChannels = false;
+    }
+
+    private async Task CopyLiveUrl(string url)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", url); }
+        catch { }
     }
 
     private async Task RestartBotAsync()

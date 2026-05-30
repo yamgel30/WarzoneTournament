@@ -39,7 +39,8 @@ public class SiteSettingsService : ISiteSettingsService
             DiscordBotToken                     = settings.DiscordBotToken,
             DefaultDiscordGuildId               = settings.DefaultDiscordGuildId,
             DefaultDiscordAnnouncementChannelId = settings.DefaultDiscordAnnouncementChannelId,
-            DefaultDiscordEvidenceChannelId     = settings.DefaultDiscordEvidenceChannelId
+            DefaultDiscordEvidenceChannelId     = settings.DefaultDiscordEvidenceChannelId,
+            FeaturedTournamentId                = settings.FeaturedTournamentId
         };
 
         _cache.Set(CacheKey, dto, new MemoryCacheEntryOptions
@@ -92,5 +93,6 @@ public class SiteSettingsService : ISiteSettingsService
         entity.DefaultDiscordGuildId             = dto.DefaultDiscordGuildId;
         entity.DefaultDiscordAnnouncementChannelId = dto.DefaultDiscordAnnouncementChannelId;
         entity.DefaultDiscordEvidenceChannelId   = dto.DefaultDiscordEvidenceChannelId;
+        entity.FeaturedTournamentId              = dto.FeaturedTournamentId;
     }
 }

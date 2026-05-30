@@ -12,4 +12,5 @@ public class SiteSettingsDto
     public string? DefaultDiscordGuildId { get; set; }
     public string? DefaultDiscordAnnouncementChannelId { get; set; }
     public string? DefaultDiscordEvidenceChannelId { get; set; }
+    public Guid? FeaturedTournamentId { get; set; }
 }

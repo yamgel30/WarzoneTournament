@@ -21,4 +21,7 @@ public class SiteSettings : BaseEntity
     public string? DefaultDiscordGuildId { get; set; }
     public string? DefaultDiscordAnnouncementChannelId { get; set; }
     public string? DefaultDiscordEvidenceChannelId { get; set; }
+
+    // Public leaderboard
+    public Guid? FeaturedTournamentId { get; set; }
 }

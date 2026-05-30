@@ -55,6 +55,9 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<Guid?>("FeaturedTournamentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("DefaultDiscordGuildId")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");

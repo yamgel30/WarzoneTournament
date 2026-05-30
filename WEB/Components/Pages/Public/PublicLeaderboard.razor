@@ -1,0 +1,688 @@
+@page "/live"
+@layout PublicLayout
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Leaderboard
+@using WarzoneTournament.Application.DTOs.Tournament
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Text.Json
+@inject ILeaderboardService LeaderboardService
+@inject ITournamentService TournamentService
+@inject ISiteSettingsService SettingsService
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>@(_tournamentDto?.Name ?? "Live Leaderboard") — Warzone</PageTitle>
+
+@* ── Match Point / Winner overlay ── *@
+@if (_showOverlay)
+{
+    <div class="pub-overlay @(_overlayIsWinner ? "pub-overlay--winner" : "pub-overlay--mp")"
+         @onclick="DismissOverlay">
+        <div class="pub-overlay__card">
+            @if (_overlayIsWinner)
+            {
+                <div class="pub-overlay__icon">🏆</div>
+                <div class="pub-overlay__label">¡CAMPEÓN!</div>
+                <div class="pub-overlay__team">@_overlayTeamName</div>
+                <div class="pub-overlay__sub">Ganó el torneo con Match Point</div>
+            }
+            else
+            {
+                <div class="pub-overlay__icon">⚡</div>
+                <div class="pub-overlay__label">MATCH POINT</div>
+                <div class="pub-overlay__team">@_overlayTeamName</div>
+                <div class="pub-overlay__sub">Solo necesita ganar 1 partida más</div>
+            }
+            <div class="pub-overlay__dismiss">Toca para cerrar</div>
+        </div>
+    </div>
+}
+
+<div class="pub-page">
+
+    @if (_noTournamentConfigured)
+    {
+        <div class="pub-empty">
+            <div style="font-size:3em;margin-bottom:16px">🏆</div>
+            <h2 style="margin:0 0 10px;font-size:1.6em;color:#a78bfa">Leaderboard Público</h2>
+            <p style="color:#6666aa;max-width:400px;text-align:center;line-height:1.6">
+                Ningún torneo está configurado para esta página.<br />
+                El administrador debe seleccionar un torneo en
+                <strong style="color:#e8e8f4">Configuración Global → Página Pública</strong>.
+            </p>
+        </div>
+    }
+    else if (_loading)
+    {
+        <div class="pub-empty">
+            <div class="pub-spinner"></div>
+        </div>
+    }
+    else
+    {
+        @* ── Banner background ── *@
+        @if (!string.IsNullOrEmpty(_tournamentDto?.BannerImageUrl))
+        {
+            <div class="pub-banner-bg" style="background-image:url('@_tournamentDto.BannerImageUrl')"></div>
+        }
+
+        @* ── Winner ribbon ── *@
+        @if (_tournamentDto?.WinnerTeamId.HasValue == true)
+        {
+            var winner = _leaderboard.FirstOrDefault(e => e.TeamId == _tournamentDto.WinnerTeamId);
+            <div class="pub-winner-ribbon">
+                <span style="font-size:1.5em">🏆</span>
+                <span>¡CAMPEÓN! <strong>@(winner?.TeamName ?? "—")</strong></span>
+            </div>
+        }
+
+        @* ── Hero header ── *@
+        <div class="pub-hero">
+            @if (!string.IsNullOrEmpty(_tournamentDto?.LogoUrl))
+            {
+                <img src="@_tournamentDto.LogoUrl" alt="Logo" class="pub-logo" />
+            }
+            <div class="pub-hero__text">
+                <div class="pub-hero__title">@(_tournamentDto?.Name ?? "Torneo")</div>
+                <div class="pub-hero__meta">
+                    @if (_isConnected)
+                    {
+                        <span class="pub-live-badge">● LIVE</span>
+                    }
+                    else
+                    {
+                        <span class="pub-offline-badge">○ Reconectando…</span>
+                    }
+                    @if (_leaderboard.Any())
+                    {
+                        <span class="pub-meta-pill">@_leaderboard.Max(e => e.MatchesPlayed) mapas jugados</span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── Stats bar ── *@
+        @if (_leaderboard.Any())
+        {
+            var totalKills   = _leaderboard.Sum(e => e.TotalKills);
+            var totalMaps    = _leaderboard.Max(e => e.MatchesPlayed);
+            var avgKpM       = _leaderboard.Average(e => e.AverageKillsPerMatch);
+            var playerAvgKpM = _playerLeaderboard.Any() ? _playerLeaderboard.Average(p => p.KillsPerMatch) : 0;
+            <div class="pub-stats">
+                <div class="pub-stat">
+                    <span class="pub-stat__n">@totalMaps</span>
+                    <span class="pub-stat__l">Mapas</span>
+                </div>
+                <div class="pub-stat">
+                    <span class="pub-stat__n">@totalKills.ToString("N0")</span>
+                    <span class="pub-stat__l">Kills totales</span>
+                </div>
+                <div class="pub-stat">
+                    <span class="pub-stat__n">@avgKpM.ToString("0.#")</span>
+                    <span class="pub-stat__l">Avg kills/equipo</span>
+                </div>
+                <div class="pub-stat">
+                    <span class="pub-stat__n">@_leaderboard.Count</span>
+                    <span class="pub-stat__l">Equipos</span>
+                </div>
+            </div>
+        }
+
+        @* ── Match Point active banner ── *@
+        @if (_leaderboard.Any(e => e.IsMatchPoint) && _tournamentDto?.WinnerTeamId == null)
+        {
+            <div class="pub-mp-banner">
+                <span class="pub-mp-dot">●</span>
+                MATCH POINT ACTIVO —
+                @string.Join(", ", _leaderboard.Where(e => e.IsMatchPoint).Select(e => e.TeamName))
+            </div>
+        }
+
+        <div class="pub-content">
+
+            @* ── Teams leaderboard ── *@
+            <div class="pub-section">
+                <div class="pub-section-title">🏅 Clasificación</div>
+
+                @if (!_leaderboard.Any())
+                {
+                    <div class="pub-empty-inline">Sin resultados aún — el torneo acaba de comenzar.</div>
+                }
+                else
+                {
+                    <div class="pub-lb-header">
+                        <span class="plb-rank">#</span>
+                        <span class="plb-name">Equipo</span>
+                        <span class="plb-pts">Pts</span>
+                        <span class="plb-kills">Kills</span>
+                        <span class="plb-kpm">K/Map</span>
+                        <span class="plb-maps">Maps</span>
+                    </div>
+
+                    @foreach (var e in _leaderboard)
+                    {
+                        <div class="pub-lb-row @RankClass(e.Rank) @(e.IsMatchPoint ? "row-mp" : "")">
+                            <div class="plb-rank">
+                                @if (e.Rank == 1)      { <span class="rank-medal">🥇</span> }
+                                else if (e.Rank == 2)  { <span class="rank-medal">🥈</span> }
+                                else if (e.Rank == 3)  { <span class="rank-medal">🥉</span> }
+                                else                    { <span class="rank-num">@e.Rank</span> }
+                            </div>
+                            <div class="plb-name">
+                                @if (!string.IsNullOrEmpty(e.TeamLogoUrl))
+                                {
+                                    <img src="@e.TeamLogoUrl" alt="" class="plb-logo" />
+                                }
+                                <div class="plb-name-inner">
+                                    @if (!string.IsNullOrEmpty(e.TeamTag))
+                                    {
+                                        <span class="plb-tag">[@e.TeamTag]</span>
+                                    }
+                                    <span class="plb-teamname">@e.TeamName</span>
+                                    @if (e.IsMatchPoint)
+                                    {
+                                        <span class="plb-mp-badge">MP</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="plb-pts">@e.TotalPoints.ToString("0.##")</div>
+                            <div class="plb-kills">@e.TotalKills</div>
+                            <div class="plb-kpm">@e.AverageKillsPerMatch.ToString("0.#")</div>
+                            <div class="plb-maps">@e.MatchesPlayed</div>
+                        </div>
+                    }
+                }
+            </div>
+
+            @* ── Top Fraggers ── *@
+            @if (_playerLeaderboard.Any())
+            {
+                <div class="pub-section pub-section--fraggers">
+                    <div class="pub-section-title">🎯 Top Fraggers</div>
+
+                    <div class="pub-lb-header pub-lb-header--frag">
+                        <span class="plb-rank">#</span>
+                        <span class="plb-name">Jugador</span>
+                        <span class="plb-pts">Kills</span>
+                        <span class="plb-kpm">K/Map</span>
+                    </div>
+
+                    @foreach (var p in _playerLeaderboard.Take(10))
+                    {
+                        <div class="pub-lb-row @RankClass(p.Rank) pub-lb-row--frag">
+                            <div class="plb-rank">
+                                @if (p.Rank == 1)      { <span class="rank-medal">🥇</span> }
+                                else if (p.Rank == 2)  { <span class="rank-medal">🥈</span> }
+                                else if (p.Rank == 3)  { <span class="rank-medal">🥉</span> }
+                                else                    { <span class="rank-num">@p.Rank</span> }
+                            </div>
+                            <div class="plb-name">
+                                <div class="plb-name-inner">
+                                    <span class="plb-teamname">@p.Username</span>
+                                    @if (!string.IsNullOrEmpty(p.TeamTag))
+                                    {
+                                        <span class="plb-tag" style="margin-left:5px">[@p.TeamTag]</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(p.TeamName))
+                                {
+                                    <div class="plb-subteam">@p.TeamName</div>
+                                }
+                            </div>
+                            <div class="plb-pts">@p.TotalKills</div>
+                            <div class="plb-kpm">@p.KillsPerMatch.ToString("0.#")</div>
+                        </div>
+                    }
+                </div>
+            }
+
+        </div>
+
+        @* ── Footer ── *@
+        <div class="pub-footer">
+            <span>⚡ Warzone Tournament</span>
+            @if (_lastUpdated.HasValue)
+            {
+                <span>Actualizado @_lastUpdated.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    /* ── Page shell ── */
+    .pub-page {
+        min-height: 100vh;
+        padding-bottom: 40px;
+        position: relative;
+    }
+    .pub-banner-bg {
+        position: fixed; inset: 0; z-index: 0;
+        background-size: cover; background-position: center;
+        opacity: 0.07; pointer-events: none;
+    }
+    .pub-page > *:not(.pub-banner-bg):not(.pub-overlay) {
+        position: relative; z-index: 1;
+    }
+
+    /* ── Empty / loading ── */
+    .pub-empty {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; min-height: 80vh;
+        color: #555577;
+    }
+    .pub-spinner {
+        width: 44px; height: 44px;
+        border: 3px solid rgba(167,139,250,0.2);
+        border-top-color: #a78bfa;
+        border-radius: 50%;
+        animation: spin .9s linear infinite;
+    }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .pub-empty-inline {
+        text-align: center; padding: 32px; color: #555577; font-style: italic;
+    }
+
+    /* ── Winner ribbon ── */
+    .pub-winner-ribbon {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        background: linear-gradient(90deg,#78350f,#92400e,#78350f);
+        color: #fef3c7; font-size: 1em; font-weight: 700;
+        padding: 10px 20px; letter-spacing: 0.04em;
+    }
+
+    /* ── Hero ── */
+    .pub-hero {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 32px 20px 20px;
+        text-align: center;
+    }
+    .pub-logo {
+        max-height: 120px; max-width: 320px;
+        object-fit: contain;
+        filter: drop-shadow(0 0 20px rgba(0,0,0,0.7));
+        margin-bottom: 16px;
+    }
+    .pub-hero__title {
+        font-size: clamp(1.6em, 4vw, 2.6em);
+        font-weight: 900;
+        letter-spacing: 0.03em;
+        color: #f0f0f8;
+        text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+        line-height: 1.15;
+    }
+    .pub-hero__meta {
+        display: flex; align-items: center; justify-content: center;
+        gap: 10px; margin-top: 10px; flex-wrap: wrap;
+    }
+    .pub-live-badge {
+        background: #ef4444; color: #fff;
+        font-size: 0.78em; font-weight: 800; letter-spacing: 0.1em;
+        padding: 3px 10px; border-radius: 20px;
+        animation: live-pulse 1.8s ease-in-out infinite;
+    }
+    @@keyframes live-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
+        50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+    }
+    .pub-offline-badge {
+        background: rgba(255,255,255,0.08); color: #666688;
+        font-size: 0.78em; padding: 3px 10px; border-radius: 20px;
+    }
+    .pub-meta-pill {
+        background: rgba(255,255,255,0.06); color: #8888aa;
+        font-size: 0.78em; padding: 3px 10px; border-radius: 20px;
+    }
+
+    /* ── Stats bar ── */
+    .pub-stats {
+        display: flex; justify-content: center; gap: 12px;
+        padding: 0 20px 20px; flex-wrap: wrap;
+    }
+    .pub-stat {
+        display: flex; flex-direction: column; align-items: center;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 10px; padding: 10px 22px; min-width: 90px;
+    }
+    .pub-stat__n {
+        font-size: 1.7em; font-weight: 800;
+        color: #a78bfa; line-height: 1;
+    }
+    .pub-stat__l {
+        font-size: 0.68em; color: #666688; margin-top: 4px;
+        text-transform: uppercase; letter-spacing: 0.06em; text-align: center;
+    }
+
+    /* ── MP banner ── */
+    .pub-mp-banner {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        background: rgba(239,68,68,0.12); border-top: 1px solid rgba(239,68,68,0.3);
+        border-bottom: 1px solid rgba(239,68,68,0.3);
+        color: #fca5a5; font-size: 0.88em; font-weight: 700;
+        padding: 9px 20px; letter-spacing: 0.04em;
+        margin-bottom: 4px;
+    }
+    .pub-mp-dot { color: #ef4444; animation: mp-blink 1s ease-in-out infinite; }
+    @@keyframes mp-blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    /* ── Content columns ── */
+    .pub-content {
+        display: grid;
+        grid-template-columns: minmax(0,3fr) minmax(0,2fr);
+        gap: 20px;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 8px 16px;
+    }
+    @@media (max-width: 780px) {
+        .pub-content { grid-template-columns: 1fr; }
+        .pub-section--fraggers { margin-top: 0; }
+    }
+
+    /* ── Section ── */
+    .pub-section {
+        background: rgba(255,255,255,0.025);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 14px; overflow: hidden;
+    }
+    .pub-section-title {
+        font-size: 0.78em; font-weight: 800; letter-spacing: 0.1em;
+        text-transform: uppercase; color: #6666aa;
+        padding: 12px 16px 10px; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* ── Table header ── */
+    .pub-lb-header {
+        display: grid;
+        grid-template-columns: 48px 1fr 72px 64px 60px 48px;
+        padding: 7px 16px;
+        font-size: 0.7em; font-weight: 700; letter-spacing: 0.06em;
+        text-transform: uppercase; color: #444466;
+        background: rgba(0,0,0,0.2);
+    }
+    .pub-lb-header--frag {
+        grid-template-columns: 48px 1fr 72px 60px;
+    }
+
+    /* ── Table rows ── */
+    .pub-lb-row {
+        display: grid;
+        grid-template-columns: 48px 1fr 72px 64px 60px 48px;
+        align-items: center;
+        padding: 10px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        transition: background 0.15s;
+    }
+    .pub-lb-row:last-child { border-bottom: none; }
+    .pub-lb-row:hover { background: rgba(255,255,255,0.03); }
+    .pub-lb-row--frag {
+        grid-template-columns: 48px 1fr 72px 60px;
+    }
+
+    /* Top 3 accents */
+    .row-gold   { background: rgba(245,158,11,0.07); border-left: 3px solid #f59e0b; }
+    .row-silver { background: rgba(148,163,184,0.06); border-left: 3px solid #94a3b8; }
+    .row-bronze { background: rgba(180,120,60,0.06);  border-left: 3px solid #b47c3c; }
+    .row-gold:hover   { background: rgba(245,158,11,0.11); }
+    .row-silver:hover { background: rgba(148,163,184,0.09); }
+    .row-bronze:hover { background: rgba(180,120,60,0.09); }
+
+    /* Match Point row */
+    .row-mp { background: rgba(239,68,68,0.07) !important; border-left: 3px solid #ef4444 !important; }
+
+    /* Column cells */
+    .plb-rank  { display:flex; align-items:center; justify-content:center; }
+    .plb-name  { display:flex; flex-direction:column; justify-content:center; overflow:hidden; gap:2px; }
+    .plb-pts   { text-align:right; font-size:1.05em; font-weight:800; color:#a78bfa; }
+    .plb-kills { text-align:right; font-size:0.88em; color:#c0c0d8; }
+    .plb-kpm   { text-align:right; font-size:0.88em; color:#888899; }
+    .plb-maps  { text-align:right; font-size:0.82em; color:#555577; }
+
+    .rank-medal { font-size:1.5em; line-height:1; }
+    .rank-num   { font-size:1em; font-weight:800; color:#555577; }
+
+    .plb-logo {
+        width: 22px; height: 22px; border-radius: 4px;
+        object-fit: cover; margin-right: 8px; flex-shrink: 0;
+    }
+    .plb-name-inner { display:flex; align-items:center; gap:5px; overflow:hidden; }
+    .plb-teamname   { font-weight:700; color:#e0e0f0; font-size:0.96em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plb-tag        { color:#555577; font-size:0.8em; white-space:nowrap; }
+    .plb-subteam    { font-size:0.75em; color:#444466; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .plb-mp-badge   {
+        background:#ef4444; color:#fff; font-size:0.6em; font-weight:900;
+        padding:2px 5px; border-radius:3px; letter-spacing:0.05em;
+        flex-shrink:0; animation: mp-blink 1s ease-in-out infinite;
+    }
+
+    /* ── Footer ── */
+    .pub-footer {
+        display: flex; justify-content: space-between; align-items: center;
+        max-width: 1100px; margin: 28px auto 0; padding: 0 16px;
+        font-size: 0.72em; color: #333355;
+    }
+
+    /* ── Overlay ── */
+    .pub-overlay {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; backdrop-filter: blur(4px);
+        animation: ov-in .35s cubic-bezier(.34,1.56,.64,1);
+    }
+    @@keyframes ov-in { from{opacity:0;transform:scale(.85)} to{opacity:1;transform:scale(1)} }
+    .pub-overlay--mp     { background: rgba(0,0,0,0.85); }
+    .pub-overlay--winner { background: rgba(0,0,0,0.9); }
+
+    .pub-overlay__card {
+        text-align:center; padding:44px 60px; border-radius:22px; max-width:540px; width:90%;
+    }
+    .pub-overlay--mp .pub-overlay__card {
+        background:linear-gradient(135deg,#1a0505,#3b0000);
+        border:2px solid #ef4444;
+        box-shadow:0 0 60px rgba(239,68,68,.55),0 0 120px rgba(239,68,68,.2);
+    }
+    .pub-overlay--winner .pub-overlay__card {
+        background:linear-gradient(135deg,#1a1000,#3d2500);
+        border:2px solid #f59e0b;
+        box-shadow:0 0 60px rgba(245,158,11,.55),0 0 120px rgba(245,158,11,.2);
+    }
+    .pub-overlay__icon  { font-size:4em; margin-bottom:8px; }
+    .pub-overlay__label {
+        font-size:.9em; font-weight:900; letter-spacing:.25em; text-transform:uppercase; margin-bottom:12px;
+    }
+    .pub-overlay--mp     .pub-overlay__label { color:#ef4444; }
+    .pub-overlay--winner .pub-overlay__label { color:#f59e0b; }
+    .pub-overlay__team  { font-size:2.4em; font-weight:900; color:#fff; margin-bottom:12px; line-height:1.1; }
+    .pub-overlay--mp     .pub-overlay__team { text-shadow:0 0 30px #ef4444; }
+    .pub-overlay--winner .pub-overlay__team { text-shadow:0 0 30px #f59e0b; }
+    .pub-overlay__sub    { font-size:.9em; color:rgba(255,255,255,.65); margin-bottom:24px; }
+    .pub-overlay__dismiss { font-size:.72em; color:rgba(255,255,255,.25); letter-spacing:.05em; }
+</style>
+
+@code {
+    private bool _loading = true;
+    private bool _noTournamentConfigured = false;
+    private bool _isConnected = false;
+    private Guid _tournamentId;
+
+    private List<LeaderboardEntryDto> _leaderboard = new();
+    private List<PlayerLeaderboardEntryDto> _playerLeaderboard = new();
+    private TournamentDto? _tournamentDto;
+    private DateTime? _lastUpdated;
+    private HubConnection? _hubConnection;
+
+    // Overlay
+    private bool _showOverlay;
+    private bool _overlayIsWinner;
+    private string _overlayTeamName = "";
+    private HashSet<Guid> _prevMpIds = new();
+    private bool _prevWasCompleted;
+    private bool _isFirstLoad = true;
+    private Queue<(string name, bool isWinner)> _overlayQueue = new();
+    private CancellationTokenSource? _overlayDismissCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await SettingsService.GetAsync();
+        if (settings.FeaturedTournamentId is null || settings.FeaturedTournamentId == Guid.Empty)
+        {
+            _noTournamentConfigured = true;
+            _loading = false;
+            return;
+        }
+        _tournamentId = settings.FeaturedTournamentId.Value;
+        await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_noTournamentConfigured)
+            await ConnectSignalRAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var teamRes    = await LeaderboardService.GetTournamentLeaderboardAsync(_tournamentId);
+            var playerRes  = await LeaderboardService.GetPlayerLeaderboardAsync(_tournamentId);
+            var tourneyRes = await TournamentService.GetTournamentByIdAsync(_tournamentId);
+
+            if (teamRes.IsSuccess)
+            {
+                var newLb = teamRes.Value.ToList();
+                var newMp = newLb.Where(e => e.IsMatchPoint).Select(e => e.TeamId).ToHashSet();
+
+                if (!_isFirstLoad && !(tourneyRes.IsSuccess && tourneyRes.Value.WinnerTeamId.HasValue))
+                {
+                    foreach (var id in newMp.Except(_prevMpIds))
+                    {
+                        var name = newLb.FirstOrDefault(e => e.TeamId == id)?.TeamName ?? "Equipo";
+                        _overlayQueue.Enqueue((name, false));
+                    }
+                }
+                _prevMpIds = newMp;
+                _leaderboard = newLb;
+            }
+
+            if (playerRes.IsSuccess)
+                _playerLeaderboard = playerRes.Value.ToList();
+
+            if (tourneyRes.IsSuccess)
+            {
+                _tournamentDto = tourneyRes.Value;
+                if (!_prevWasCompleted && _tournamentDto.WinnerTeamId.HasValue)
+                {
+                    var name = _leaderboard.FirstOrDefault(e => e.TeamId == _tournamentDto.WinnerTeamId)?.TeamName ?? "Equipo";
+                    _overlayQueue.Enqueue((name, true));
+                    _prevWasCompleted = true;
+                }
+            }
+
+            _isFirstLoad = false;
+            _lastUpdated = DateTime.UtcNow;
+            await ProcessOverlayQueueAsync();
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task ConnectSignalRAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavManager.ToAbsoluteUri("/hubs/tournament"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<Guid, object>("LeaderboardUpdated", async (id, _) =>
+        {
+            if (id == _tournamentId)
+            {
+                await LoadAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.On<Guid, string>("TournamentStatusChanged", async (id, status) =>
+        {
+            if (id == _tournamentId && status == "Completed")
+            {
+                await LoadAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.Reconnecting += _ => { _isConnected = false; InvokeAsync(StateHasChanged); return Task.CompletedTask; };
+        _hubConnection.Reconnected  += async _ =>
+        {
+            _isConnected = true;
+            await _hubConnection.SendAsync("JoinTournamentGroup", _tournamentId.ToString());
+            await InvokeAsync(StateHasChanged);
+        };
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            _isConnected = true;
+            await _hubConnection.SendAsync("JoinTournamentGroup", _tournamentId.ToString());
+        }
+        catch { _isConnected = false; }
+    }
+
+    private async Task ProcessOverlayQueueAsync()
+    {
+        if (_showOverlay || !_overlayQueue.Any()) return;
+        var (name, isWinner) = _overlayQueue.Dequeue();
+        _overlayTeamName = name;
+        _overlayIsWinner = isWinner;
+        _showOverlay = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            if (isWinner)
+            {
+                await JS.InvokeVoidAsync("launchWinnerConfetti");
+                await JS.InvokeVoidAsync("playWinnerSound");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("launchMatchPointConfetti");
+                await JS.InvokeVoidAsync("playMatchPointSound");
+            }
+        }
+        catch { }
+        _overlayDismissCts?.Cancel();
+        _overlayDismissCts = new CancellationTokenSource();
+        var token = _overlayDismissCts.Token;
+        _ = Task.Delay(6000, token).ContinueWith(async _ =>
+        {
+            if (!token.IsCancellationRequested)
+                await InvokeAsync(async () => { await DismissOverlay(); });
+        }, TaskScheduler.Default);
+    }
+
+    private async Task DismissOverlay()
+    {
+        _overlayDismissCts?.Cancel();
+        _showOverlay = false;
+        StateHasChanged();
+        await Task.Delay(200);
+        if (_overlayQueue.Any()) await ProcessOverlayQueueAsync();
+    }
+
+    private static string RankClass(int rank) => rank switch
+    {
+        1 => "row-gold",
+        2 => "row-silver",
+        3 => "row-bronze",
+        _ => ""
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _overlayDismissCts?.Cancel();
+        if (_hubConnection is not null) await _hubConnection.DisposeAsync();
+    }
+}
