@@ -187,19 +187,30 @@ public class LeaderboardService : ILeaderboardService
         var tournament = await _uow.Tournaments.GetByIdAsync(tournamentId, ct);
         var tournamentTeams = await _uow.TournamentTeams.FindAsync(tt => tt.TournamentId == tournamentId, ct);
 
+        // Only confirmed matches count toward MatchPoint evaluation
+        var confirmedMatchIds = (await _uow.Matches.FindAsNoTrackingAsync(
+            m => m.TournamentId == tournamentId && m.ResultsConfirmed, ct))
+            .Select(m => m.Id).ToHashSet();
+
         foreach (var entry in leaderboardResult.Value)
         {
             var tt = tournamentTeams.FirstOrDefault(t => t.TeamId == entry.TeamId);
             if (tt is null) continue;
 
+            // Display totals include all entered results (partial + confirmed)
             tt.TotalPoints = entry.TotalPoints;
             tt.TotalKills = entry.TotalKills;
             tt.CurrentRank = entry.Rank;
 
-            // Once a team reaches the threshold it stays in Match Point
-            if (tournament?.MatchPointThreshold.HasValue == true
-                && entry.TotalPoints >= tournament.MatchPointThreshold.Value)
-                tt.IsMatchPoint = true;
+            // MatchPoint is re-evaluated every time using only confirmed points.
+            // This clears it if a match is re-edited (unconfirmed) or if points drop below threshold.
+            if (tournament?.MatchPointThreshold.HasValue == true)
+            {
+                var confirmedPoints = entry.MatchScores
+                    .Where(ms => confirmedMatchIds.Contains(ms.MatchId))
+                    .Sum(ms => ms.Points);
+                tt.IsMatchPoint = confirmedPoints >= tournament.MatchPointThreshold.Value;
+            }
 
             _uow.TournamentTeams.Update(tt);
         }

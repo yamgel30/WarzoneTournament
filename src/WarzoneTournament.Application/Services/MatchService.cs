@@ -201,6 +201,7 @@ public class MatchService : IMatchService
             }
 
             match.Status = DomainMatchStatus.WaitingEvidence;
+            match.ResultsConfirmed = false;  // Reset on re-edit so points don't count toward MatchPoint until re-confirmed
             _uow.Matches.Update(match);
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitTransactionAsync(ct);
