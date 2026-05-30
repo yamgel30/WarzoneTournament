@@ -78,30 +78,22 @@
                         <RadzenCard class="mb-3">
                             <h3 style="margin-bottom:6px">Media predeterminada</h3>
                             <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
-                                Sube tus archivos a <code>wwwroot/images/</code> y escribe la ruta aquí.
+                                Selecciona un archivo desde tu PC o pega una URL.
                                 Nuevos torneos heredarán estos valores.
                             </small>
 
                             <div style="margin-bottom:12px">
                                 <RadzenLabel Text="Logo predeterminado (imagen o GIF animado)" />
-                                <RadzenTextBox @bind-Value="_dto.DefaultLogoUrl" Style="width:100%;margin-top:6px"
-                                               Placeholder="/images/logo.gif  o  https://..." />
-                                @if (!string.IsNullOrEmpty(_dto.DefaultLogoUrl))
-                                {
-                                    <img src="@_dto.DefaultLogoUrl" alt="preview"
-                                         style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:contain" />
-                                }
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_dto.DefaultLogoUrl" />
+                                </div>
                             </div>
 
                             <div style="margin-bottom:16px">
                                 <RadzenLabel Text="Imagen de fondo predeterminada" />
-                                <RadzenTextBox @bind-Value="_dto.DefaultBannerUrl" Style="width:100%;margin-top:6px"
-                                               Placeholder="/images/background.jpg  o  https://..." />
-                                @if (!string.IsNullOrEmpty(_dto.DefaultBannerUrl))
-                                {
-                                    <img src="@_dto.DefaultBannerUrl" alt="preview"
-                                         style="max-height:80px;max-width:200px;margin-top:8px;border-radius:6px;object-fit:cover" />
-                                }
+                                <div style="margin-top:6px">
+                                    <ImageUploadField @bind-Value="_dto.DefaultBannerUrl" />
+                                </div>
                             </div>
 
                             <RadzenButton Text="Guardar media" Icon="image" ButtonStyle="ButtonStyle.Light"
