@@ -63,10 +63,9 @@
     else
     {
         @* ── Banner background — torneo o site default ── *@
-        @{ var effectiveBanner = _tournamentDto?.BannerImageUrl ?? _siteSettings.DefaultBannerUrl; }
-        @if (!string.IsNullOrEmpty(effectiveBanner))
+        @if (!string.IsNullOrEmpty(EffectiveBanner))
         {
-            <div class="pub-banner-bg" style="background-image:url('@effectiveBanner')"></div>
+            <div class="pub-banner-bg" style="background-image:url('@EffectiveBanner')"></div>
         }
 
         @* ── Winner ribbon ── *@
@@ -80,11 +79,10 @@
         }
 
         @* ── Hero header — logo con fallback ── *@
-        @{ var effectiveLogo = _tournamentDto?.LogoUrl ?? _siteSettings.DefaultLogoUrl; }
         <div class="pub-hero">
-            @if (!string.IsNullOrEmpty(effectiveLogo))
+            @if (!string.IsNullOrEmpty(EffectiveLogo))
             {
-                <img src="@effectiveLogo" alt="Logo" class="pub-logo" />
+                <img src="@EffectiveLogo" alt="Logo" class="pub-logo" />
             }
             <div class="pub-hero__text">
                 <div class="pub-hero__title">@(_tournamentDto?.Name ?? "Torneo")</div>
@@ -844,6 +842,9 @@
         await Task.Delay(200);
         if (_overlayQueue.Any()) await ProcessOverlayQueueAsync();
     }
+
+    private string? EffectiveBanner => _tournamentDto?.BannerImageUrl ?? _siteSettings.DefaultBannerUrl;
+    private string? EffectiveLogo   => _tournamentDto?.LogoUrl ?? _siteSettings.DefaultLogoUrl;
 
     private List<MatchScoreDto> AllMaps => _leaderboard
         .SelectMany(e => e.MatchScores)
