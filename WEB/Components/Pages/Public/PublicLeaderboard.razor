@@ -252,16 +252,7 @@
         {
             @* ── Tab 1: Puntuaciones por mapa (sin fórmula ni multiplicadores) ── *@
             <div class="pub-scores-wrap">
-                @{
-                    var allMaps = _leaderboard
-                        .SelectMany(e => e.MatchScores)
-                        .GroupBy(s => s.MatchId)
-                        .Select(g => g.First())
-                        .OrderBy(s => s.MatchNumber)
-                        .ToList();
-                }
-
-                @if (!allMaps.Any())
+                @if (!AllMaps.Any())
                 {
                     <div class="pub-empty-inline">Sin resultados de mapas aún.</div>
                 }
@@ -272,7 +263,7 @@
                             <thead>
                                 <tr>
                                     <th class="pst-team">Equipo</th>
-                                    @foreach (var map in allMaps)
+                                    @foreach (var map in AllMaps)
                                     {
                                         <th class="pst-map">Mapa @map.MatchNumber</th>
                                     }
@@ -296,7 +287,7 @@
                                             @if (team.IsMatchPoint)
                                             { <span class="plb-mp-badge" style="font-size:0.6em;vertical-align:middle">MP</span> }
                                         </td>
-                                        @foreach (var map in allMaps)
+                                        @foreach (var map in AllMaps)
                                         {
                                             var sc = team.MatchScores.FirstOrDefault(s => s.MatchId == map.MatchId);
                                             <td class="pst-cell-map pst-team-map">
@@ -326,7 +317,7 @@
                                             <td class="pst-cell-player">
                                                 <span class="pst-indent">↳</span>@player.Username
                                             </td>
-                                            @foreach (var map in allMaps)
+                                            @foreach (var map in AllMaps)
                                             {
                                                 var mk = player.MatchKills.FirstOrDefault(k => k.MatchId == map.MatchId);
                                                 <td class="pst-cell-map pst-player-map">
@@ -853,6 +844,13 @@
         await Task.Delay(200);
         if (_overlayQueue.Any()) await ProcessOverlayQueueAsync();
     }
+
+    private List<MatchScoreDto> AllMaps => _leaderboard
+        .SelectMany(e => e.MatchScores)
+        .GroupBy(s => s.MatchId)
+        .Select(g => g.First())
+        .OrderBy(s => s.MatchNumber)
+        .ToList();
 
     private static string RankClass(int rank) => rank switch
     {
