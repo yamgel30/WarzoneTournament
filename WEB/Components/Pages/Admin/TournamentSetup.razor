@@ -460,7 +460,7 @@ else
                             </div>
                             <div style="margin-bottom:10px">
                                 <RadzenLabel Text="YouTube URL" />
-                                <RadzenTextBox @bind-Value="_configYouTubeUrl" Placeholder="https://youtube.com/@..." Style="width:100%;margin-top:4px" />
+                                <RadzenTextBox @bind-Value="_configYouTubeUrl" Placeholder=@("https://youtube.com/@...") Style="width:100%;margin-top:4px" />
                             </div>
                             <div style="margin-bottom:10px">
                                 <RadzenLabel Text="Twitter / X URL" />
@@ -472,7 +472,7 @@ else
                             </div>
                             <div style="margin-bottom:10px">
                                 <RadzenLabel Text="TikTok URL" />
-                                <RadzenTextBox @bind-Value="_configTikTokUrl" Placeholder="https://tiktok.com/@..." Style="width:100%;margin-top:4px" />
+                                <RadzenTextBox @bind-Value="_configTikTokUrl" Placeholder=@("https://tiktok.com/@...") Style="width:100%;margin-top:4px" />
                             </div>
                             <div style="margin-bottom:16px">
                                 <RadzenLabel Text="Discord (enlace de invitación)" />
