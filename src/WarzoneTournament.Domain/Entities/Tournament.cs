@@ -21,6 +21,11 @@ public class Tournament : BaseEntity
     public decimal? PrizePool { get; set; }
     public string? TournamentRulesText { get; set; }
     public string? StreamUrl { get; set; }
+    public string? YouTubeUrl { get; set; }
+    public string? TwitterUrl { get; set; }
+    public string? InstagramUrl { get; set; }
+    public string? TikTokUrl { get; set; }
+    public string? DiscordInviteUrl { get; set; }
     public string? DiscordChannelId { get; set; }
     public string? DiscordGuildId { get; set; }
     public string? DiscordEvidenceChannelId { get; set; }

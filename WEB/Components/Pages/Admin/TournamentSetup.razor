@@ -450,6 +450,39 @@ else
                         </RadzenCard>
 
                         <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Redes Sociales y Transmisión</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Estas URLs se mostrarán en el leaderboard público.
+                            </small>
+                            <div style="margin-bottom:10px">
+                                <RadzenLabel Text="Twitch / Stream URL" />
+                                <RadzenTextBox @bind-Value="_configStreamUrl" Placeholder="https://twitch.tv/..." Style="width:100%;margin-top:4px" />
+                            </div>
+                            <div style="margin-bottom:10px">
+                                <RadzenLabel Text="YouTube URL" />
+                                <RadzenTextBox @bind-Value="_configYouTubeUrl" Placeholder="https://youtube.com/@..." Style="width:100%;margin-top:4px" />
+                            </div>
+                            <div style="margin-bottom:10px">
+                                <RadzenLabel Text="Twitter / X URL" />
+                                <RadzenTextBox @bind-Value="_configTwitterUrl" Placeholder="https://x.com/..." Style="width:100%;margin-top:4px" />
+                            </div>
+                            <div style="margin-bottom:10px">
+                                <RadzenLabel Text="Instagram URL" />
+                                <RadzenTextBox @bind-Value="_configInstagramUrl" Placeholder="https://instagram.com/..." Style="width:100%;margin-top:4px" />
+                            </div>
+                            <div style="margin-bottom:10px">
+                                <RadzenLabel Text="TikTok URL" />
+                                <RadzenTextBox @bind-Value="_configTikTokUrl" Placeholder="https://tiktok.com/@..." Style="width:100%;margin-top:4px" />
+                            </div>
+                            <div style="margin-bottom:16px">
+                                <RadzenLabel Text="Discord (enlace de invitación)" />
+                                <RadzenTextBox @bind-Value="_configDiscordInviteUrl" Placeholder="https://discord.gg/..." Style="width:100%;margin-top:4px" />
+                            </div>
+                            <RadzenButton Text="Guardar redes sociales" Icon="share" ButtonStyle="ButtonStyle.Light"
+                                          Click="@SaveSocial" Disabled="@_busy" />
+                        </RadzenCard>
+
+                        <RadzenCard class="mb-3">
                             <h3 style="margin-bottom:16px">Match Point</h3>
                             <div style="margin-bottom:16px">
                                 <RadzenLabel Text="Umbral de puntos (Match Point Threshold)" />
@@ -555,6 +588,12 @@ else
     private string? _configEvidenceChannelId;
     private string? _configLogoUrl;
     private string? _configBannerUrl;
+    private string? _configStreamUrl;
+    private string? _configYouTubeUrl;
+    private string? _configTwitterUrl;
+    private string? _configInstagramUrl;
+    private string? _configTikTokUrl;
+    private string? _configDiscordInviteUrl;
     private List<DiscordChannelDto> _discordChannels = new();
     private bool _loadingChannels = false;
     private string? _channelError;
@@ -585,6 +624,12 @@ else
             _configEvidenceChannelId = _tournament.DiscordEvidenceChannelId;
             _configLogoUrl           = _tournament.LogoUrl;
             _configBannerUrl         = _tournament.BannerImageUrl;
+            _configStreamUrl         = _tournament.StreamUrl;
+            _configYouTubeUrl        = _tournament.YouTubeUrl;
+            _configTwitterUrl        = _tournament.TwitterUrl;
+            _configInstagramUrl      = _tournament.InstagramUrl;
+            _configTikTokUrl         = _tournament.TikTokUrl;
+            _configDiscordInviteUrl  = _tournament.DiscordInviteUrl;
 
             // Fill blanks from GlobalSettings so the admin never starts from scratch
             var defaults = await SettingsService.GetAsync();
@@ -634,6 +679,24 @@ else
         };
         var result = await TournamentService.UpdateTournamentAsync(Id, dto);
         if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Media guardada."; }
+        else _globalError = result.Error;
+        _busy = false;
+    }
+
+    private async Task SaveSocial()
+    {
+        _busy = true; _globalError = null; _globalSuccess = null;
+        var dto = new UpdateTournamentDto
+        {
+            StreamUrl        = _configStreamUrl        ?? "",
+            YouTubeUrl       = _configYouTubeUrl       ?? "",
+            TwitterUrl       = _configTwitterUrl       ?? "",
+            InstagramUrl     = _configInstagramUrl     ?? "",
+            TikTokUrl        = _configTikTokUrl        ?? "",
+            DiscordInviteUrl = _configDiscordInviteUrl ?? ""
+        };
+        var result = await TournamentService.UpdateTournamentAsync(Id, dto);
+        if (result.IsSuccess) { _tournament = result.Value; _globalSuccess = "Redes sociales guardadas."; }
         else _globalError = result.Error;
         _busy = false;
     }

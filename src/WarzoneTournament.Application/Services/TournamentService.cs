@@ -71,6 +71,11 @@ public class TournamentService : ITournamentService
         if (dto.PrizePool.HasValue) tournament.PrizePool = dto.PrizePool.Value;
         if (dto.TournamentRulesText is not null) tournament.TournamentRulesText = dto.TournamentRulesText;
         if (dto.StreamUrl is not null) tournament.StreamUrl = dto.StreamUrl;
+        if (dto.YouTubeUrl is not null) tournament.YouTubeUrl = dto.YouTubeUrl;
+        if (dto.TwitterUrl is not null) tournament.TwitterUrl = dto.TwitterUrl;
+        if (dto.InstagramUrl is not null) tournament.InstagramUrl = dto.InstagramUrl;
+        if (dto.TikTokUrl is not null) tournament.TikTokUrl = dto.TikTokUrl;
+        if (dto.DiscordInviteUrl is not null) tournament.DiscordInviteUrl = dto.DiscordInviteUrl;
         if (dto.DiscordChannelId is not null) tournament.DiscordChannelId = dto.DiscordChannelId;
         if (dto.DiscordGuildId is not null) tournament.DiscordGuildId = dto.DiscordGuildId;
         if (dto.DiscordEvidenceChannelId is not null) tournament.DiscordEvidenceChannelId = dto.DiscordEvidenceChannelId;
