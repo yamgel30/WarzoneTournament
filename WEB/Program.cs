@@ -54,9 +54,17 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             OnRemoteFailure = ctx =>
             {
                 ctx.HandleResponse();
-                // If silent auth (prompt=none) failed the user has never authorized → retry with consent
                 var wasSilent = ctx.Properties?.Items.TryGetValue("prompt", out var p) == true && p == "none";
-                ctx.Response.Redirect(wasSilent ? "/login?consent=1" : "/login?error=access_denied");
+                if (wasSilent)
+                {
+                    // New user — silently relay to DiscordConsent which re-challenges with prompt=consent
+                    var redirectUri = Uri.EscapeDataString(ctx.Properties?.RedirectUri ?? "/auth/post-login");
+                    ctx.Response.Redirect($"/auth/discord-consent?returnUrl={redirectUri}");
+                }
+                else
+                {
+                    ctx.Response.Redirect("/login?error=access_denied");
+                }
                 return Task.CompletedTask;
             },
             OnCreatingTicket = async ctx =>
