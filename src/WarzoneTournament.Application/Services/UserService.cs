@@ -26,23 +26,39 @@ public class UserService : IUserService
         var existing = (await _uow.AppUsers.FindAsync(u => u.DiscordId == discordId, ct)).FirstOrDefault();
         if (existing is not null)
         {
-            // Keep username/avatar fresh
             existing.DiscordUsername = discordUsername;
             existing.AvatarHash = avatarHash;
             if (email is not null) existing.Email = email;
+
+            // If not yet linked, try to find a manually-created Player by DiscordId
+            if (existing.PlayerId is null)
+            {
+                var linkedPlayer = (await _uow.Players.FindAsync(p => p.DiscordId == discordId, ct)).FirstOrDefault();
+                if (linkedPlayer is not null)
+                {
+                    existing.PlayerId = linkedPlayer.Id;
+                    if (string.IsNullOrEmpty(existing.DisplayName) || existing.DisplayName == existing.DiscordUsername)
+                        existing.DisplayName = linkedPlayer.Username;
+                }
+            }
+
             _uow.AppUsers.Update(existing);
             await _uow.SaveChangesAsync(ct);
             return _mapper.Map<AppUserDto>(existing);
         }
+
+        // New login — look for a manually-created Player by DiscordId
+        var existingPlayer = (await _uow.Players.FindAsync(p => p.DiscordId == discordId, ct)).FirstOrDefault();
 
         var user = new AppUser
         {
             DiscordId       = discordId,
             DiscordUsername = discordUsername,
             AvatarHash      = avatarHash,
-            DisplayName     = discordUsername,
-            Email           = email,
-            Role            = UserRole.Player
+            DisplayName     = existingPlayer?.Username ?? discordUsername,
+            Email           = email ?? existingPlayer?.Email,
+            Role            = UserRole.Player,
+            PlayerId        = existingPlayer?.Id
         };
         await _uow.AppUsers.AddAsync(user, ct);
         await _uow.SaveChangesAsync(ct);
