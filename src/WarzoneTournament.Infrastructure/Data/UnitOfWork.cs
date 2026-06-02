@@ -25,6 +25,7 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<TeamPlayer>? _teamPlayers;
     private IRepository<TournamentTeam>? _tournamentTeams;
     private IRepository<SiteSettings>? _siteSettings;
+    private IRepository<AppUser>? _appUsers;
 
     public UnitOfWork(AppDbContext context)
     {
@@ -75,6 +76,9 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<SiteSettings> SiteSettings
         => _siteSettings ??= new Repository<SiteSettings>(_context);
+
+    public IRepository<AppUser> AppUsers
+        => _appUsers ??= new Repository<AppUser>(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);

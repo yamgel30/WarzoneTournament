@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IEvidenceService, EvidenceService>();
         services.AddScoped<IRoundService, RoundService>();
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();
+        services.AddScoped<IUserService, UserService>();
 
         return services;
     }
