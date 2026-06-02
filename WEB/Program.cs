@@ -42,6 +42,23 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Scope.Add("email");
         options.Events = new Microsoft.AspNetCore.Authentication.OAuth.OAuthEvents
         {
+            OnRedirectToAuthorizationEndpoint = ctx =>
+            {
+                // Inject the "prompt" value from AuthenticationProperties into the Discord URL
+                var prompt = ctx.Properties.Items.TryGetValue("prompt", out var p) ? p : "none";
+                var uri = Microsoft.AspNetCore.WebUtilities.QueryHelpers
+                    .AddQueryString(ctx.RedirectUri, "prompt", prompt!);
+                ctx.Response.Redirect(uri);
+                return Task.CompletedTask;
+            },
+            OnRemoteFailure = ctx =>
+            {
+                ctx.HandleResponse();
+                // If silent auth (prompt=none) failed the user has never authorized → retry with consent
+                var wasSilent = ctx.Properties?.Items.TryGetValue("prompt", out var p) == true && p == "none";
+                ctx.Response.Redirect(wasSilent ? "/login?consent=1" : "/login?error=access_denied");
+                return Task.CompletedTask;
+            },
             OnCreatingTicket = async ctx =>
             {
                 using var req = new System.Net.Http.HttpRequestMessage(
