@@ -12,7 +12,7 @@ public class TeamInvitation : BaseEntity
     public string? Message { get; set; }
     public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddDays(7);
 
-    public Team Team { get; set; } = null!;
-    public Player InvitedPlayer { get; set; } = null!;
-    public Player InvitedByPlayer { get; set; } = null!;
+    public Team? Team { get; set; }
+    public Player? InvitedPlayer { get; set; }
+    public Player? InvitedByPlayer { get; set; }
 }
