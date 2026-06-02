@@ -5,6 +5,7 @@ using WarzoneTournament.Infrastructure;
 using WEB.Components;
 using WarzoneTournament.Infrastructure.Hubs;
 using WarzoneTournament.Application;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
