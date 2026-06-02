@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<TournamentTeam> TournamentTeams => Set<TournamentTeam>();
     public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<TeamInvitation> TeamInvitations => Set<TeamInvitation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -174,6 +174,14 @@ public class PlayerService : IPlayerService
         return Result.Success();
     }
 
+    public async Task<Result<IReadOnlyList<PlayerListDto>>> SearchPlayersAsync(string query, CancellationToken ct = default)
+    {
+        var players = await _uow.Players.FindAsync(
+            p => !p.IsDeleted && p.Username.Contains(query), ct);
+        var dtos = _mapper.Map<List<PlayerListDto>>(players.Take(10).ToList());
+        return Result.Success<IReadOnlyList<PlayerListDto>>(dtos);
+    }
+
     public async Task<Result<PlayerContextDto>> GetPlayerTournamentContextAsync(Guid playerId, CancellationToken ct = default)
     {
         var player = await _uow.Players.GetByIdAsync(playerId, ct);

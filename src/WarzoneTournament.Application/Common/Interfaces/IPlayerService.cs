@@ -15,4 +15,5 @@ public interface IPlayerService
     Task<Result> BanPlayerAsync(Guid playerId, string reason, CancellationToken ct = default);
     Task<Result> UnbanPlayerAsync(Guid playerId, CancellationToken ct = default);
     Task<Result<PlayerContextDto>> GetPlayerTournamentContextAsync(Guid playerId, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<PlayerListDto>>> SearchPlayersAsync(string query, CancellationToken ct = default);
 }

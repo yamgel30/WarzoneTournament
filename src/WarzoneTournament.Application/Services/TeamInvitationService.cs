@@ -1,0 +1,142 @@
+using WarzoneTournament.Application.Common.Interfaces;
+using WarzoneTournament.Application.Common.Models;
+using WarzoneTournament.Application.DTOs.Team;
+using WarzoneTournament.Domain.Entities;
+using WarzoneTournament.Domain.Enums;
+using WarzoneTournament.Domain.Interfaces;
+
+namespace WarzoneTournament.Application.Services;
+
+public class TeamInvitationService : ITeamInvitationService
+{
+    private readonly IUnitOfWork _uow;
+    private readonly ITeamService _teamService;
+
+    public TeamInvitationService(IUnitOfWork uow, ITeamService teamService)
+    {
+        _uow = uow;
+        _teamService = teamService;
+    }
+
+    public async Task<Result> SendAsync(Guid teamId, Guid captainPlayerId, Guid invitedPlayerId, string? message, CancellationToken ct = default)
+    {
+        var team = await _uow.Teams.GetByIdAsync(teamId, ct);
+        if (team is null) return Result.Failure("Equipo no encontrado.");
+        if (team.CaptainId != captainPlayerId) return Result.Failure("Solo el capitán puede enviar invitaciones.");
+
+        var alreadyMember = await _uow.TeamPlayers.ExistsAsync(tp => tp.TeamId == teamId && tp.PlayerId == invitedPlayerId && tp.IsActive, ct);
+        if (alreadyMember) return Result.Failure("El jugador ya es miembro de este equipo.");
+
+        var pendingExists = await _uow.TeamInvitations.ExistsAsync(i =>
+            i.TeamId == teamId && i.InvitedPlayerId == invitedPlayerId && i.Status == InvitationStatus.Pending, ct);
+        if (pendingExists) return Result.Failure("Ya existe una invitación pendiente para este jugador.");
+
+        var invitation = new TeamInvitation
+        {
+            TeamId = teamId,
+            InvitedPlayerId = invitedPlayerId,
+            InvitedByPlayerId = captainPlayerId,
+            Message = message,
+            Status = InvitationStatus.Pending,
+            ExpiresAt = DateTime.UtcNow.AddDays(7)
+        };
+        await _uow.TeamInvitations.AddAsync(invitation, ct);
+        await _uow.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    public async Task<Result<IReadOnlyList<TeamInvitationDto>>> GetPendingForPlayerAsync(Guid playerId, CancellationToken ct = default)
+    {
+        var invitations = await _uow.TeamInvitations.FindAsync(
+            i => i.InvitedPlayerId == playerId && i.Status == InvitationStatus.Pending && i.ExpiresAt > DateTime.UtcNow, ct);
+        var dtos = new List<TeamInvitationDto>();
+        foreach (var inv in invitations)
+        {
+            var team = await _uow.Teams.GetByIdAsync(inv.TeamId, ct);
+            var invitedBy = await _uow.Players.GetByIdAsync(inv.InvitedByPlayerId, ct);
+            dtos.Add(new TeamInvitationDto
+            {
+                Id = inv.Id,
+                TeamId = inv.TeamId,
+                TeamName = team?.Name ?? "—",
+                TeamLogoUrl = team?.LogoUrl,
+                InvitedPlayerId = inv.InvitedPlayerId,
+                InvitedPlayerUsername = "—",
+                InvitedByPlayerId = inv.InvitedByPlayerId,
+                InvitedByUsername = invitedBy?.Username ?? "—",
+                Status = inv.Status,
+                Message = inv.Message,
+                ExpiresAt = inv.ExpiresAt,
+                CreatedAt = inv.CreatedAt
+            });
+        }
+        return Result.Success<IReadOnlyList<TeamInvitationDto>>(dtos);
+    }
+
+    public async Task<Result<IReadOnlyList<TeamInvitationDto>>> GetSentByTeamAsync(Guid teamId, CancellationToken ct = default)
+    {
+        var invitations = await _uow.TeamInvitations.FindAsync(i => i.TeamId == teamId, ct);
+        var team = await _uow.Teams.GetByIdAsync(teamId, ct);
+        var dtos = new List<TeamInvitationDto>();
+        foreach (var inv in invitations.OrderByDescending(i => i.CreatedAt))
+        {
+            var invitedPlayer = await _uow.Players.GetByIdAsync(inv.InvitedPlayerId, ct);
+            dtos.Add(new TeamInvitationDto
+            {
+                Id = inv.Id,
+                TeamId = inv.TeamId,
+                TeamName = team?.Name ?? "—",
+                TeamLogoUrl = team?.LogoUrl,
+                InvitedPlayerId = inv.InvitedPlayerId,
+                InvitedPlayerUsername = invitedPlayer?.Username ?? "—",
+                InvitedByPlayerId = inv.InvitedByPlayerId,
+                InvitedByUsername = "—",
+                Status = inv.Status,
+                Message = inv.Message,
+                ExpiresAt = inv.ExpiresAt,
+                CreatedAt = inv.CreatedAt
+            });
+        }
+        return Result.Success<IReadOnlyList<TeamInvitationDto>>(dtos);
+    }
+
+    public async Task<Result> AcceptAsync(Guid invitationId, Guid playerId, CancellationToken ct = default)
+    {
+        var inv = await _uow.TeamInvitations.GetByIdAsync(invitationId, ct);
+        if (inv is null) return Result.Failure("Invitación no encontrada.");
+        if (inv.InvitedPlayerId != playerId) return Result.Failure("No autorizado.");
+        if (inv.Status != InvitationStatus.Pending) return Result.Failure("Esta invitación ya fue procesada.");
+        if (inv.ExpiresAt < DateTime.UtcNow)
+        {
+            inv.Status = InvitationStatus.Expired;
+            _uow.TeamInvitations.Update(inv);
+            await _uow.SaveChangesAsync(ct);
+            return Result.Failure("La invitación expiró.");
+        }
+
+        inv.Status = InvitationStatus.Accepted;
+        _uow.TeamInvitations.Update(inv);
+        await _uow.SaveChangesAsync(ct);
+
+        return await _teamService.AddPlayerToTeamAsync(inv.TeamId, playerId, ct);
+    }
+
+    public async Task<Result> DeclineAsync(Guid invitationId, Guid playerId, CancellationToken ct = default)
+    {
+        var inv = await _uow.TeamInvitations.GetByIdAsync(invitationId, ct);
+        if (inv is null) return Result.Failure("Invitación no encontrada.");
+        if (inv.InvitedPlayerId != playerId) return Result.Failure("No autorizado.");
+        if (inv.Status != InvitationStatus.Pending) return Result.Failure("Esta invitación ya fue procesada.");
+
+        inv.Status = InvitationStatus.Declined;
+        _uow.TeamInvitations.Update(inv);
+        await _uow.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    public async Task<int> CountPendingForPlayerAsync(Guid playerId, CancellationToken ct = default)
+    {
+        return await _uow.TeamInvitations.CountAsync(
+            i => i.InvitedPlayerId == playerId && i.Status == InvitationStatus.Pending && i.ExpiresAt > DateTime.UtcNow, ct);
+    }
+}

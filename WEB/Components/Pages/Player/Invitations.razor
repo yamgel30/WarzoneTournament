@@ -1,0 +1,103 @@
+@page "/invitations"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Team
+@using WarzoneTournament.Domain.Enums
+@inject ITeamInvitationService InvitationService
+@inject NavigationManager NavManager
+
+<PageTitle>Invitaciones — Warzone Tournament</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">Invitaciones de equipo</h1>
+    </div>
+
+    @if (_loading) {
+        <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+    } else if (!_invitations.Any()) {
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">No tienes invitaciones pendientes.</RadzenAlert>
+    } else {
+        @if (!string.IsNullOrEmpty(_error)) {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_error</RadzenAlert>
+        }
+        @if (!string.IsNullOrEmpty(_success)) {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_success</RadzenAlert>
+        }
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:600px">
+            @foreach (var inv in _invitations) {
+                <RadzenCard>
+                    <div style="display:flex;align-items:center;gap:14px">
+                        @if (!string.IsNullOrEmpty(inv.TeamLogoUrl)) {
+                            <img src="@inv.TeamLogoUrl" style="width:48px;height:48px;border-radius:6px;object-fit:cover" />
+                        } else {
+                            <div style="width:48px;height:48px;border-radius:6px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.4em">👥</div>
+                        }
+                        <div style="flex:1">
+                            <div style="font-weight:700;font-size:1.05em">@inv.TeamName</div>
+                            <div style="font-size:0.82em;color:var(--rz-text-secondary-color)">Invitado por @inv.InvitedByUsername</div>
+                            @if (!string.IsNullOrEmpty(inv.Message)) {
+                                <div style="font-size:0.82em;margin-top:4px;font-style:italic">"@inv.Message"</div>
+                            }
+                            <div style="font-size:0.75em;color:var(--rz-text-disabled-color);margin-top:2px">
+                                Expira @inv.ExpiresAt.ToLocalTime().ToString("dd/MM HH:mm")
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <RadzenButton Text="Aceptar" Icon="check" ButtonStyle="ButtonStyle.Success"
+                                          Size="ButtonSize.Small" Click="@(() => AcceptAsync(inv.Id))" Disabled="@_busy" />
+                            <RadzenButton Text="Rechazar" Icon="close" ButtonStyle="ButtonStyle.Danger"
+                                          Variant="Variant.Outlined" Size="ButtonSize.Small"
+                                          Click="@(() => DeclineAsync(inv.Id))" Disabled="@_busy" />
+                        </div>
+                    </div>
+                </RadzenCard>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private Guid _myPlayerId;
+    private List<TeamInvitationDto> _invitations = new();
+    private string? _error;
+    private string? _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState!;
+        Guid.TryParse(auth.User.FindFirst("player_id")?.Value, out _myPlayerId);
+        if (_myPlayerId != Guid.Empty) await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        var res = await InvitationService.GetPendingForPlayerAsync(_myPlayerId);
+        if (res.IsSuccess) _invitations = res.Value.ToList();
+    }
+
+    private async Task AcceptAsync(Guid id)
+    {
+        _busy = true; _error = null;
+        var r = await InvitationService.AcceptAsync(id, _myPlayerId);
+        if (r.IsSuccess) { _success = "¡Bienvenido al equipo!"; await LoadAsync(); }
+        else _error = r.Error;
+        _busy = false;
+    }
+
+    private async Task DeclineAsync(Guid id)
+    {
+        _busy = true; _error = null;
+        var r = await InvitationService.DeclineAsync(id, _myPlayerId);
+        if (r.IsSuccess) { _success = "Invitación rechazada."; await LoadAsync(); }
+        else _error = r.Error;
+        _busy = false;
+    }
+}

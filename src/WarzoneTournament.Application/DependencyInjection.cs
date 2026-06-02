@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IRoundService, RoundService>();
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<ITeamInvitationService, TeamInvitationService>();
 
         return services;
     }

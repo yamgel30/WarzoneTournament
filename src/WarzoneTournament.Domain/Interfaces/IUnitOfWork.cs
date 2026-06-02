@@ -20,6 +20,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<TournamentTeam> TournamentTeams { get; }
     IRepository<SiteSettings> SiteSettings { get; }
     IRepository<AppUser> AppUsers { get; }
+    IRepository<TeamInvitation> TeamInvitations { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
     Task BeginTransactionAsync(CancellationToken ct = default);
     Task CommitTransactionAsync(CancellationToken ct = default);
