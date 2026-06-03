@@ -78,6 +78,38 @@ public class TeamInvitationService : ITeamInvitationService
         return Result.Success();
     }
 
+    public async Task<Result> SendDiscordInviteAsync(Guid teamId, Guid captainPlayerId, string discordId, string? message, CancellationToken ct = default)
+    {
+        var team = await _uow.Teams.GetByIdAsync(teamId, ct);
+        if (team is null) return Result.Failure("Equipo no encontrado.");
+        if (team.CaptainId != captainPlayerId) return Result.Failure("Solo el capitán puede enviar invitaciones.");
+
+        var alreadyPending = await _uow.PendingDiscordInvites.ExistsAsync(
+            p => p.TeamId == teamId && p.InvitedDiscordId == discordId && !p.IsConsumed && p.ExpiresAt > DateTime.UtcNow, ct);
+        if (alreadyPending) return Result.Failure("Ya existe una invitación pendiente para ese usuario de Discord.");
+
+        var pending = new PendingDiscordInvite
+        {
+            TeamId = teamId,
+            InvitedByPlayerId = captainPlayerId,
+            InvitedDiscordId = discordId,
+            Message = message,
+            ExpiresAt = DateTime.UtcNow.AddDays(7)
+        };
+        await _uow.PendingDiscordInvites.AddAsync(pending, ct);
+        await _uow.SaveChangesAsync(ct);
+
+        var captain = await _uow.Players.GetByIdAsync(captainPlayerId, ct);
+        await _discord.SendDirectMessageAsync(discordId,
+            $"🎮 **{team.Name}** te invitó a unirte a su equipo en Warzone Tournament!\n" +
+            $"Capitán: **{captain?.Username ?? "—"}**\n" +
+            $"Regístrate en la plataforma con tu cuenta de Discord para aceptar la invitación.\n" +
+            (string.IsNullOrEmpty(message) ? "" : $"\nMensaje: _{message}_"),
+            ct);
+
+        return Result.Success();
+    }
+
     public async Task<Result<IReadOnlyList<TeamInvitationDto>>> GetPendingForPlayerAsync(Guid playerId, CancellationToken ct = default)
     {
         var invitations = await _uow.TeamInvitations.FindAsync(

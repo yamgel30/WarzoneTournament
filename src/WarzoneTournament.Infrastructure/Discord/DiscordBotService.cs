@@ -299,6 +299,48 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         }
     }
 
+    public async Task<Result<IReadOnlyList<DiscordMemberSearchDto>>> SearchGuildMembersAsync(
+        string guildId, string query, int limit = 10, CancellationToken ct = default)
+    {
+        if (!_isReady) return Result.Failure<IReadOnlyList<DiscordMemberSearchDto>>("Bot no conectado.");
+        try
+        {
+            if (!ulong.TryParse(guildId, out var gId))
+                return Result.Failure<IReadOnlyList<DiscordMemberSearchDto>>("Guild ID inválido.");
+
+            var guild = await _client.Rest.GetGuildAsync(gId);
+            if (guild is null)
+                return Result.Failure<IReadOnlyList<DiscordMemberSearchDto>>("Servidor de Discord no encontrado.");
+
+            var members = await guild.SearchUsersAsync(query, limit);
+
+            using var scope = _serviceProvider.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+            var results = new List<DiscordMemberSearchDto>();
+            foreach (var member in members)
+            {
+                var discordIdStr = member.Id.ToString();
+                var player = (await uow.Players.FindAsync(p => p.DiscordId == discordIdStr)).FirstOrDefault();
+                results.Add(new DiscordMemberSearchDto
+                {
+                    DiscordId    = discordIdStr,
+                    Username     = member.Username,
+                    GlobalName   = member.GlobalName,
+                    AvatarUrl    = member.GetAvatarUrl() ?? member.GetDefaultAvatarUrl(),
+                    IsRegistered = player is not null,
+                    PlayerId     = player?.Id
+                });
+            }
+            return Result.Success<IReadOnlyList<DiscordMemberSearchDto>>(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Discord guild member search failed: {Msg}", ex.Message);
+            return Result.Failure<IReadOnlyList<DiscordMemberSearchDto>>($"Error en búsqueda: {ex.Message}");
+        }
+    }
+
     public async Task<Result<DiscordUserDto>> GetDiscordUserAsync(string discordId, CancellationToken ct = default)
     {
         if (!_isReady)

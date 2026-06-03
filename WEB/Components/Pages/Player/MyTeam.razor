@@ -6,11 +6,14 @@
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Team
 @using WarzoneTournament.Application.DTOs.Tournament
+@using WarzoneTournament.Application.DTOs.Discord
 @using WarzoneTournament.Domain.Enums
 @inject ITeamService TeamService
 @inject ITeamInvitationService InvitationService
 @inject ITournamentService TournamentService
 @inject IPlayerService PlayerService
+@inject IDiscordNotificationService DiscordService
+@inject ISiteSettingsService SiteSettings
 @inject NavigationManager NavManager
 
 <PageTitle>Mi Equipo — Warzone Tournament</PageTitle>
@@ -134,25 +137,112 @@ else
                     <span class="section-title">✉️ Invitar Jugador</span>
                     <div class="section-header-line"></div>
                 </div>
-                <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <RadzenTextBox @bind-Value="_searchQuery" Placeholder="Buscar por gamer tag..."
-                                   Style="flex:1"
-                                   @onkeyup="@(async e => { if (e.Key == "Enter") await SearchPlayersAsync(); })" />
-                    <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Secondary"
-                                  Click="@SearchPlayersAsync" Disabled="@_busy" />
+
+                @* Search mode toggle *@
+                <div style="display:flex;gap:6px;margin-bottom:14px;background:rgba(7,26,130,0.3);border-radius:var(--r-md);padding:4px;border:1px solid var(--c-border)">
+                    <button @onclick="@(() => SetSearchMode("app"))"
+                            style="flex:1;padding:6px 10px;border:none;border-radius:calc(var(--r-md) - 2px);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;
+                                   @(_searchMode == "app" ? "background:var(--c-electric);color:#fff;" : "background:transparent;color:var(--c-muted);")">
+                        <span class="material-icons" style="font-size:14px;vertical-align:-3px;margin-right:4px">person_search</span>En App
+                    </button>
+                    <button @onclick="@(() => SetSearchMode("discord"))"
+                            style="flex:1;padding:6px 10px;border:none;border-radius:calc(var(--r-md) - 2px);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;
+                                   @(_searchMode == "discord" ? "background:var(--c-electric);color:#fff;" : "background:transparent;color:var(--c-muted);")">
+                        <svg style="width:14px;height:14px;vertical-align:-3px;margin-right:4px;fill:currentColor" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>En Discord
+                    </button>
                 </div>
-                @if (_searchResults.Any())
+
+                @* ─ APP SEARCH ─ *@
+                @if (_searchMode == "app")
                 {
-                    <div style="margin-bottom:14px;background:rgba(7,26,130,0.3);border-radius:var(--r-md);overflow:hidden;border:1px solid var(--c-border)">
-                        @foreach (var p in _searchResults)
-                        {
-                            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--c-border)">
-                                <span style="font-weight:500">@p.Username</span>
-                                <RadzenButton Text="Invitar" Icon="send" ButtonStyle="ButtonStyle.Primary"
-                                              Size="ButtonSize.Small" Click="@(() => SendInviteAsync(p.Id))" Disabled="@_busy" />
-                            </div>
-                        }
+                    <div style="display:flex;gap:8px;margin-bottom:12px">
+                        <RadzenTextBox @bind-Value="_searchQuery" Placeholder="Buscar por gamer tag..."
+                                       Style="flex:1"
+                                       @onkeyup="@(async e => { if (e.Key == "Enter") await SearchPlayersAsync(); })" />
+                        <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Secondary"
+                                      Click="@SearchPlayersAsync" Disabled="@_busy" />
                     </div>
+                    @if (_searchResults.Any())
+                    {
+                        <div style="margin-bottom:14px;background:rgba(7,26,130,0.3);border-radius:var(--r-md);overflow:hidden;border:1px solid var(--c-border)">
+                            @foreach (var p in _searchResults)
+                            {
+                                <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--c-border)">
+                                    <span style="font-weight:500">@p.Username</span>
+                                    <RadzenButton Text="Invitar" Icon="send" ButtonStyle="ButtonStyle.Primary"
+                                                  Size="ButtonSize.Small" Click="@(() => SendInviteAsync(p.Id))" Disabled="@_busy" />
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+
+                @* ─ DISCORD SEARCH ─ *@
+                @if (_searchMode == "discord")
+                {
+                    <div style="display:flex;gap:8px;margin-bottom:12px">
+                        <RadzenTextBox @bind-Value="_discordQuery" Placeholder="Buscar usuario en Discord..."
+                                       Style="flex:1"
+                                       @onkeyup="@(async e => { if (e.Key == "Enter") await SearchDiscordAsync(); })" />
+                        <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Secondary"
+                                      Click="@SearchDiscordAsync" Disabled="@(_discordBusy || string.IsNullOrWhiteSpace(_discordQuery))" />
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_discordError))
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:10px;font-size:12px">@_discordError</RadzenAlert>
+                    }
+
+                    @if (_discordBusy)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--c-muted);font-size:13px">
+                            <div class="loading-ring" style="width:18px;height:18px"></div> Buscando en Discord...
+                        </div>
+                    }
+                    else if (_discordResults.Any())
+                    {
+                        <div style="margin-bottom:14px;background:rgba(7,26,130,0.3);border-radius:var(--r-md);overflow:hidden;border:1px solid var(--c-border)">
+                            @foreach (var m in _discordResults)
+                            {
+                                <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--c-border)">
+                                    @if (!string.IsNullOrEmpty(m.AvatarUrl))
+                                    {
+                                        <img src="@m.AvatarUrl" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;border:1px solid var(--c-border)" />
+                                    }
+                                    else
+                                    {
+                                        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#5865F2,#7289da);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0">
+                                            @m.DisplayName.Substring(0, 1).ToUpper()
+                                        </div>
+                                    }
+                                    <div style="flex:1;min-width:0">
+                                        <div style="font-weight:600;color:var(--c-white);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@m.DisplayName</div>
+                                        <div style="font-size:11px;color:var(--c-muted)">@m.Username</div>
+                                    </div>
+                                    @if (m.IsRegistered)
+                                    {
+                                        <RadzenBadge Text="En app" BadgeStyle="BadgeStyle.Success" style="font-size:10px;flex-shrink:0" />
+                                        <RadzenButton Text="Invitar" Icon="send" ButtonStyle="ButtonStyle.Primary"
+                                                      Size="ButtonSize.Small" Disabled="@_busy"
+                                                      Click="@(() => SendInviteAsync(m.PlayerId!.Value))" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenBadge Text="No registrado" BadgeStyle="BadgeStyle.Light" style="font-size:10px;flex-shrink:0" />
+                                        <RadzenButton Text="Invitar" Icon="send" ButtonStyle="ButtonStyle.Secondary"
+                                                      Size="ButtonSize.Small" Disabled="@_busy"
+                                                      Click="@(() => SendDiscordInviteAsync(m.DiscordId))" />
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (_discordSearched)
+                    {
+                        <div style="padding:12px 0;text-align:center;color:var(--c-muted);font-size:13px">
+                            Sin resultados. Intenta con otro nombre de usuario.
+                        </div>
+                    }
                 }
 
                 <div class="section-header" style="margin-top:8px">
@@ -207,8 +297,20 @@ else
 
     private TeamDto? _team;
     private CreateTeamDto _createDto = new();
+
+    // App search
+    private string _searchMode = "app";
     private string _searchQuery = "";
     private List<WarzoneTournament.Application.DTOs.Player.PlayerListDto> _searchResults = new();
+
+    // Discord search
+    private string _discordQuery = "";
+    private List<DiscordMemberSearchDto> _discordResults = new();
+    private bool _discordBusy;
+    private bool _discordSearched;
+    private string? _discordError;
+    private string? _guildId;
+
     private List<TeamInvitationDto> _sentInvitations = new();
     private List<TournamentListDto> _openTournaments = new();
     private Guid _selectedTournamentId;
@@ -256,6 +358,9 @@ else
         });
         if (tourRes.IsSuccess) _openTournaments = tourRes.Value.Items.ToList();
 
+        var settings = await SiteSettings.GetAsync();
+        _guildId = settings.DefaultDiscordGuildId;
+
         _loading = false;
     }
 
@@ -299,6 +404,55 @@ else
         _busy = true; _error = null;
         var result = await TeamService.RegisterTeamForTournamentAsync(_team!.Id, _selectedTournamentId);
         if (result.IsSuccess) _success = "¡Equipo inscrito en el torneo!";
+        else _error = result.Error;
+        _busy = false;
+    }
+
+    private void SetSearchMode(string mode)
+    {
+        _searchMode = mode;
+        _searchResults.Clear();
+        _discordResults.Clear();
+        _discordSearched = false;
+        _discordError = null;
+        _searchQuery = "";
+        _discordQuery = "";
+    }
+
+    private async Task SearchDiscordAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_discordQuery)) return;
+        if (string.IsNullOrEmpty(_guildId))
+        {
+            _discordError = "El Guild ID de Discord no está configurado en Configuración Global.";
+            return;
+        }
+        _discordBusy = true;
+        _discordError = null;
+        _discordResults.Clear();
+        _discordSearched = false;
+
+        var result = await DiscordService.SearchGuildMembersAsync(_guildId, _discordQuery, 10);
+        if (result.IsSuccess)
+            _discordResults = result.Value.ToList();
+        else
+            _discordError = result.Error;
+
+        _discordSearched = true;
+        _discordBusy = false;
+    }
+
+    private async Task SendDiscordInviteAsync(string discordId)
+    {
+        _busy = true; _error = null;
+        var result = await InvitationService.SendDiscordInviteAsync(_team!.Id, _myPlayerId, discordId, null);
+        if (result.IsSuccess)
+        {
+            _success = "Invitación enviada por Discord. El jugador la recibirá al registrarse.";
+            _discordResults.Clear();
+            _discordSearched = false;
+            _discordQuery = "";
+        }
         else _error = result.Error;
         _busy = false;
     }

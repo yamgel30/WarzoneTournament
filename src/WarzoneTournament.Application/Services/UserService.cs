@@ -30,7 +30,6 @@ public class UserService : IUserService
             existing.AvatarHash = avatarHash;
             if (email is not null) existing.Email = email;
 
-            // If not yet linked, try to find a manually-created Player by DiscordId
             if (existing.PlayerId is null)
             {
                 var linkedPlayer = (await _uow.Players.FindAsync(p => p.DiscordId == discordId, ct)).FirstOrDefault();
@@ -44,10 +43,13 @@ public class UserService : IUserService
 
             _uow.AppUsers.Update(existing);
             await _uow.SaveChangesAsync(ct);
+
+            if (existing.PlayerId.HasValue)
+                await ConsumePendingDiscordInvitesAsync(discordId, existing.PlayerId.Value, ct);
+
             return _mapper.Map<AppUserDto>(existing);
         }
 
-        // New login — look for a manually-created Player by DiscordId
         var existingPlayer = (await _uow.Players.FindAsync(p => p.DiscordId == discordId, ct)).FirstOrDefault();
 
         var user = new AppUser
@@ -62,6 +64,10 @@ public class UserService : IUserService
         };
         await _uow.AppUsers.AddAsync(user, ct);
         await _uow.SaveChangesAsync(ct);
+
+        if (user.PlayerId.HasValue)
+            await ConsumePendingDiscordInvitesAsync(discordId, user.PlayerId.Value, ct);
+
         return _mapper.Map<AppUserDto>(user);
     }
 
@@ -105,6 +111,36 @@ public class UserService : IUserService
         user.DisplayName = displayName;
         _uow.AppUsers.Update(user);
         await _uow.SaveChangesAsync(ct);
+
+        if (user.PlayerId.HasValue)
+            await ConsumePendingDiscordInvitesAsync(user.DiscordId, user.PlayerId.Value, ct);
+
         return Result.Success(_mapper.Map<AppUserDto>(user));
+    }
+
+    private async Task ConsumePendingDiscordInvitesAsync(string discordId, Guid playerId, CancellationToken ct)
+    {
+        var pending = await _uow.PendingDiscordInvites.FindAsync(
+            p => p.InvitedDiscordId == discordId && !p.IsConsumed && p.ExpiresAt > DateTime.UtcNow, ct);
+        foreach (var invite in pending)
+        {
+            var alreadyExists = await _uow.TeamInvitations.ExistsAsync(i =>
+                i.TeamId == invite.TeamId && i.InvitedPlayerId == playerId && i.Status == InvitationStatus.Pending, ct);
+            if (!alreadyExists)
+            {
+                await _uow.TeamInvitations.AddAsync(new TeamInvitation
+                {
+                    TeamId = invite.TeamId,
+                    InvitedPlayerId = playerId,
+                    InvitedByPlayerId = invite.InvitedByPlayerId,
+                    Message = invite.Message,
+                    Status = InvitationStatus.Pending,
+                    ExpiresAt = invite.ExpiresAt
+                }, ct);
+            }
+            invite.IsConsumed = true;
+            _uow.PendingDiscordInvites.Update(invite);
+        }
+        if (pending.Any()) await _uow.SaveChangesAsync(ct);
     }
 }
