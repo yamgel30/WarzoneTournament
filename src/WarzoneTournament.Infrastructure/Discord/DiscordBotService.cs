@@ -281,6 +281,24 @@ public class DiscordBotService : IDiscordNotificationService, IAsyncDisposable
         return Task.FromResult(Result.Success(channels));
     }
 
+    public async Task SendDirectMessageAsync(string discordId, string message, CancellationToken ct = default)
+    {
+        if (!_isReady) return;
+        try
+        {
+            if (!ulong.TryParse(discordId, out var userId)) return;
+            var user = await _client.Rest.GetUserAsync(userId);
+            if (user is null) return;
+            var dmChannel = await user.CreateDMChannelAsync();
+            await dmChannel.SendMessageAsync(message);
+            _logger.LogInformation("Discord DM sent to {DiscordId}", discordId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to send Discord DM to {DiscordId}: {Msg}", discordId, ex.Message);
+        }
+    }
+
     public async Task<Result<DiscordUserDto>> GetDiscordUserAsync(string discordId, CancellationToken ct = default)
     {
         if (!_isReady)

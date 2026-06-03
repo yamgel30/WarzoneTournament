@@ -11,11 +11,16 @@ public class TeamInvitationService : ITeamInvitationService
 {
     private readonly IUnitOfWork _uow;
     private readonly ITeamService _teamService;
+    private readonly INotificationService _notifications;
+    private readonly IDiscordNotificationService _discord;
 
-    public TeamInvitationService(IUnitOfWork uow, ITeamService teamService)
+    public TeamInvitationService(IUnitOfWork uow, ITeamService teamService,
+        INotificationService notifications, IDiscordNotificationService discord)
     {
         _uow = uow;
         _teamService = teamService;
+        _notifications = notifications;
+        _discord = discord;
     }
 
     public async Task<Result> SendAsync(Guid teamId, Guid captainPlayerId, Guid invitedPlayerId, string? message, CancellationToken ct = default)
@@ -42,6 +47,34 @@ public class TeamInvitationService : ITeamInvitationService
         };
         await _uow.TeamInvitations.AddAsync(invitation, ct);
         await _uow.SaveChangesAsync(ct);
+
+        // In-app notification
+        var appUser = await _uow.AppUsers.FirstOrDefaultAsync(u => u.PlayerId == invitedPlayerId, ct);
+        if (appUser is not null)
+        {
+            var captain = await _uow.Players.GetByIdAsync(captainPlayerId, ct);
+            await _notifications.CreateAsync(
+                appUser.Id,
+                $"Invitación de {team.Name}",
+                $"{captain?.Username ?? "Alguien"} te invitó a unirte al equipo {team.Name}.",
+                "Invitation",
+                "/invitations",
+                ct);
+        }
+
+        // Discord DM
+        var invitedPlayer = await _uow.Players.GetByIdAsync(invitedPlayerId, ct);
+        if (!string.IsNullOrEmpty(invitedPlayer?.DiscordId))
+        {
+            var captain = await _uow.Players.GetByIdAsync(captainPlayerId, ct);
+            await _discord.SendDirectMessageAsync(
+                invitedPlayer.DiscordId,
+                $"🎮 **{team.Name}** te invitó a unirse al equipo!\n" +
+                $"Capitán: **{captain?.Username ?? "—"}**\n" +
+                $"Entra a la plataforma para aceptar o rechazar la invitación.",
+                ct);
+        }
+
         return Result.Success();
     }
 

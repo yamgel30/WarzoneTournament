@@ -7,4 +7,5 @@ public interface ISignalRNotificationService
     Task NotifyEvidenceSubmittedAsync(Guid matchId, Guid evidenceId, CancellationToken ct = default);
     Task NotifyEvidenceReviewedAsync(Guid evidenceId, string status, CancellationToken ct = default);
     Task NotifyTournamentStatusChangedAsync(Guid tournamentId, string status, CancellationToken ct = default);
+    Task NotifyUserAsync(string userId, object payload, CancellationToken ct = default);
 }

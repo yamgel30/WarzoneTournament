@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<ITeamInvitationService, TeamInvitationService>();
+        services.AddScoped<INotificationService, NotificationService>();
 
         return services;
     }

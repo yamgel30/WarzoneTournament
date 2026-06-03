@@ -1,7 +1,15 @@
 @inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
 
 <RadzenComponents @rendermode="InteractiveServer" />
 
+<CascadingAuthenticationState>
+<AuthorizeView>
+<Authorized Context="authContext">
+@{
+    Guid.TryParse(authContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var _userId);
+}
 <RadzenLayout>
     <RadzenHeader>
         <div class="header-content">
@@ -11,6 +19,7 @@
                 <span class="app-title">Warzone Tournament</span>
             </a>
             <div class="header-right">
+                <NotificationBell UserId="@_userId" />
                 <div class="live-pill">
                     <span class="live-dot"></span>
                     Live
@@ -27,6 +36,30 @@
         </RadzenContentContainer>
     </RadzenBody>
 </RadzenLayout>
+</Authorized>
+<NotAuthorized>
+<RadzenLayout>
+    <RadzenHeader>
+        <div class="header-content">
+            <RadzenSidebarToggle Click="@ToggleSidebar" />
+            <a class="app-logo" href="/">
+                <div class="app-logo-icon">⚡</div>
+                <span class="app-title">Warzone Tournament</span>
+            </a>
+        </div>
+    </RadzenHeader>
+    <RadzenSidebar @ref="_sidebar" @bind-Expanded="@_sidebarExpanded">
+        <NavMenu />
+    </RadzenSidebar>
+    <RadzenBody>
+        <RadzenContentContainer Name="main">
+            @Body
+        </RadzenContentContainer>
+    </RadzenBody>
+</RadzenLayout>
+</NotAuthorized>
+</AuthorizeView>
+</CascadingAuthenticationState>
 
 @code {
     private RadzenSidebar _sidebar = null!;

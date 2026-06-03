@@ -16,16 +16,18 @@ public class EvidenceService : IEvidenceService
     private readonly ILogger<EvidenceService> _logger;
     private readonly ISignalRNotificationService _signalR;
     private readonly IDiscordNotificationService _discord;
+    private readonly INotificationService _notifications;
 
     public EvidenceService(IUnitOfWork uow, IMapper mapper,
         ILogger<EvidenceService> logger, ISignalRNotificationService signalR,
-        IDiscordNotificationService discord)
+        IDiscordNotificationService discord, INotificationService notifications)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
         _discord = discord;
+        _notifications = notifications;
     }
 
     public async Task<Result<EvidenceDto>> SubmitEvidenceAsync(SubmitEvidenceDto dto, CancellationToken ct = default)
@@ -114,6 +116,24 @@ public class EvidenceService : IEvidenceService
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyEvidenceReviewedAsync(id, "Approved", ct);
 
+        // Notify the submitting player
+        var appUser = evidence.SubmittedByPlayerId.HasValue
+            ? await _uow.AppUsers.FirstOrDefaultAsync(u => u.PlayerId == evidence.SubmittedByPlayerId.Value, ct)
+            : null;
+        if (appUser is not null)
+        {
+            var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);
+            await _notifications.CreateAsync(appUser.Id,
+                "Evidencia aprobada ✅",
+                $"Tu evidencia del equipo {team?.Name ?? "—"} fue aprobada.",
+                "EvidenceApproved", null, ct);
+            var player = evidence.SubmittedByPlayerId.HasValue
+                ? await _uow.Players.GetByIdAsync(evidence.SubmittedByPlayerId.Value, ct) : null;
+            if (!string.IsNullOrEmpty(player?.DiscordId))
+                await _discord.SendDirectMessageAsync(player.DiscordId,
+                    $"✅ Tu evidencia fue **aprobada** para el equipo **{team?.Name ?? "—"}**.", ct);
+        }
+
         _logger.LogInformation("Evidence {EvidenceId} approved by {ReviewedBy}", id, reviewedBy);
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
     }
@@ -139,6 +159,24 @@ public class EvidenceService : IEvidenceService
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyEvidenceReviewedAsync(id, "Rejected", ct);
         await _discord.SendEvidenceRejectionNotificationAsync(id, reason, ct);
+
+        // Notify the submitting player
+        var appUser = evidence.SubmittedByPlayerId.HasValue
+            ? await _uow.AppUsers.FirstOrDefaultAsync(u => u.PlayerId == evidence.SubmittedByPlayerId.Value, ct)
+            : null;
+        if (appUser is not null)
+        {
+            var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);
+            await _notifications.CreateAsync(appUser.Id,
+                "Evidencia rechazada ❌",
+                $"Tu evidencia fue rechazada. Razón: {reason}",
+                "EvidenceRejected", null, ct);
+            var player = evidence.SubmittedByPlayerId.HasValue
+                ? await _uow.Players.GetByIdAsync(evidence.SubmittedByPlayerId.Value, ct) : null;
+            if (!string.IsNullOrEmpty(player?.DiscordId))
+                await _discord.SendDirectMessageAsync(player.DiscordId,
+                    $"❌ Tu evidencia fue **rechazada**.\n**Razón:** {reason}", ct);
+        }
 
         _logger.LogInformation("Evidence {EvidenceId} rejected by {ReviewedBy}: {Reason}", id, reviewedBy, reason);
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));

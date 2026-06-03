@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<TeamInvitation> TeamInvitations => Set<TeamInvitation>();
+    public DbSet<AppNotification> Notifications => Set<AppNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

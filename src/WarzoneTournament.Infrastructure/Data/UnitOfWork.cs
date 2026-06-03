@@ -27,6 +27,7 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<SiteSettings>? _siteSettings;
     private IRepository<AppUser>? _appUsers;
     private IRepository<TeamInvitation>? _teamInvitations;
+    private IRepository<AppNotification>? _notifications;
 
     public UnitOfWork(AppDbContext context)
     {
@@ -83,6 +84,9 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<TeamInvitation> TeamInvitations
         => _teamInvitations ??= new Repository<TeamInvitation>(_context);
+
+    public IRepository<AppNotification> Notifications
+        => _notifications ??= new Repository<AppNotification>(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);

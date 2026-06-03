@@ -90,4 +90,17 @@ public class SignalRNotificationService : ISignalRNotificationService
             _logger.LogError(ex, "Failed to notify tournament status changed for {Id}", tournamentId);
         }
     }
+
+    public async Task NotifyUserAsync(string userId, object payload, CancellationToken ct = default)
+    {
+        try
+        {
+            await _hubContext.Clients.Group($"user-{userId}")
+                .SendAsync("NewNotification", payload, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to notify user {UserId}", userId);
+        }
+    }
 }

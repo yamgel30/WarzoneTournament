@@ -21,6 +21,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<SiteSettings> SiteSettings { get; }
     IRepository<AppUser> AppUsers { get; }
     IRepository<TeamInvitation> TeamInvitations { get; }
+    IRepository<AppNotification> Notifications { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
     Task BeginTransactionAsync(CancellationToken ct = default);
     Task CommitTransactionAsync(CancellationToken ct = default);
