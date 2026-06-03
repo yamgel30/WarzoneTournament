@@ -40,29 +40,21 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.UserInformationEndpoint   = "https://discord.com/api/users/@me";
         options.Scope.Add("identify");
         options.Scope.Add("email");
-        // Default: skip consent for returning users. DiscordConsent page overrides this to "consent".
-        options.AdditionalParameters.Add("prompt", "none");
         options.Events = new Microsoft.AspNetCore.Authentication.OAuth.OAuthEvents
         {
             OnRedirectToAuthorizationEndpoint = ctx =>
             {
-                // HttpContext.Items["discord_prompt"] is set by DiscordConsent.OnGet in the same request.
-                // Use it to replace prompt=none with prompt=consent before sending to Discord.
-                var override_ = ctx.HttpContext.Items["discord_prompt"] as string;
-                if (!string.IsNullOrEmpty(override_))
-                {
-                    var uri = new Uri(ctx.RedirectUri);
-                    var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-                    query["prompt"] = override_;
-                    var qs = Microsoft.AspNetCore.Http.QueryString.Create(
-                        query.SelectMany(kv => kv.Value.Select(v =>
-                            new System.Collections.Generic.KeyValuePair<string, string?>(kv.Key, v))));
-                    ctx.Response.Redirect(uri.GetLeftPart(UriPartial.Path) + qs.Value);
-                }
-                else
-                {
-                    ctx.Response.Redirect(ctx.RedirectUri);
-                }
+                // Default to "none" (skip consent for returning users).
+                // DiscordConsent.OnGet sets HttpContext.Items["discord_prompt"]="consent"
+                // in the same request, which overrides it for first-time users.
+                var prompt = ctx.HttpContext.Items["discord_prompt"] as string ?? "none";
+                var uri = new Uri(ctx.RedirectUri);
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                query["prompt"] = prompt;
+                var qs = Microsoft.AspNetCore.Http.QueryString.Create(
+                    query.SelectMany(kv => kv.Value.Select(v =>
+                        new System.Collections.Generic.KeyValuePair<string, string?>(kv.Key, v))));
+                ctx.Response.Redirect(uri.GetLeftPart(UriPartial.Path) + qs.Value);
                 return Task.CompletedTask;
             },
             OnRemoteFailure = ctx =>
