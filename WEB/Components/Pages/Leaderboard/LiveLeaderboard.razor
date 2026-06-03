@@ -96,7 +96,7 @@
         @if (_tournamentDto?.WinnerTeamId.HasValue == true)
         {
             var winner = _leaderboard.FirstOrDefault(e => e.TeamId == _tournamentDto.WinnerTeamId);
-            <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border-radius:12px;padding:20px 28px;margin-bottom:16px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 24px rgba(245,158,11,0.35)">
+            <div style="background:linear-gradient(135deg,rgba(245,158,11,0.2),rgba(217,119,6,0.2));color:#fff;border:1px solid rgba(245,158,11,0.5);border-radius:16px;padding:20px 28px;margin-bottom:16px;display:flex;align-items:center;gap:16px;box-shadow:0 4px 28px rgba(245,158,11,0.25);backdrop-filter:blur(8px)">
                 <span style="font-size:2.5em">🏆</span>
                 <div>
                     <div style="font-size:1.4em;font-weight:800">¡CAMPEÓN!</div>
@@ -403,22 +403,24 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        background: var(--rz-base-background-color);
-        border: 1px solid var(--rz-grid-header-border-color);
-        border-radius: 8px;
-        padding: 8px 18px;
+        background: rgba(4,11,65,0.6);
+        border: 1px solid rgba(34,110,236,0.18);
+        border-radius: 12px;
+        padding: 10px 20px;
         min-width: 110px;
         flex: 1;
+        backdrop-filter: blur(8px);
     }
     .lb-stat__n {
-        font-size: 1.5em;
+        font-size: 1.6em;
         font-weight: 800;
-        color: var(--rz-primary);
+        color: #6CA4F1;
         line-height: 1;
+        letter-spacing: -0.5px;
     }
     .lb-stat__l {
         font-size: 0.72em;
-        color: var(--rz-text-secondary-color);
+        color: #7A90B8;
         margin-top: 3px;
         text-align: center;
     }
@@ -446,17 +448,17 @@
     }
 
     /* ── Table ── */
-    .lb-table { border-radius: 10px; overflow: hidden; }
+    .lb-table { border-radius: 12px; overflow: hidden; border: 1px solid rgba(34,110,236,0.18); }
 
     .lb-thead {
         display: grid;
         grid-template-columns: 48px 1fr 72px 60px 60px 52px 52px;
-        background: var(--rz-grid-header-background-color, #1e1e2e);
-        padding: 7px 12px;
-        font-size: 0.78em;
-        color: var(--rz-text-secondary-color);
-        font-weight: 600;
-        letter-spacing: 0.04em;
+        background: rgba(7,26,130,0.5);
+        padding: 8px 12px;
+        font-size: 0.75em;
+        color: #7A90B8;
+        font-weight: 700;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
         gap: 4px;
     }
@@ -473,13 +475,13 @@
         display: grid;
         grid-template-columns: 48px 1fr 72px 60px 60px 52px 52px;
         align-items: center;
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--rz-grid-header-border-color);
+        padding: 9px 12px;
+        border-bottom: 1px solid rgba(34,110,236,0.1);
         gap: 4px;
         transition: background 0.15s;
     }
     .lb-row:last-child { border-bottom: none; }
-    .lb-row:hover { background: rgba(255,255,255,0.03); }
+    .lb-row:hover { background: rgba(8,51,212,0.12); }
 
     .lb-row--mp {
         border-left: 3px solid #ef4444 !important;
@@ -588,18 +590,19 @@
         width: 100%;
         border-collapse: collapse;
         font-size: 0.88em;
-        background: var(--rz-base-background-color);
-        border-radius: 10px;
+        background: rgba(4,11,65,0.6);
+        border-radius: 12px;
         overflow: hidden;
+        border: 1px solid rgba(34,110,236,0.18);
     }
     .scoring-table thead th {
-        background: var(--rz-grid-header-background-color, #1e1e2e);
-        color: var(--rz-text-secondary-color);
-        font-weight: 600;
-        font-size: 0.78em;
+        background: rgba(7,26,130,0.5);
+        color: #7A90B8;
+        font-weight: 700;
+        font-size: 0.76em;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
-        padding: 8px 10px;
+        letter-spacing: 0.06em;
+        padding: 9px 10px;
         text-align: center;
         white-space: nowrap;
     }
@@ -609,8 +612,8 @@
 
     /* Team rows */
     .st-row-team td {
-        background: var(--rz-base-200, rgba(255,255,255,0.04));
-        border-top: 2px solid var(--rz-grid-header-border-color);
+        background: rgba(7,26,130,0.2);
+        border-top: 2px solid rgba(34,110,236,0.2);
         padding: 8px 10px;
         vertical-align: middle;
     }
@@ -640,28 +643,28 @@
 
     /* Player rows */
     .st-row-player td {
-        border-top: 1px solid var(--rz-grid-header-border-color);
+        border-top: 1px solid rgba(34,110,236,0.1);
         padding: 5px 10px;
         vertical-align: middle;
     }
     .st-cell-playername {
-        color: var(--rz-text-secondary-color);
+        color: #7A90B8;
         white-space: nowrap;
         padding-left: 18px !important;
         font-size: 0.92em;
     }
-    .st-indent { color: var(--rz-text-disabled-color, #555); margin-right: 4px; }
+    .st-indent { color: #3F5497; margin-right: 4px; }
     .st-cell-playermap {
         text-align: center;
-        color: var(--rz-text-secondary-color);
+        color: #7A90B8;
     }
     .st-cell-playertotal {
         text-align: center;
         font-weight: 600;
-        color: var(--rz-text-secondary-color);
+        color: #7A90B8;
     }
-    .st-cell-map { border-left: 1px solid var(--rz-grid-header-border-color); }
-    .st-dash { color: var(--rz-text-disabled-color, #555); }
+    .st-cell-map { border-left: 1px solid rgba(34,110,236,0.1); }
+    .st-dash { color: #3F5497; }
 </style>
 
 @code {

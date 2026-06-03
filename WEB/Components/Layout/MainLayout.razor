@@ -6,12 +6,15 @@
     <RadzenHeader>
         <div class="header-content">
             <RadzenSidebarToggle Click="@ToggleSidebar" />
-            <span class="app-title">
-                <span class="title-icon">⚡</span>
-                WARZONE TOURNAMENT
-            </span>
+            <a class="app-logo" href="/">
+                <div class="app-logo-icon">⚡</div>
+                <span class="app-title">Warzone Tournament</span>
+            </a>
             <div class="header-right">
-                <RadzenBadge Text="LIVE" BadgeStyle="BadgeStyle.Danger" class="live-badge" />
+                <div class="live-pill">
+                    <span class="live-dot"></span>
+                    Live
+                </div>
             </div>
         </div>
     </RadzenHeader>

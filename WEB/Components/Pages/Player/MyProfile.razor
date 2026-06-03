@@ -8,45 +8,44 @@
 
 <PageTitle>Mi Perfil — Warzone Tournament</PageTitle>
 
-<div style="max-width:600px;margin:40px auto;padding:0 16px">
-    @if (_user is null)
-    {
-        <p style="color:#6CA4F1">Cargando...</p>
-    }
-    else
-    {
-        <div style="background:rgba(4,11,65,0.8);border:1px solid rgba(34,110,236,0.25);border-radius:14px;padding:32px;backdrop-filter:blur(8px)">
-            <div style="display:flex;align-items:center;gap:20px;margin-bottom:28px">
-                <img src="@_user.AvatarUrl" style="width:72px;height:72px;border-radius:50%;border:3px solid #0833D4" />
-                <div>
-                    <div style="font-size:1.5em;font-weight:900;color:#e0e0f0">@_user.DisplayName</div>
-                    <div style="color:#3F5497;font-size:0.85em">@@_user.DiscordUsername</div>
-                    <span style="background:rgba(8,51,212,0.3);color:#6CA4F1;font-size:0.72em;font-weight:700;padding:2px 10px;border-radius:12px;border:1px solid rgba(34,110,236,0.3)">
-                        @_user.Role
-                    </span>
+@if (_user is null)
+{
+    <div class="loading-spinner-container">
+        <div class="loading-ring"></div>
+        <span class="loading-text">Cargando perfil...</span>
+    </div>
+}
+else
+{
+    <div class="profile-card">
+        <div class="profile-header">
+            <img class="profile-avatar" src="@_user.AvatarUrl" alt="avatar" />
+            <div>
+                <div class="profile-name">@_user.DisplayName</div>
+                <div class="profile-handle">@@@_user.DiscordUsername</div>
+                <span class="profile-role-badge">@_user.Role</span>
+            </div>
+        </div>
+
+        @if (_user.ProfileComplete)
+        {
+            <div class="profile-stats">
+                <div class="profile-stat">
+                    <div class="profile-stat__label">Gamer Tag</div>
+                    <div class="profile-stat__value">@_playerGamerTag</div>
+                </div>
+                <div class="profile-stat">
+                    <div class="profile-stat__label">Total Kills</div>
+                    <div class="profile-stat__value">@_totalKills</div>
                 </div>
             </div>
+        }
 
-            @if (_user.ProfileComplete)
-            {
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px">
-                    <div style="background:rgba(8,51,212,0.15);border-radius:10px;padding:14px">
-                        <div style="font-size:0.7em;color:#3F5497;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Gamer Tag</div>
-                        <div style="color:#C2E6FC;font-weight:700;margin-top:4px">@_playerGamerTag</div>
-                    </div>
-                    <div style="background:rgba(8,51,212,0.15);border-radius:10px;padding:14px">
-                        <div style="font-size:0.7em;color:#3F5497;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Total Kills</div>
-                        <div style="color:#C2E6FC;font-weight:700;margin-top:4px">@_totalKills</div>
-                    </div>
-                </div>
-            }
-
-            <a href="/logout" style="display:inline-block;padding:10px 22px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#fca5a5;font-size:0.88em;font-weight:700;text-decoration:none">
-                Cerrar sesión
-            </a>
-        </div>
-    }
-</div>
+        <a href="/logout" class="danger-btn">
+            <span>🚪</span> Cerrar sesión
+        </a>
+    </div>
+}
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -61,6 +60,5 @@
         Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid);
         if (uid == Guid.Empty) { NavManager.NavigateTo("/login"); return; }
         _user = await UserService.GetByIdAsync(uid);
-        if (_user is null) return;
     }
 }

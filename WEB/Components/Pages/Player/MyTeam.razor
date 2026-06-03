@@ -17,127 +17,178 @@
 
 <div class="page-container">
 
-@if (_loading) {
-    <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-} else if (!_profileComplete) {
-    <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true">
-        Completa tu perfil primero. <a href="/profile/setup">Ir a configuración de perfil</a>
-    </RadzenAlert>
-} else if (_team is null) {
-
-    @* ── CREATE TEAM FORM ── *@
-    <div class="page-header">
-        <h1 class="page-title">Crear mi Equipo</h1>
+@if (_loading)
+{
+    <div class="loading-spinner-container">
+        <div class="loading-ring"></div>
+        <span class="loading-text">Cargando equipo...</span>
     </div>
-    <RadzenCard style="max-width:520px">
-        @if (!string.IsNullOrEmpty(_error)) {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_error</RadzenAlert>
+}
+else if (!_profileComplete)
+{
+    <div class="empty-state">
+        <div class="empty-state__icon">⚠️</div>
+        <h3>Perfil incompleto</h3>
+        <p>Completa tu perfil para acceder a esta sección.</p>
+        <div style="margin-top:16px">
+            <RadzenButton Text="Configurar perfil" Icon="person" ButtonStyle="ButtonStyle.Primary"
+                          Click="@(() => NavManager.NavigateTo("/profile/setup"))" />
+        </div>
+    </div>
+}
+else if (_team is null)
+{
+    @* ── CREATE TEAM ── *@
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Crear Equipo</h1>
+            <p class="page-subtitle">Forma tu equipo y compite en los torneos</p>
+        </div>
+    </div>
+
+    <div class="glass-card" style="max-width:520px">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:16px">@_error</RadzenAlert>
         }
-        <div class="form-field" style="margin-bottom:14px">
+        <div class="form-field" style="margin-bottom:16px">
             <RadzenLabel Text="Nombre del equipo *" />
-            <RadzenTextBox @bind-Value="_createDto.Name" Style="width:100%;margin-top:4px" Placeholder="Ej: Shadow Wolves" />
+            <RadzenTextBox @bind-Value="_createDto.Name" Style="width:100%;margin-top:6px" Placeholder="Ej: Shadow Wolves" />
         </div>
-        <div class="form-field" style="margin-bottom:14px">
+        <div class="form-field" style="margin-bottom:16px">
             <RadzenLabel Text="Tag del equipo (3-5 letras)" />
-            <RadzenTextBox @bind-Value="_createDto.Tag" Style="width:100%;margin-top:4px" Placeholder="Ej: SHW" />
+            <RadzenTextBox @bind-Value="_createDto.Tag" Style="width:100%;margin-top:6px" Placeholder="Ej: SHW" />
         </div>
-        <div class="form-field" style="margin-bottom:14px">
+        <div class="form-field" style="margin-bottom:16px">
             <RadzenLabel Text="Logo del equipo" />
-            <div style="margin-top:4px"><ImageUploadField @bind-Value="_createDto.LogoUrl" /></div>
+            <div style="margin-top:6px"><ImageUploadField @bind-Value="_createDto.LogoUrl" /></div>
         </div>
-        <div class="form-field" style="margin-bottom:20px">
+        <div class="form-field" style="margin-bottom:24px">
             <RadzenLabel Text="Plataforma" />
-            <RadzenDropDown @bind-Value="_createDto.PreferredPlatform" Data="@(Enum.GetValues<Platform>())" Style="width:100%;margin-top:4px" />
+            <RadzenDropDown @bind-Value="_createDto.PreferredPlatform" Data="@(Enum.GetValues<Platform>())" Style="width:100%;margin-top:6px" />
         </div>
         <RadzenButton Text="Crear Equipo" Icon="group_add" ButtonStyle="ButtonStyle.Primary"
                       Click="@CreateTeamAsync" Disabled="@_busy" />
-    </RadzenCard>
-
-} else {
-
+    </div>
+}
+else
+{
     @* ── TEAM MANAGEMENT ── *@
     <div class="page-header">
-        <div style="display:flex;align-items:center;gap:16px">
-            @if (!string.IsNullOrEmpty(_team.LogoUrl)) {
-                <img src="@_team.LogoUrl" style="width:56px;height:56px;border-radius:8px;object-fit:cover;border:2px solid var(--rz-primary)" />
+        <div style="display:flex;align-items:center;gap:18px">
+            @if (!string.IsNullOrEmpty(_team.LogoUrl))
+            {
+                <img src="@_team.LogoUrl" style="width:60px;height:60px;border-radius:var(--r-lg);object-fit:cover;border:2px solid var(--c-electric);box-shadow:0 0 16px rgba(8,51,212,0.4)" />
+            }
+            else
+            {
+                <div style="width:60px;height:60px;border-radius:var(--r-lg);background:linear-gradient(135deg,var(--c-royal),var(--c-electric));display:flex;align-items:center;justify-content:center;font-size:1.8em;box-shadow:0 0 16px rgba(8,51,212,0.4)">👥</div>
             }
             <div>
                 <h1 class="page-title" style="margin:0">@_team.Name</h1>
-                @if (!string.IsNullOrEmpty(_team.Tag)) { <small style="color:var(--rz-text-secondary-color)">[@_team.Tag]</small> }
+                @if (!string.IsNullOrEmpty(_team.Tag))
+                {
+                    <span style="color:var(--c-sky);font-size:0.9em;font-weight:700">[@_team.Tag]</span>
+                }
             </div>
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(_error)) {
-        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_error</RadzenAlert>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:16px">@_error</RadzenAlert>
     }
-    @if (!string.IsNullOrEmpty(_success)) {
-        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_success</RadzenAlert>
+    @if (!string.IsNullOrEmpty(_success))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:16px">@_success</RadzenAlert>
     }
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:4px">
 
         @* ── MEMBERS ── *@
-        <RadzenCard>
-            <h3 style="margin-bottom:12px">👥 Miembros (@_team.Players.Count)</h3>
-            @foreach (var p in _team.Players) {
-                <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
-                    <span style="font-weight:600;color:var(--rz-text-color)">@p.Username</span>
-                    @if (_team.CaptainId.HasValue && p.PlayerId == _team.CaptainId) {
+        <div class="glass-card">
+            <div class="section-header">
+                <span class="section-title">👥 Miembros (@_team.Players.Count)</span>
+                <div class="section-header-line"></div>
+            </div>
+            @foreach (var p in _team.Players)
+            {
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--c-border)">
+                    <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--c-royal),var(--c-neon));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--c-white);flex-shrink:0">
+                        @p.Username.Substring(0, 1).ToUpper()
+                    </div>
+                    <span style="font-weight:600;color:var(--c-white);flex:1">@p.Username</span>
+                    @if (_team.CaptainId.HasValue && p.PlayerId == _team.CaptainId)
+                    {
                         <RadzenBadge Text="Capitán" BadgeStyle="BadgeStyle.Warning" />
                     }
                 </div>
             }
-        </RadzenCard>
+        </div>
 
         @* ── INVITE PLAYER ── *@
-        @if (_isCaptain) {
-        <RadzenCard>
-            <h3 style="margin-bottom:12px">✉️ Invitar jugador</h3>
-            <div style="display:flex;gap:8px;margin-bottom:10px">
-                <RadzenTextBox @bind-Value="_searchQuery" Placeholder="Buscar por gamer tag..."
-                               Style="flex:1" @onkeyup="@(async e => { if(e.Key=="Enter") await SearchPlayersAsync(); })" />
-                <RadzenButton Text="Buscar" Icon="search" ButtonStyle="ButtonStyle.Light"
-                              Click="@SearchPlayersAsync" Disabled="@_busy" />
-            </div>
-            @if (_searchResults.Any()) {
-                <div style="margin-bottom:12px">
-                    @foreach (var p in _searchResults) {
-                        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
-                            <span>@p.Username</span>
-                            <RadzenButton Text="Invitar" Icon="send" ButtonStyle="ButtonStyle.Primary"
-                                          Size="ButtonSize.Small" Click="@(() => SendInviteAsync(p.Id))" Disabled="@_busy" />
-                        </div>
-                    }
+        @if (_isCaptain)
+        {
+            <div class="glass-card">
+                <div class="section-header">
+                    <span class="section-title">✉️ Invitar Jugador</span>
+                    <div class="section-header-line"></div>
                 </div>
-            }
+                <div style="display:flex;gap:8px;margin-bottom:12px">
+                    <RadzenTextBox @bind-Value="_searchQuery" Placeholder="Buscar por gamer tag..."
+                                   Style="flex:1"
+                                   @onkeyup="@(async e => { if (e.Key == "Enter") await SearchPlayersAsync(); })" />
+                    <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Secondary"
+                                  Click="@SearchPlayersAsync" Disabled="@_busy" />
+                </div>
+                @if (_searchResults.Any())
+                {
+                    <div style="margin-bottom:14px;background:rgba(7,26,130,0.3);border-radius:var(--r-md);overflow:hidden;border:1px solid var(--c-border)">
+                        @foreach (var p in _searchResults)
+                        {
+                            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--c-border)">
+                                <span style="font-weight:500">@p.Username</span>
+                                <RadzenButton Text="Invitar" Icon="send" ButtonStyle="ButtonStyle.Primary"
+                                              Size="ButtonSize.Small" Click="@(() => SendInviteAsync(p.Id))" Disabled="@_busy" />
+                            </div>
+                        }
+                    </div>
+                }
 
-            <h4 style="margin:16px 0 8px;font-size:0.85em;color:var(--rz-text-secondary-color)">Invitaciones enviadas</h4>
-            @foreach (var inv in _sentInvitations) {
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.04)">
-                    <span>@inv.InvitedPlayerUsername</span>
-                    <RadzenBadge Text="@inv.Status.ToString()" BadgeStyle="@InvBadge(inv.Status)" />
+                <div class="section-header" style="margin-top:8px">
+                    <span class="section-title" style="font-size:10px">Invitaciones enviadas</span>
+                    <div class="section-header-line"></div>
                 </div>
-            }
-        </RadzenCard>
+                @foreach (var inv in _sentInvitations)
+                {
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:0.85em;border-bottom:1px solid var(--c-border)">
+                        <span style="color:var(--c-white)">@inv.InvitedPlayerUsername</span>
+                        <RadzenBadge Text="@inv.Status.ToString()" BadgeStyle="@InvBadge(inv.Status)" />
+                    </div>
+                }
+            </div>
         }
     </div>
 
     @* ── REGISTER FOR TOURNAMENT ── *@
-    @if (_isCaptain && _openTournaments.Any()) {
-    <RadzenCard style="margin-top:20px">
-        <h3 style="margin-bottom:12px">🏆 Inscribir equipo en torneo</h3>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <RadzenDropDown @bind-Value="_selectedTournamentId"
-                            Data="@_openTournaments"
-                            TextProperty="Name" ValueProperty="Id"
-                            Placeholder="Selecciona un torneo..."
-                            Style="min-width:280px" AllowClear="true" />
-            <RadzenButton Text="Inscribir" Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
-                          Click="@RegisterForTournamentAsync"
-                          Disabled="@(_busy || _selectedTournamentId == Guid.Empty)" />
+    @if (_isCaptain && _openTournaments.Any())
+    {
+        <div class="glass-card" style="margin-top:20px">
+            <div class="section-header">
+                <span class="section-title">🏆 Inscribir en Torneo</span>
+                <div class="section-header-line"></div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:4px">
+                <RadzenDropDown @bind-Value="_selectedTournamentId"
+                                Data="@_openTournaments"
+                                TextProperty="Name" ValueProperty="Id"
+                                Placeholder="Selecciona un torneo..."
+                                Style="min-width:280px" AllowClear="true" />
+                <RadzenButton Text="Inscribir Equipo" Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
+                              Click="@RegisterForTournamentAsync"
+                              Disabled="@(_busy || _selectedTournamentId == Guid.Empty)" />
+            </div>
         </div>
-    </RadzenCard>
     }
 }
 
@@ -177,7 +228,6 @@
     private async Task LoadAsync()
     {
         _loading = true;
-        // Find team where this player is captain or member
         var allTeams = await TeamService.GetTeamsAsync();
         if (allTeams.IsSuccess)
         {
@@ -199,10 +249,9 @@
             if (sent.IsSuccess) _sentInvitations = sent.Value.ToList();
         }
 
-        // Open tournaments (Registration status)
-        var tourRes = await TournamentService.GetTournamentsAsync(new WarzoneTournament.Application.DTOs.Tournament.TournamentQueryDto
+        var tourRes = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
         {
-            Status = WarzoneTournament.Domain.Enums.TournamentStatus.Registration,
+            Status = TournamentStatus.Registration,
             PageSize = 50, PageNumber = 1
         });
         if (tourRes.IsSuccess) _openTournaments = tourRes.Value.Items.ToList();
@@ -217,13 +266,7 @@
         _createDto.CaptainId = _myPlayerId;
         _createDto.PlayerIds = new List<Guid> { _myPlayerId };
         var result = await TeamService.CreateTeamAsync(_createDto);
-        if (result.IsSuccess)
-        {
-            _team = result.Value;
-            _isCaptain = true;
-            _success = "¡Equipo creado!";
-            await LoadAsync();
-        }
+        if (result.IsSuccess) { _team = result.Value; _isCaptain = true; _success = "¡Equipo creado!"; await LoadAsync(); }
         else _error = result.Error;
         _busy = false;
     }
@@ -232,10 +275,7 @@
     {
         if (string.IsNullOrWhiteSpace(_searchQuery)) return;
         var res = await PlayerService.SearchPlayersAsync(_searchQuery);
-        if (res.IsSuccess)
-            _searchResults = res.Value
-                .Where(p => p.Id != _myPlayerId)
-                .Take(5).ToList();
+        if (res.IsSuccess) _searchResults = res.Value.Where(p => p.Id != _myPlayerId).Take(5).ToList();
     }
 
     private async Task SendInviteAsync(Guid playerId)
@@ -258,18 +298,16 @@
         if (_selectedTournamentId == Guid.Empty) return;
         _busy = true; _error = null;
         var result = await TeamService.RegisterTeamForTournamentAsync(_team!.Id, _selectedTournamentId);
-        if (result.IsSuccess)
-            _success = "¡Equipo inscrito en el torneo!";
-        else
-            _error = result.Error;
+        if (result.IsSuccess) _success = "¡Equipo inscrito en el torneo!";
+        else _error = result.Error;
         _busy = false;
     }
 
-    private static BadgeStyle InvBadge(WarzoneTournament.Domain.Enums.InvitationStatus s) => s switch
+    private static BadgeStyle InvBadge(InvitationStatus s) => s switch
     {
         InvitationStatus.Accepted => BadgeStyle.Success,
         InvitationStatus.Declined => BadgeStyle.Danger,
         InvitationStatus.Expired  => BadgeStyle.Light,
-        _ => BadgeStyle.Warning
+        _                         => BadgeStyle.Warning
     };
 }

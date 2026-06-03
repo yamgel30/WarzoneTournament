@@ -13,50 +13,80 @@
 
 <div class="page-container">
     <div class="page-header">
-        <h1 class="page-title">Invitaciones de equipo</h1>
+        <div>
+            <h1 class="page-title">Invitaciones</h1>
+            <p class="page-subtitle">Invitaciones pendientes de equipo</p>
+        </div>
     </div>
 
-    @if (_loading) {
-        <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-    } else if (!_invitations.Any()) {
-        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true">No tienes invitaciones pendientes.</RadzenAlert>
-    } else {
-        @if (!string.IsNullOrEmpty(_error)) {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_error</RadzenAlert>
+    @if (_loading)
+    {
+        <div class="loading-spinner-container">
+            <div class="loading-ring"></div>
+            <span class="loading-text">Cargando invitaciones...</span>
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:16px">@_error</RadzenAlert>
         }
-        @if (!string.IsNullOrEmpty(_success)) {
-            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" class="mb-3">@_success</RadzenAlert>
+        @if (!string.IsNullOrEmpty(_success))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:16px">@_success</RadzenAlert>
         }
-        <div style="display:flex;flex-direction:column;gap:12px;max-width:600px">
-            @foreach (var inv in _invitations) {
-                <RadzenCard>
-                    <div style="display:flex;align-items:center;gap:14px">
-                        @if (!string.IsNullOrEmpty(inv.TeamLogoUrl)) {
-                            <img src="@inv.TeamLogoUrl" style="width:48px;height:48px;border-radius:6px;object-fit:cover" />
-                        } else {
-                            <div style="width:48px;height:48px;border-radius:6px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.4em">👥</div>
-                        }
-                        <div style="flex:1">
-                            <div style="font-weight:700;font-size:1.05em">@inv.TeamName</div>
-                            <div style="font-size:0.82em;color:var(--rz-text-secondary-color)">Invitado por @inv.InvitedByUsername</div>
-                            @if (!string.IsNullOrEmpty(inv.Message)) {
-                                <div style="font-size:0.82em;margin-top:4px;font-style:italic">"@inv.Message"</div>
+
+        @if (!_invitations.Any())
+        {
+            <div class="empty-state">
+                <div class="empty-state__icon">📭</div>
+                <h3>Sin invitaciones pendientes</h3>
+                <p>Cuando alguien te invite a un equipo, aparecerá aquí.</p>
+            </div>
+        }
+        else
+        {
+            <div style="display:flex;flex-direction:column;gap:12px;max-width:640px">
+                @foreach (var inv in _invitations)
+                {
+                    <div class="invitation-card">
+                        <div style="display:flex;align-items:center;gap:16px">
+                            @if (!string.IsNullOrEmpty(inv.TeamLogoUrl))
+                            {
+                                <img class="inv-team-logo" src="@inv.TeamLogoUrl" alt="logo" />
                             }
-                            <div style="font-size:0.75em;color:var(--rz-text-disabled-color);margin-top:2px">
-                                Expira @inv.ExpiresAt.ToLocalTime().ToString("dd/MM HH:mm")
+                            else
+                            {
+                                <div class="inv-team-placeholder">👥</div>
+                            }
+                            <div style="flex:1;min-width:0">
+                                <div style="font-weight:700;font-size:1.05em;color:var(--c-white)">@inv.TeamName</div>
+                                <div style="font-size:0.82em;color:var(--c-muted);margin-top:2px">
+                                    Invitado por <strong style="color:var(--c-sky)">@inv.InvitedByUsername</strong>
+                                </div>
+                                @if (!string.IsNullOrEmpty(inv.Message))
+                                {
+                                    <div style="font-size:0.82em;margin-top:5px;color:var(--c-muted);font-style:italic">"@inv.Message"</div>
+                                }
+                                <div style="font-size:0.73em;color:var(--c-slate);margin-top:4px">
+                                    Expira @inv.ExpiresAt.ToLocalTime().ToString("dd/MM HH:mm")
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-shrink:0">
+                                <RadzenButton Text="Aceptar" Icon="check"
+                                              ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                                              Click="@(() => AcceptAsync(inv.Id))" Disabled="@_busy" />
+                                <RadzenButton Text="Rechazar" Icon="close"
+                                              ButtonStyle="ButtonStyle.Danger" Variant="Variant.Outlined"
+                                              Size="ButtonSize.Small"
+                                              Click="@(() => DeclineAsync(inv.Id))" Disabled="@_busy" />
                             </div>
                         </div>
-                        <div style="display:flex;gap:8px">
-                            <RadzenButton Text="Aceptar" Icon="check" ButtonStyle="ButtonStyle.Success"
-                                          Size="ButtonSize.Small" Click="@(() => AcceptAsync(inv.Id))" Disabled="@_busy" />
-                            <RadzenButton Text="Rechazar" Icon="close" ButtonStyle="ButtonStyle.Danger"
-                                          Variant="Variant.Outlined" Size="ButtonSize.Small"
-                                          Click="@(() => DeclineAsync(inv.Id))" Disabled="@_busy" />
-                        </div>
                     </div>
-                </RadzenCard>
-            }
-        </div>
+                }
+            </div>
+        }
     }
 </div>
 
