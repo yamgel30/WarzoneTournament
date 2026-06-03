@@ -1,8 +1,9 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.DependencyInjection
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Notification
-@inject INotificationService NotificationService
+@inject IServiceScopeFactory ScopeFactory
 @inject NavigationManager NavManager
 @inject NotificationService RadzenNotify
 @implements IAsyncDisposable
@@ -156,7 +157,10 @@
     protected override async Task OnInitializedAsync()
     {
         if (UserId == Guid.Empty) return;
-        _unreadCount = await NotificationService.GetUnreadCountAsync(UserId);
+        // Own scope so this DbContext doesn't conflict with the page's scoped DbContext
+        using var scope = ScopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        _unreadCount = await svc.GetUnreadCountAsync(UserId);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -201,14 +205,21 @@
         if (_open && !_notifications.Any())
         {
             _loading = true;
-            _notifications = (await NotificationService.GetRecentAsync(UserId)).ToList();
+            using var scope = ScopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            _notifications = (await svc.GetRecentAsync(UserId)).ToList();
             _loading = false;
         }
     }
 
     private async Task OpenNotification(NotificationDto n)
     {
-        if (!n.IsRead) await NotificationService.MarkReadAsync(n.Id);
+        if (!n.IsRead)
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            await svc.MarkReadAsync(n.Id);
+        }
         _unreadCount = Math.Max(0, _unreadCount - (n.IsRead ? 0 : 1));
         _notifications = _notifications.Select(x => x.Id == n.Id ? x with { IsRead = true } : x).ToList();
         _open = false;
@@ -217,7 +228,9 @@
 
     private async Task MarkAllReadAsync()
     {
-        await NotificationService.MarkAllReadAsync(UserId);
+        using var scope = ScopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        await svc.MarkAllReadAsync(UserId);
         _notifications = _notifications.Select(n => n with { IsRead = true }).ToList();
         _unreadCount = 0;
     }
