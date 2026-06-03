@@ -106,6 +106,44 @@ else
         <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:16px">@_success</RadzenAlert>
     }
 
+    @* ── EDIT TEAM (captain only, collapsible) ── *@
+    @if (_isCaptain)
+    {
+        <div class="glass-card" style="margin-bottom:20px">
+            <button @onclick="@(() => _editOpen = !_editOpen)"
+                    style="width:100%;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:0">
+                <span class="section-title">✏️ Editar Equipo</span>
+                <span style="color:var(--c-muted);font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(@(_editOpen ? "180deg" : "0deg"))">▼</span>
+            </button>
+
+            @if (_editOpen)
+            {
+                <div style="margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div>
+                        <div class="form-field" style="margin-bottom:14px">
+                            <RadzenLabel Text="Nombre del equipo *" />
+                            <RadzenTextBox @bind-Value="_editDto.Name" Style="width:100%;margin-top:6px" Placeholder="Nombre del equipo" />
+                        </div>
+                        <div class="form-field" style="margin-bottom:14px">
+                            <RadzenLabel Text="Tag (3-5 letras)" />
+                            <RadzenTextBox @bind-Value="_editDto.Tag" Style="width:100%;margin-top:6px" Placeholder="Ej: SHW" />
+                        </div>
+                        <div class="form-field" style="margin-bottom:14px">
+                            <RadzenLabel Text="Plataforma" />
+                            <RadzenDropDown @bind-Value="_editDto.PreferredPlatform" Data="@(Enum.GetValues<Platform>())" Style="width:100%;margin-top:6px" />
+                        </div>
+                        <RadzenButton Text="@(_busy ? "Guardando..." : "Guardar cambios")" Icon="save"
+                                      ButtonStyle="ButtonStyle.Primary" Click="@UpdateTeamAsync" Disabled="@_busy" />
+                    </div>
+                    <div>
+                        <RadzenLabel Text="Logo del equipo" />
+                        <div style="margin-top:6px"><ImageUploadField @bind-Value="_editDto.LogoUrl" /></div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:4px">
 
         @* ── MEMBERS ── *@
@@ -297,6 +335,8 @@ else
 
     private TeamDto? _team;
     private CreateTeamDto _createDto = new();
+    private UpdateTeamDto _editDto = new();
+    private bool _editOpen;
 
     // App search
     private string _searchMode = "app";
@@ -349,6 +389,14 @@ else
         {
             var sent = await InvitationService.GetSentByTeamAsync(_team.Id);
             if (sent.IsSuccess) _sentInvitations = sent.Value.ToList();
+
+            _editDto = new UpdateTeamDto
+            {
+                Name = _team.Name,
+                Tag = _team.Tag,
+                LogoUrl = _team.LogoUrl,
+                PreferredPlatform = _team.PreferredPlatform
+            };
         }
 
         var tourRes = await TournamentService.GetTournamentsAsync(new TournamentQueryDto
@@ -404,6 +452,21 @@ else
         _busy = true; _error = null;
         var result = await TeamService.RegisterTeamForTournamentAsync(_team!.Id, _selectedTournamentId);
         if (result.IsSuccess) _success = "¡Equipo inscrito en el torneo!";
+        else _error = result.Error;
+        _busy = false;
+    }
+
+    private async Task UpdateTeamAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editDto.Name)) { _error = "El nombre del equipo es obligatorio."; return; }
+        _busy = true; _error = null;
+        var result = await TeamService.UpdateTeamAsync(_team!.Id, _editDto);
+        if (result.IsSuccess)
+        {
+            _success = "Equipo actualizado correctamente.";
+            _editOpen = false;
+            await LoadAsync();
+        }
         else _error = result.Error;
         _busy = false;
     }
