@@ -26,7 +26,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.LoginPath = "/login";
         options.AccessDeniedPath = "/access-denied";
-        options.ExpireTimeSpan = TimeSpan.FromDays(7);
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
         options.SlidingExpiration = true;
     })
     .AddOAuth("Discord", options =>
@@ -44,35 +44,19 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         {
             OnRedirectToAuthorizationEndpoint = ctx =>
             {
-                // Default to "none" (skip consent for returning users).
-                // DiscordConsent.OnGet sets HttpContext.Items["discord_prompt"]="consent"
-                // in the same request, which overrides it for first-time users.
-                var prompt = ctx.HttpContext.Items["discord_prompt"] as string ?? "none";
-                var uri = new Uri(ctx.RedirectUri);
-                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-                query["prompt"] = prompt;
-                var qs = Microsoft.AspNetCore.Http.QueryString.Create(
-                    query.SelectMany(kv => kv.Value.Select(v =>
-                        new System.Collections.Generic.KeyValuePair<string, string?>(kv.Key, v))));
-                ctx.Response.Redirect(uri.GetLeftPart(UriPartial.Path) + qs.Value);
+                var prompt = ctx.Properties.Items.TryGetValue("prompt", out var p) ? p : "none";
+                var uri = Microsoft.AspNetCore.WebUtilities.QueryHelpers
+                    .AddQueryString(ctx.RedirectUri, "prompt", prompt!);
+                ctx.Response.Redirect(uri);
                 return Task.CompletedTask;
             },
             OnRemoteFailure = ctx =>
             {
                 ctx.HandleResponse();
-                // If DiscordConsent already tried prompt=consent and failed → user denied
-                var wasConsentAttempt = ctx.Properties?.Items.TryGetValue("discord_prompt", out var dp) == true
-                    && dp == "consent";
-                if (wasConsentAttempt)
-                {
-                    ctx.Response.Redirect("/login?error=access_denied");
-                }
-                else
-                {
-                    // prompt=none failed → new user. Relay silently to DiscordConsent.
-                    var returnUrl = Uri.EscapeDataString(ctx.Properties?.RedirectUri ?? "/auth/post-login");
-                    ctx.Response.Redirect($"/auth/discord-consent?returnUrl={returnUrl}");
-                }
+                var prompt = ctx.Properties?.Items.TryGetValue("prompt", out var p) == true ? p : null;
+                ctx.Response.Redirect(prompt == "none"
+                    ? "/auth/discord-consent"
+                    : "/login?error=access_denied");
                 return Task.CompletedTask;
             },
             OnCreatingTicket = async ctx =>

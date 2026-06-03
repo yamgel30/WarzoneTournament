@@ -27,6 +27,13 @@ public class LoginModel : PageModel
     public IActionResult OnPostDiscord(string? returnUrl = null)
     {
         var redirectUri = Url.Page("/Auth/PostLogin", values: new { returnUrl });
-        return Challenge(new AuthenticationProperties { RedirectUri = redirectUri }, "Discord");
+        return Challenge(
+            new AuthenticationProperties
+            {
+                RedirectUri = redirectUri,
+                IsPersistent = true,
+                Items = { ["prompt"] = "none" }
+            },
+            "Discord");
     }
 }
