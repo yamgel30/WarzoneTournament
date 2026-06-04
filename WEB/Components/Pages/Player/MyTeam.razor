@@ -15,6 +15,7 @@
 @inject IDiscordNotificationService DiscordService
 @inject ISiteSettingsService SiteSettings
 @inject NavigationManager NavManager
+@inject DialogService DialogSvc
 
 <PageTitle>Mi Equipo — Warzone Tournament</PageTitle>
 
@@ -162,6 +163,14 @@ else
                     @if (_team.CaptainId.HasValue && p.PlayerId == _team.CaptainId)
                     {
                         <RadzenBadge Text="Capitán" BadgeStyle="BadgeStyle.Warning" />
+                    }
+                    @if (_isCaptain && p.PlayerId != _myPlayerId)
+                    {
+                        <RadzenButton Icon="person_remove" ButtonStyle="ButtonStyle.Danger"
+                                      Size="ButtonSize.Small" Variant="Variant.Text"
+                                      title="Eliminar del equipo"
+                                      Click="@(() => RemovePlayerAsync(p.PlayerId))"
+                                      Disabled="@_busy" />
                     }
                 </div>
             }
@@ -311,11 +320,17 @@ else
                                 Data="@_openTournaments"
                                 TextProperty="Name" ValueProperty="Id"
                                 Placeholder="Selecciona un torneo..."
-                                Style="min-width:280px" AllowClear="true" />
+                                Style="min-width:280px" AllowClear="true"
+                                Change="@(_ => _registrationWarning = null)" />
                 <RadzenButton Text="Inscribir Equipo" Icon="how_to_reg" ButtonStyle="ButtonStyle.Success"
                               Click="@RegisterForTournamentAsync"
                               Disabled="@(_busy || _selectedTournamentId == Guid.Empty)" />
             </div>
+            @if (!string.IsNullOrEmpty(_registrationWarning))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Variant="Variant.Flat"
+                             style="margin-top:10px;font-size:13px">@_registrationWarning</RadzenAlert>
+            }
         </div>
     }
 }
@@ -354,6 +369,7 @@ else
     private List<TeamInvitationDto> _sentInvitations = new();
     private List<TournamentListDto> _openTournaments = new();
     private Guid _selectedTournamentId;
+    private string? _registrationWarning;
 
     protected override async Task OnInitializedAsync()
     {
@@ -446,12 +462,51 @@ else
         _busy = false;
     }
 
+    private async Task RemovePlayerAsync(Guid playerId)
+    {
+        var player = _team!.Players.FirstOrDefault(p => p.PlayerId == playerId);
+        if (player is null) return;
+
+        var confirmed = await DialogSvc.Confirm(
+            $"¿Eliminar a <strong>{player.Username}</strong> del equipo?",
+            "Confirmar eliminación",
+            new ConfirmOptions { OkButtonText = "Eliminar", CancelButtonText = "Cancelar", CloseDialogOnOverlayClick = true });
+        if (confirmed != true) return;
+
+        _busy = true; _error = null;
+        var result = await TeamService.RemovePlayerFromTeamAsync(_team.Id, playerId);
+        if (result.IsSuccess) { _success = $"{player.Username} fue eliminado del equipo."; await LoadAsync(); }
+        else _error = result.Error;
+        _busy = false;
+    }
+
     private async Task RegisterForTournamentAsync()
     {
         if (_selectedTournamentId == Guid.Empty) return;
+        _registrationWarning = null;
+
+        var tournament = _openTournaments.FirstOrDefault(t => t.Id == _selectedTournamentId);
+        if (tournament is not null && tournament.PlayersPerTeam > 0)
+        {
+            var teamCount = _team!.Players.Count;
+            if (teamCount != tournament.PlayersPerTeam)
+            {
+                _registrationWarning = $"Este torneo requiere exactamente {tournament.PlayersPerTeam} jugadores por equipo. " +
+                                       $"Tu equipo tiene {teamCount}. " +
+                                       (teamCount < tournament.PlayersPerTeam ? "Invita más jugadores antes de inscribirte." : "Tienes demasiados jugadores.");
+                return;
+            }
+        }
+
+        var confirmed = await DialogSvc.Confirm(
+            $"¿Inscribir al equipo <strong>{_team!.Name}</strong> en el torneo <strong>{tournament?.Name}</strong>?",
+            "Confirmar inscripción",
+            new ConfirmOptions { OkButtonText = "Inscribir", CancelButtonText = "Cancelar", CloseDialogOnOverlayClick = true });
+        if (confirmed != true) return;
+
         _busy = true; _error = null;
         var result = await TeamService.RegisterTeamForTournamentAsync(_team!.Id, _selectedTournamentId);
-        if (result.IsSuccess) _success = "¡Equipo inscrito en el torneo!";
+        if (result.IsSuccess) _success = $"¡Equipo inscrito en {tournament?.Name}!";
         else _error = result.Error;
         _busy = false;
     }
