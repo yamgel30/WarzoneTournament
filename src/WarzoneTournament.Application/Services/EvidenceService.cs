@@ -17,10 +17,12 @@ public class EvidenceService : IEvidenceService
     private readonly ISignalRNotificationService _signalR;
     private readonly IDiscordNotificationService _discord;
     private readonly INotificationService _notifications;
+    private readonly ISiteSettingsService _settings;
 
     public EvidenceService(IUnitOfWork uow, IMapper mapper,
         ILogger<EvidenceService> logger, ISignalRNotificationService signalR,
-        IDiscordNotificationService discord, INotificationService notifications)
+        IDiscordNotificationService discord, INotificationService notifications,
+        ISiteSettingsService settings)
     {
         _uow = uow;
         _mapper = mapper;
@@ -28,6 +30,7 @@ public class EvidenceService : IEvidenceService
         _signalR = signalR;
         _discord = discord;
         _notifications = notifications;
+        _settings = settings;
     }
 
     public async Task<Result<EvidenceDto>> SubmitEvidenceAsync(SubmitEvidenceDto dto, CancellationToken ct = default)
@@ -129,7 +132,8 @@ public class EvidenceService : IEvidenceService
                 "EvidenceApproved", null, ct);
             var player = evidence.SubmittedByPlayerId.HasValue
                 ? await _uow.Players.GetByIdAsync(evidence.SubmittedByPlayerId.Value, ct) : null;
-            if (!string.IsNullOrEmpty(player?.DiscordId))
+            var cfg = await _settings.GetAsync();
+            if (cfg.DiscordDmEvidenceApproved && !string.IsNullOrEmpty(player?.DiscordId))
                 await _discord.SendDirectMessageAsync(player.DiscordId,
                     $"✅ Tu evidencia fue **aprobada** para el equipo **{team?.Name ?? "—"}**.", ct);
         }
@@ -173,7 +177,8 @@ public class EvidenceService : IEvidenceService
                 "EvidenceRejected", null, ct);
             var player = evidence.SubmittedByPlayerId.HasValue
                 ? await _uow.Players.GetByIdAsync(evidence.SubmittedByPlayerId.Value, ct) : null;
-            if (!string.IsNullOrEmpty(player?.DiscordId))
+            var cfg = await _settings.GetAsync();
+            if (cfg.DiscordDmEvidenceRejected && !string.IsNullOrEmpty(player?.DiscordId))
                 await _discord.SendDirectMessageAsync(player.DiscordId,
                     $"❌ Tu evidencia fue **rechazada**.\n**Razón:** {reason}", ct);
         }

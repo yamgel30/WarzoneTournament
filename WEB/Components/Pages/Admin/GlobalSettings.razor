@@ -296,7 +296,84 @@
                     </div>
                 </RadzenTabsItem>
 
-                @* ── Tab 5: Futuro multi-tenant ── *@
+                @* ── Tab 5: Discord notification toggles ── *@
+                <RadzenTabsItem Text="🔔 Notificaciones Discord" Icon="notifications">
+                    <div style="margin-top:16px;max-width:560px">
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">DMs a jugadores</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Controla qué mensajes directos envía el bot a los jugadores.
+                            </small>
+
+                            <div style="display:flex;flex-direction:column;gap:14px">
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Evidencia aprobada</div>
+                                        <small style="color:var(--rz-text-secondary-color)">DM cuando un admin aprueba la evidencia del jugador.</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordDmEvidenceApproved" />
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Evidencia rechazada</div>
+                                        <small style="color:var(--rz-text-secondary-color)">DM cuando un admin rechaza la evidencia del jugador.</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordDmEvidenceRejected" />
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Invitación de equipo (en app)</div>
+                                        <small style="color:var(--rz-text-secondary-color)">DM cuando el capitán invita a un jugador registrado.</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordDmTeamInvitation" />
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Invitación de equipo (no registrado)</div>
+                                        <small style="color:var(--rz-text-secondary-color)">DM a un usuario de Discord que aún no está registrado.</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordDmPendingInvite" />
+                                </div>
+                            </div>
+                        </RadzenCard>
+
+                        <RadzenCard class="mb-3">
+                            <h3 style="margin-bottom:6px">Anuncios en canal</h3>
+                            <small style="color:var(--rz-text-secondary-color);display:block;margin-bottom:16px">
+                                Controla qué mensajes publica el bot en el canal de anuncios.
+                            </small>
+
+                            <div style="display:flex;flex-direction:column;gap:14px">
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Inicio de torneo</div>
+                                        <small style="color:var(--rz-text-secondary-color)">Anuncio cuando el torneo cambia a estado "En Progreso".</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordAnnounceTournamentStart" />
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Resultado de match</div>
+                                        <small style="color:var(--rz-text-secondary-color)">Anuncio cuando se confirman los resultados de un match.</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordAnnounceMatchResult" />
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <div>
+                                        <div style="font-weight:500">Nueva inscripción</div>
+                                        <small style="color:var(--rz-text-secondary-color)">Anuncio cuando un equipo se inscribe en un torneo. Desactivado por defecto.</small>
+                                    </div>
+                                    <RadzenSwitch @bind-Value="_dto.DiscordAnnounceNewRegistration" />
+                                </div>
+                            </div>
+                        </RadzenCard>
+
+                        <RadzenButton Text="Guardar notificaciones" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                                      Click="@Save" Disabled="@_saving" />
+                    </div>
+                </RadzenTabsItem>
+
+                @* ── Tab 6: Futuro multi-tenant ── *@
                 <RadzenTabsItem Text="🌐 Multi-Tenant" Icon="people">
                     <div style="margin-top:16px;max-width:520px">
                         <RadzenCard style="border-left:4px solid var(--rz-warning)">

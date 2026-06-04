@@ -13,14 +13,17 @@ public class TeamInvitationService : ITeamInvitationService
     private readonly ITeamService _teamService;
     private readonly INotificationService _notifications;
     private readonly IDiscordNotificationService _discord;
+    private readonly ISiteSettingsService _settings;
 
     public TeamInvitationService(IUnitOfWork uow, ITeamService teamService,
-        INotificationService notifications, IDiscordNotificationService discord)
+        INotificationService notifications, IDiscordNotificationService discord,
+        ISiteSettingsService settings)
     {
         _uow = uow;
         _teamService = teamService;
         _notifications = notifications;
         _discord = discord;
+        _settings = settings;
     }
 
     public async Task<Result> SendAsync(Guid teamId, Guid captainPlayerId, Guid invitedPlayerId, string? message, CancellationToken ct = default)
@@ -64,7 +67,8 @@ public class TeamInvitationService : ITeamInvitationService
 
         // Discord DM
         var invitedPlayer = await _uow.Players.GetByIdAsync(invitedPlayerId, ct);
-        if (!string.IsNullOrEmpty(invitedPlayer?.DiscordId))
+        var cfg = await _settings.GetAsync();
+        if (cfg.DiscordDmTeamInvitation && !string.IsNullOrEmpty(invitedPlayer?.DiscordId))
         {
             var captain = await _uow.Players.GetByIdAsync(captainPlayerId, ct);
             await _discord.SendDirectMessageAsync(
@@ -100,12 +104,14 @@ public class TeamInvitationService : ITeamInvitationService
         await _uow.SaveChangesAsync(ct);
 
         var captain = await _uow.Players.GetByIdAsync(captainPlayerId, ct);
-        await _discord.SendDirectMessageAsync(discordId,
-            $"🎮 **{team.Name}** te invitó a unirte a su equipo en Warzone Tournament!\n" +
-            $"Capitán: **{captain?.Username ?? "—"}**\n" +
-            $"Regístrate en la plataforma con tu cuenta de Discord para aceptar la invitación.\n" +
-            (string.IsNullOrEmpty(message) ? "" : $"\nMensaje: _{message}_"),
-            ct);
+        var cfg = await _settings.GetAsync();
+        if (cfg.DiscordDmPendingInvite)
+            await _discord.SendDirectMessageAsync(discordId,
+                $"🎮 **{team.Name}** te invitó a unirte a su equipo en Warzone Tournament!\n" +
+                $"Capitán: **{captain?.Username ?? "—"}**\n" +
+                $"Regístrate en la plataforma con tu cuenta de Discord para aceptar la invitación.\n" +
+                (string.IsNullOrEmpty(message) ? "" : $"\nMensaje: _{message}_"),
+                ct);
 
         return Result.Success();
     }
