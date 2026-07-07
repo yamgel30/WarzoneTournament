@@ -91,10 +91,23 @@ service does. It breaks down into two very different shapes of work:
   `true` and copies `Others` into `PainEvaluationOtherConditionText`) is
   preserved rather than "fixed".
 
-  Not started: Page 1 (6 sections, includes two large ones — Chief
-  Complaint/Patient Medical History and Medical/Family/Social History),
-  Page 3 (Screening Test + the very large Physical Examination section
-  tree), Page 4 (~20 sections, several GHP/year/at-home conditional).
+  Ported: **Page 1** (`PUT /api/aha-claims/{claimId}/pages/1`) — Chief
+  Complaint/Patient Medical History, Medical/Family/Social History (~100
+  fields, the single largest section in the form), Advance Directives,
+  Review of System, Myocardial Infarction. `AdvanceDirective`'s legacy
+  clamp of out-of-range dates to the minimum valid SQL `datetime`
+  (1753-01-01) before insert is preserved.
+
+  **Not ported: Medication List / Allergies Medication List** (also part of
+  Page 1). The legacy save uses a SQL Server table-valued parameter
+  (`SqlDbType.Structured`) and the VB source never sets `SqlParameter.TypeName`,
+  so the actual server-side table type name isn't available from the code —
+  need that (or the CREATE TYPE definition) to port these two sections
+  without guessing.
+
+  Not started: Page 3 (Screening Test + the very large Physical Examination
+  section tree), Page 4 (~20 sections, several GHP/year/at-home
+  conditional).
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
@@ -117,11 +130,14 @@ nothing breaks mid-migration.
 
 ## Next
 
-Continue `SaveClaim` page-by-page: Page 1, then Page 3, then Page 4 (see
-above for what's in each). Same recipe each time — read the section
-class(es) in `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s)
-in `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
+Continue `SaveClaim` page-by-page: Page 3, then Page 4 (see above for what's
+in each). Same recipe each time — read the section class(es) in
+`legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
+`legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
 endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
+
+Also need the SQL Server table type name for `MedicationListSection` /
+`AllergiesMedicationList` (see above) to finish Page 1.
 
 Also useful, if available: the `.asmx`/WSDL for the SOAP service itself, to
 confirm which `AHADataAdapter` methods are actually exposed as SOAP
