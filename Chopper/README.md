@@ -105,9 +105,29 @@ service does. It breaks down into two very different shapes of work:
   need that (or the CREATE TYPE definition) to port these two sections
   without guessing.
 
-  Not started: Page 3 (Screening Test + the very large Physical Examination
-  section tree), Page 4 (~20 sections, several GHP/year/at-home
-  conditional).
+  Ported (partial): **Page 3** (`PUT /api/aha-claims/{claimId}/pages/3`) —
+  Screening Schedule, pre-2023 form only (~135 fields;
+  `uspSaveScreeningTest`). Legacy branches on `DateOfVisit.Year`: before
+  2023 it calls `uspSaveScreeningTest`, 2023+ calls the separate, similarly
+  large `uspSaveScreeningTest2023`. Since only the pre-2023 mapping is
+  ported, the endpoint throws `NotSupportedException` for 2023+ visits
+  rather than silently calling the wrong stored procedure with the wrong
+  fields. One field, `ColorectalColonoscopyResult`, is intentionally
+  dropped: legacy computes it from the individual `Colorectal_ColonoscopyResult_*`
+  flags but the parameter add is commented out in the source, so it never
+  actually reaches the database today.
+
+  Legacy calls `Globals.ValidateDateMinMaxRange(date)` before sending most
+  Screening Schedule dates, clearing the value instead of sending it if the
+  check fails. That helper's source isn't available, so its exact bounds
+  are unknown — this substitutes the same SQL Server `datetime` min/max
+  (1753-01-01 to 2999-12-31) used for `AdvanceDirective`. Worth tightening
+  once/if the real `Globals` source turns up.
+
+  Not started: Page 3's **Physical Examination** section (a tree of ~15
+  sub-sections spanning ~2,700 lines of the model file — likely the single
+  largest remaining piece of the whole migration) and **Screening Schedule
+  2023+**; Page 4 (~20 sections, several GHP/year/at-home conditional).
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
@@ -130,14 +150,18 @@ nothing breaks mid-migration.
 
 ## Next
 
-Continue `SaveClaim` page-by-page: Page 3, then Page 4 (see above for what's
-in each). Same recipe each time — read the section class(es) in
+Finish Page 3 (Physical Examination, then Screening Schedule 2023+), then
+Page 4. Same recipe each time — read the section class(es) in
 `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
 `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
 endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
 
-Also need the SQL Server table type name for `MedicationListSection` /
-`AllergiesMedicationList` (see above) to finish Page 1.
+Also need:
+- The SQL Server table type name for `MedicationListSection` /
+  `AllergiesMedicationList` (see above) to finish Page 1.
+- The `Globals` class source (at least `ValidateDateMinMaxRange`,
+  `LogError`, `ValidatePayerID`) if exact legacy behavior matters beyond
+  what's already been reasonably approximated.
 
 Also useful, if available: the `.asmx`/WSDL for the SOAP service itself, to
 confirm which `AHADataAdapter` methods are actually exposed as SOAP

@@ -368,6 +368,215 @@ internal sealed class AhaClaimService(
         }
     }
 
+    // Legacy calls uspSaveScreeningTest for visits before 2023 and uspSaveScreeningTest2023 for
+    // visits from 2023 onward. Only the pre-2023 stored procedure is ported so far.
+    public async Task<bool> SavePage3Async(long claimId, SavePage3Request request, CancellationToken cancellationToken = default)
+    {
+        if (request.DateOfVisit.Year >= 2023)
+        {
+            throw new NotSupportedException(
+                "Page 3 for visits from 2023 onward (uspSaveScreeningTest2023) isn't ported yet.");
+        }
+
+        return await SaveScreeningScheduleAsync(claimId, request.ScreeningSchedule, cancellationToken);
+    }
+
+    private async Task<bool> SaveScreeningScheduleAsync(long claimId, ScreeningScheduleSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy skips the SP call entirely (and never flags an error) when the section is absent.
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveScreeningTest",
+                new
+                {
+                    ClaimID = claimId,
+                    BMDDate = ClampToSqlDateRange(section.BoneMineralDensityDate),
+                    BoneMineralDensityResult_Normal = section.BoneMineralDensityResultNormal,
+                    BoneMineralDensityResult_Osteopenia = section.BoneMineralDensityResultOsteopenia,
+                    BoneMineralDensityResult_Osteoporosis = section.BoneMineralDensityResultOsteoporosis,
+                    BoneMineralDensityResult_NA = section.BoneMineralDensityResultNa,
+                    BoneMineralDensityResult_Other = section.BoneMineralDensityResultOther,
+                    BMDResult = section.BoneMineralDensityResult,
+                    BoneMineralDensity_NAFor = section.BoneMineralDensityNaFor,
+                    BMDPrescribed = section.BoneMineralDensityPrescribed,
+                    BMDRxOrdered = section.BoneMineralDensityRxOrdered,
+
+                    CardiovascularLDLDate = ClampToSqlDateRange(section.CardiovascularLdlDate),
+                    CardiovascularLDLResult = section.CardiovascularLdlResult,
+                    Screening_Cardio_LDL_NAFor = section.CardiovascularLdlNaFor,
+                    CardiovascularLDLPrescribed = section.CardiovascularLdlPrescribed,
+
+                    CardiovascularBetaDate = ClampToSqlDateRange(section.CardiovascularBetaDate),
+                    CardiovascularBetaResult = section.CardiovascularBetaResult,
+                    Screening_Cardio_BetaBlocke_NAFor = section.CardiovascularBetaNaFor,
+                    CardiovascularBetaPrescribed = section.CardiovascularBetaPrescribed,
+
+                    ColorectalCancerSelectedIndex = section.ColorectalCancerScreeningSelectedIndex,
+                    ColorectalCancerDoneDate = ClampToSqlDateRange(section.ColorectalCancerScreeningDate),
+                    ColorectalCancerResult = section.ColorectalCancerScreeningResult,
+                    Screening_ColorectalCancer_NAFor = section.ColorectalCancerScreeningNaFor,
+                    ColorectalCancerPrescribed = section.ColorectalCancerScreeningPrescribed,
+
+                    section.IsDiabetic,
+
+                    DiabetesDilatedEyeDate = ClampToSqlDateRange(section.DiabetesScreeningDilatedEyeExamDate),
+                    DiabetesDilatedEyeResult = section.DiabetesScreeningDilatedEyeExamResult,
+                    Screening_Diabetes_DilatedEye_NAFor = section.DiabetesScreeningDilatedEyeExamNaFor,
+                    DiabetesDilatedEyePrescribed = section.DiabetesScreeningDilatedEyeExamPrescribed,
+
+                    DiabetesLDLDate = ClampToSqlDateRange(section.DiabetesScreeningLdlDate),
+                    DiabetesLDLResult = section.DiabetesScreeningLdlResult,
+                    Screening_Diabetes_LDL_NAFor = section.DiabetesScreeningLdlNaFor,
+                    DiabetesLDLPrescribed = section.DiabetesScreeningLdlPrescribed,
+
+                    DiabetesScreening_HGA1C_Date = ClampToSqlDateRange(section.DiabetesScreeningHga1CDate),
+                    DiabetesScreening_HGA1C_Result = section.DiabetesScreeningHga1CResult,
+                    DiabetesScreening_HGA1C_NAFor = section.DiabetesScreeningHga1CNaFor,
+                    DiabetesScreening_HGA1C_Prescribed = section.DiabetesScreeningHga1CPrescribed,
+
+                    DiabetesMicroalbuminDate = ClampToSqlDateRange(section.DiabetesScreeningMicroalbuminDate),
+                    DiabetesMicroalbuminResult = section.DiabetesScreeningMicroalbuminResult,
+                    Screening_Diabetes_Microalbumin_NAFor = section.DiabetesScreeningMicroalbuminNaFor,
+                    DiabetesMicroalbuminPrescribed = section.DiabetesScreeningMicroalbuminPrescribed,
+
+                    DiabetesGlaucomaTestDate = ClampToSqlDateRange(section.GlaucomaTestDate),
+                    DiabetesGlaucomaResult = section.GlaucomaTestResult,
+                    Screening_Diabetes_GlaucomaTest_NAFor = section.GlaucomaTestNaFor,
+                    DiabetesGlaucomaPrescribed = section.GlaucomaTestPrescribed,
+
+                    DiabetesMammogramProstateDate = ClampToSqlDateRange(section.MammogramProstateCancerDate),
+                    DiabetesMammogramProstateResult = section.MammogramProstateCancerResult,
+                    Screening_Diabetes_MammogramProstate_NAFor = section.MammogramProstateCancerNaFor,
+                    DiabetesMammogramProstatePrescribe = section.MammogramProstateCancerPrescribed,
+
+                    DiabetesFluShotDate = ClampToSqlDateRange(section.FluShotDate),
+                    DiabetesFluShotComments = section.FluShotComments,
+                    DiabetesFluShotPrescribed = section.FluShotPrescribed,
+                    DiabetesFluShotPatientRefuses = section.FluShotPatientRefuses,
+
+                    DiabetesPneumococcalShotDate = ClampToSqlDateRange(section.PneumococcalShotDate),
+                    DiabetesPneumococcalComments = section.PneumococcalShotComments,
+                    DiabetesPneumococcalPrescribed = section.PneumococcalShotPrescribed,
+                    DiabetesPneumococcalPatientRefuses = section.PneumococcalShotPatientRefuses,
+
+                    COVID19VaccineHouse = section.Covid19VaccineHouse,
+                    COVID19VaccineShot = section.Covid19VaccineShot,
+                    COVID19VaccineRefuse = section.Covid19VaccineRefuse,
+                    COVID19VaccineOrdered = section.Covid19VaccineOrdered,
+                    COVID19VaccineShotDate1 = ClampToSqlDateRange(section.Covid19VaccineShotDate1),
+                    COVID19VaccineShotDate2 = ClampToSqlDateRange(section.Covid19VaccineShotDate2),
+                    COVID19VaccineShotDate3 = ClampToSqlDateRange(section.Covid19VaccineShotDate3),
+
+                    section.ColorectalColonoscopy,
+                    ColorectalColonoscopyDate = ClampToSqlDateRange(section.ColorectalColonoscopyDate),
+                    Colorectal_ColonoscopyResult_NA = section.ColorectalColonoscopyResultNa,
+                    Colorectal_ColonoscopyResult_Negative = section.ColorectalColonoscopyResultNegative,
+                    Colorectal_ColonoscopyResult_Diverticles = section.ColorectalColonoscopyResultDiverticles,
+                    Colorectal_ColonoscopyResult_BleedingAreas = section.ColorectalColonoscopyResultBleedingAreas,
+                    Colorectal_ColonoscopyResult_CAInColon = section.ColorectalColonoscopyResultCaInColon,
+                    Colorectal_ColonoscopyResult_CAInRectum = section.ColorectalColonoscopyResultCaInRectum,
+                    Colorectal_ColonoscopyResult_Colitis = section.ColorectalColonoscopyResultColitis,
+                    Colorectal_ColonoscopyResult_UlcerativeOlitis = section.ColorectalColonoscopyResultUlcerativeColitis,
+                    Colorectal_ColonoscopyResult_CrohnsDisease = section.ColorectalColonoscopyResultCrohnsDisease,
+                    Colorectal_ColonoscopyResult_Polyps = section.ColorectalColonoscopyResultPolyps,
+                    Colorectal_ColonoscopyResult_Other = section.ColorectalColonoscopyResultOther,
+                    ColorectalColonoscopyNAFor = section.ColorectalColonoscopyNaFor,
+                    ColorectalColonoscopyPrescribe = section.ColorectalColonoscopyPrescribe,
+
+                    section.ColorectalOccultBlood,
+                    ColorectalOccultBloodDate = ClampToSqlDateRange(section.ColorectalOccultBloodDate),
+                    section.ColorectalOccultBloodResult,
+                    ColorectalOccultBloodNAFor = section.ColorectalOccultBloodNaFor,
+                    section.ColorectalOccultBloodPrescribe,
+
+                    section.ColorectalFlexibleSigmoidoscopy,
+                    ColorectalFlexibleSigmoidoscopyDate = ClampToSqlDateRange(section.ColorectalFlexibleSigmoidoscopyDate),
+                    Colorectal_FlexibleSigmoidoscopyResult_NA = section.ColorectalFlexibleSigmoidoscopyResultNa,
+                    Colorectal_FlexibleSigmoidoscopyResult_Negative = section.ColorectalFlexibleSigmoidoscopyResultNegative,
+                    Colorectal_FlexibleSigmoidoscopyResult_AnalFissure = section.ColorectalFlexibleSigmoidoscopyResultAnalFissure,
+                    Colorectal_FlexibleSigmoidoscopyResult_AnorectalAbscess = section.ColorectalFlexibleSigmoidoscopyResultAnorectalAbscess,
+                    Colorectal_FlexibleSigmoidoscopyResult_IntestinalOcclusion = section.ColorectalFlexibleSigmoidoscopyResultIntestinalOcclusion,
+                    Colorectal_FlexibleSigmoidoscopyResult_CAEnElSigmoideo = section.ColorectalFlexibleSigmoidoscopyResultCaEnElSigmoideo,
+                    Colorectal_FlexibleSigmoidoscopyResult_CAInRectum = section.ColorectalFlexibleSigmoidoscopyResultCaInRectum,
+                    Colorectal_FlexibleSigmoidoscopyResult_CAInTheRectosigmoidJunction = section.ColorectalFlexibleSigmoidoscopyResultCaInTheRectosigmoidJunction,
+                    Colorectal_FlexibleSigmoidoscopyResult_ColorectalPolyps = section.ColorectalFlexibleSigmoidoscopyResultColorectalPolyps,
+                    Colorectal_FlexibleSigmoidoscopyResult_Diverticles = section.ColorectalFlexibleSigmoidoscopyResultDiverticles,
+                    Colorectal_FlexibleSigmoidoscopyResult_Hemorrhoids = section.ColorectalFlexibleSigmoidoscopyResultHemorrhoids,
+                    Colorectal_FlexibleSigmoidoscopyResult_HirschsprungDisease = section.ColorectalFlexibleSigmoidoscopyResultHirschsprungDisease,
+                    Colorectal_FlexibleSigmoidoscopyResult_InflammatoryBowelDisease = section.ColorectalFlexibleSigmoidoscopyResultInflammatoryBowelDisease,
+                    Colorectal_FlexibleSigmoidoscopyResult_InflammationOrInfection = section.ColorectalFlexibleSigmoidoscopyResultInflammationOrInfection,
+                    section.ColorectalFlexibleSigmoidoscopyResult,
+                    ColorectalFlexibleSigmoidoscopyNAFor = section.ColorectalFlexibleSigmoidoscopyNaFor,
+                    section.ColorectalFlexibleSigmoidoscopyPrescribe,
+
+                    ColorectalFITDNA = section.ColorectalFitDna,
+                    ColorectalFITDNADate = ClampToSqlDateRange(section.ColorectalFitDnaDate),
+                    ColorectalFITDNAResult = section.ColorectalFitDnaResult,
+                    ColorectalFITDNANAFor = section.ColorectalFitDnaNaFor,
+                    ColorectalFITDNAPrescribe = section.ColorectalFitDnaPrescribe,
+
+                    ColorectalColonographyCT = section.ColorectalColonographyCt,
+                    ColorectalColonographyCTDate = ClampToSqlDateRange(section.ColorectalColonographyCtDate),
+                    ColorectalColonographyCTResult = section.ColorectalColonographyCtResult,
+                    ColorectalColonographyCTNAFor = section.ColorectalColonographyCtNaFor,
+                    ColorectalColonographyCTPrescribe = section.ColorectalColonographyCtPrescribe,
+
+                    MammogramCancerDate = ClampToSqlDateRange(section.MammogramCancerDate),
+                    Mammogram_CancerResult_Category_0 = section.MammogramCancerResultCategory0,
+                    Mammogram_CancerResult_Category_1 = section.MammogramCancerResultCategory1,
+                    Mammogram_CancerResult_Category_2 = section.MammogramCancerResultCategory2,
+                    Mammogram_CancerResult_Category_3 = section.MammogramCancerResultCategory3,
+                    Mammogram_CancerResult_Category_4 = section.MammogramCancerResultCategory4,
+                    Mammogram_CancerResult_Category_5 = section.MammogramCancerResultCategory5,
+                    Mammogram_CancerResult_Category_6 = section.MammogramCancerResultCategory6,
+                    Mammogram_CancerResult_NA = section.MammogramCancerResultNa,
+                    section.MammogramCancerResult,
+                    MammogramCancerNAFor = section.MammogramCancerNaFor,
+                    section.MammogramCancerPrescribed,
+
+                    PAPSMEAR_Date = ClampToSqlDateRange(section.PapSmearDate),
+                    PAPSMEAR_Result = section.PapSmearResult,
+                    PAPSMEAR_NAFor = section.PapSmearNaFor,
+                    PAPSMEAR_Prescribed = section.PapSmearPrescribed,
+
+                    ProstateCancerDate = ClampToSqlDateRange(section.ProstateCancerDate),
+                    section.ProstateCancerResult,
+                    ProstateCancerNAFor = section.ProstateCancerNaFor,
+                    section.ProstateCancerPrescribed,
+
+                    Screening_HPV_Date = ClampToSqlDateRange(section.ScreeningHpvDate),
+                    section.ScreeningHpvComment,
+                    section.ScreeningHpvResult,
+                    section.ScreeningHpvOrdered,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save screening schedule for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy calls Globals.ValidateDateMinMaxRange (source not available) before sending most
+    // ScreeningSchedule dates, clearing the value rather than sending it if the check fails. The
+    // actual bounds aren't known, so this substitutes the same SQL Server `datetime` min/max used
+    // for AdvanceDirective -- narrower down to whatever Globals actually enforces if that source
+    // turns up.
+    private static DateTime? ClampToSqlDateRange(DateTime? value) =>
+        value is null || value < SqlDateTimeMin || value > SqlDateTimeMax ? null : value;
+
     public async Task<bool> SavePage2Async(long claimId, SavePage2Request request, CancellationToken cancellationToken = default)
     {
         var medicationReviewOk = await SaveMedicationReviewAsync(claimId, request.MedicationReview, cancellationToken);
