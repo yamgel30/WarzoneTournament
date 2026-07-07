@@ -8,6 +8,5 @@ public sealed record SavePage3Request
 
     public ScreeningScheduleSection? ScreeningSchedule { get; init; }
 
-    // PhysicalExamination is not ported yet -- it's the largest single section in the form
-    // (a tree of ~15 sub-sections), left for a follow-up.
+    public PhysicalExaminationSection? PhysicalExamination { get; init; }
 }

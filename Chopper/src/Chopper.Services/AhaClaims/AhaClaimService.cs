@@ -378,7 +378,305 @@ internal sealed class AhaClaimService(
                 "Page 3 for visits from 2023 onward (uspSaveScreeningTest2023) isn't ported yet.");
         }
 
-        return await SaveScreeningScheduleAsync(claimId, request.ScreeningSchedule, cancellationToken);
+        var screeningScheduleOk = await SaveScreeningScheduleAsync(claimId, request.ScreeningSchedule, cancellationToken);
+        var physicalExaminationOk = await SavePhysicalExaminationAsync(claimId, request.PhysicalExamination, cancellationToken);
+
+        return screeningScheduleOk && physicalExaminationOk;
+    }
+
+    private async Task<bool> SavePhysicalExaminationAsync(long claimId, PhysicalExaminationSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy skips the SP call entirely (and never flags an error) when the section is absent.
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var heenOral = section.HeenOralOptions;
+            var constitutional = section.ConstitutionalOptions;
+            var integumentary = section.IntegumentaryOptions;
+            var respiratory = section.RespiratoryOptions;
+            var gastrointestinal = section.GastrointestinalOptions;
+            var genitourinary = section.GenitourinaryOptions;
+            var neck = section.NeckOptions;
+            var chest = section.ChestOptions;
+            var cardiovascular = section.CardiovascularOptions;
+            var abdomen = section.AbdomenOptions;
+            var genitaliaGroinButtocks = section.GenitaliaGroinButtocksOptions;
+            var musculoskeletal = section.MusculoskeletalOptions;
+            var skin = section.SkinOptions;
+            var psychiatricNeurologic = section.PsychiatricNeurologicOptions;
+            var hematologicLymphaticImmunologic = section.HematologicLymphaticImmunologicOptions;
+
+            var command = new CommandDefinition(
+                "uspSavePhysicalExamination",
+                new
+                {
+                    ClaimID = claimId,
+
+                    // Legacy sends explicit defaults instead of NULL when these are missing.
+                    Temperature = section.Temperature ?? 0m,
+                    TemperatureType = section.TemperatureType ?? string.Empty,
+                    section.Pulse,
+                    section.Breathing,
+                    BloodPresure1 = section.BloodPressure1,
+                    BloodPresure2 = section.BloodPressure2,
+                    Height = section.Height ?? 0m,
+                    HeightType = section.HeightType ?? string.Empty,
+                    Weight = section.Weight ?? 0m,
+                    WeightType = section.WeightType ?? "lbs",
+                    BMI = section.Bmi ?? 0m,
+
+                    HEENTNotes = section.HeenOralNotes,
+                    HEENOralOptions_Peerl = heenOral?.Peerl,
+                    HEENOralOptions_NoTeeth = heenOral?.NoTeeth,
+                    HEENOralOptions_DryMouth = heenOral?.DryMouth,
+                    HEENOralOptions_DryNose = heenOral?.DryNose,
+                    HEENOralOptions_BleedingGums = heenOral?.BleedingGums,
+                    HEENOralOptions_WNL = heenOral?.Wnl,
+                    HEENOralOptions_Strabismus = heenOral?.Strabismus,
+                    HEENOralOptions_Ptosis = heenOral?.Ptosis,
+                    HEENOralOptions_Redreflex = heenOral?.RedReflex,
+                    HEENOralOptions_AbnormalPupillaryReflex = heenOral?.AbnormalPupillaryReflex,
+                    HEENOralOptions_BlockedNasolacrimalDucts = heenOral?.BlockedNasolacrimalDucts,
+                    HEENOralOptions_NasalDischarge = heenOral?.NasalDischarge,
+                    HEENOralOptions_ExudatingTonsils = heenOral?.ExudatingTonsils,
+                    HEENOptions_Normocephalic = heenOral?.Normocephalic,
+                    HEENOptions_ScalpLessionsMasses = heenOral?.ScalpLessionsMasses,
+                    HEENOptions_NeckSupple = heenOral?.NeckSupple,
+                    HEENOptions_Adenopathies = heenOral?.Adenopathies,
+                    HEENOptions_ClearOropharynxn = heenOral?.ClearOropharynxn,
+                    HEENOptions_LessionExudate = heenOral?.LessionExudate,
+                    HEENOptions_TympanicMembranesIntact = heenOral?.TympanicMembranesIntact,
+                    HEENOptions_EqualAirConductionAndAcousticReflexes = heenOral?.EqualAirConductionAndAcousticReflexes,
+                    HEENOptions_NoNystagmus = heenOral?.NoNystagmus,
+                    HEENOptions_EOMI = heenOral?.Eomi,
+                    HEENOptions_Other = heenOral?.Other,
+                    HEENOptions_None = heenOral?.None,
+
+                    ConstitutionalOptions_Notes = section.ConstitutionalNotes,
+                    ConstitutionalOptions_WellDeveloped = constitutional?.WellDeveloped,
+                    ConstitutionalOptions_PoorDeveloped = constitutional?.PoorDeveloped,
+                    ConstitutionalOptions_AdequateNourishment = constitutional?.AdequateNourishment,
+                    ConstitutionalOptions_InadequateNourishment = constitutional?.InadequateNourishment,
+                    ConstitutionalOptions_InAcuteDistress = constitutional?.InAcuteDistress,
+                    ConstitutionalOptions_NoAcuteDistress = constitutional?.NoAcuteDistress,
+                    ConstitutionalOptions_CAOX = constitutional?.Caox,
+                    ConstitutionalOptions_Others = constitutional?.Others,
+                    ConstitutionalOptions_None = constitutional?.None,
+
+                    IntegumentaryOptions_Notes = section.IntegumentaryNotes,
+                    IntegumentaryOptions_Warm = integumentary?.Warm,
+                    IntegumentaryOptions_Cold = integumentary?.Cold,
+                    IntegumentaryOptions_AdequatePerfusion = integumentary?.AdequatePerfusion,
+                    IntegumentaryOptions_InadequatePerfusion = integumentary?.InadequatePerfusion,
+                    IntegumentaryOptions_AdequateSkinTurgor = integumentary?.AdequateSkinTurgor,
+                    IntegumentaryOptions_InadequateSkinTurgor = integumentary?.InadequateSkinTurgor,
+                    IntegumentaryOptions_Acne = integumentary?.Acne,
+                    IntegumentaryOptions_Rash = integumentary?.Rash,
+                    IntegumentaryOptions_SkinSpots = integumentary?.SkinSpots,
+                    IntegumentaryOptions_Others = integumentary?.Others,
+                    Integumentary_None = integumentary?.None,
+
+                    RespiratoryOptions_Notes = section.RespiratoryNotes,
+                    RespiratoryOptions_ClearToAuscultations = respiratory?.ClearToAuscultations,
+                    RespiratoryOptions_Wheezes = respiratory?.Wheezes,
+                    RespiratoryOptions_RonchiOrRales = respiratory?.RonchiOrRales,
+                    RespiratoryOptions_AdequatePercussionSounds = respiratory?.AdequatePercussionSounds,
+                    RespiratoryOptions_InadequatePercussionSounds = respiratory?.InadequatePercussionSounds,
+                    RespiratoryOptions_PainUponPalpitation = respiratory?.PainUponPalpitation,
+                    RespiratoryOptions_Others = respiratory?.Others,
+                    RespiratoryOptions_None = respiratory?.None,
+
+                    GastrointestinalOptions_Notes = section.GastrointestinalNotes,
+                    GastrointestinalOptions_GoodDentation = gastrointestinal?.GoodDentation,
+                    GastrointestinalOptions_PoorDentation = gastrointestinal?.PoorDentation,
+                    GastrointestinalOptions_HardToPalpation = gastrointestinal?.HardToPalpation,
+                    GastrointestinalOptions_SoftToPalpation = gastrointestinal?.SoftToPalpation,
+                    GastrointestinalOptions_Tenderness = gastrointestinal?.Tenderness,
+                    GastrointestinalOptions_Visceromegaly = gastrointestinal?.Visceromegaly,
+                    GastrointestinalOptions_WNL = gastrointestinal?.Wnl,
+
+                    GenitourinaryOptions_Notes = section.GenitourinaryNotes,
+                    GenitourinaryOptions_DeferedGeneralAppereance = genitourinary?.DeferedGeneralAppereance,
+                    GenitourinaryOptions_WhithinNormalLimits = genitourinary?.WhithinNormalLimits,
+
+                    NeckNotes = section.NeckNotes,
+                    NeckOptions_Masses = neck?.Masses,
+                    NeckOptions_OverallAppearance = neck?.OverallAppearance,
+                    NeckOptions_Symmetry = neck?.Symmetry,
+                    NeckOptions_NormalTrachelPosition = neck?.NormalTrachealPosition,
+                    NeckOptions_Tracheostomy = neck?.Tracheostomy,
+                    NeckOptions_Crepitus = neck?.Crepitus,
+                    NeckOptions_ThyroidEnlargement = neck?.ThyroidEnlargement,
+                    NeckOptions_ThyroidTenderness = neck?.ThyroidTenderness,
+                    NeckOptions_ThyroidMass = neck?.ThyroidMass,
+                    NeckOptions_WNL = neck?.Wnl,
+                    NeckOption_Rigity = neck?.Rigity,
+                    NeckOption_MovementLimitation = neck?.MovementLimitation,
+                    NeckOption_Crackle = neck?.Crackle,
+
+                    ChestNotes = section.ChestNotes,
+                    ChestOptions_IntercostalRetractions = chest?.IntercostalRetractions,
+                    ChestOptions_UseOfAccesoryMuscles = chest?.UseOfAccesoryMuscles,
+                    ChestOptions_DiaphragmaticMovement = chest?.DiaphragmaticMovement,
+                    ChestOptions_Dullness = chest?.Dullness,
+                    ChestOptions_Flatness = chest?.Flatness,
+                    ChestOptions_Hyperresonance = chest?.Hyperresonance,
+                    ChestOptions_TactileFremitus = chest?.TactileFremitus,
+                    ChestOptions_NormalBreathSounds = chest?.NormalBreathSounds,
+                    ChestOptions_AdventitiousSounds = chest?.AdventitiousSounds,
+                    ChestOptions_Rubs = chest?.Rubs,
+                    ChestOptions_Crackels = chest?.Crackels,
+                    ChestOptions_WheezingsSymmetryBreasts = chest?.WheezingSymmetryBreasts,
+                    ChestOptions_NippleDischargeBreastsMassesLumps = chest?.NippleDischargeBreastsMassesLumps,
+                    ChestOptions_BreastsTenderness = chest?.BreastsTenderness,
+                    ChestOptions_WNL = chest?.Wnl,
+                    ChestOptions_BreastsMasses = chest?.BreastsMasses,
+                    ChestOptions_NippleDischarge = chest?.NippleDischarge,
+                    ChestOptions_RTFootToeAmputation = chest?.RtFootToeAmputation,
+                    ChestOptions_LTFootToeAmputation = chest?.LtFootToeAmputation,
+
+                    CardiovascularNotes = section.CardiovascularNotes,
+                    CardiovascularOptions_AbnormalHeartSound = cardiovascular?.AbnormalHeartSound,
+                    CardiovascularOptions_MurmursDecreasedPedalPulses = cardiovascular?.MurmursDecreasedPedalPulses,
+                    CardiovascularOptions_LegEdema = cardiovascular?.LegEdema,
+                    CardiovascularOptions_Varicosities = cardiovascular?.Varicosities,
+                    CardiovascularOptions_AbnormalTemperature = cardiovascular?.AbnormalTemperature,
+                    CardiovascularOptions_WNL = cardiovascular?.Wnl,
+                    CardiovascularOptions_DecreasedPedalPulses = cardiovascular?.DecreasedPedalPulses,
+                    CardiovascularOptions_RegularRateRhytm = cardiovascular?.RegularRateRhytm,
+                    CardiovascularOptions_IrregularRateRhytm = cardiovascular?.IrregularRateRhytm,
+                    CardiovascularOptions_Murmurs = cardiovascular?.Murmurs,
+                    CardiovascularOptions_Gallops = cardiovascular?.Gallops,
+                    CardiovascularOptions_Rubs = cardiovascular?.Rubs,
+                    CardiovascularOptions_PainUponPrecordialPalpation = cardiovascular?.PainUponPrecordialPalpation,
+                    CardiovascularOptions_Other = cardiovascular?.Other,
+                    CardiovascularOptions_None = cardiovascular?.None,
+
+                    AmputationLegRT_BKA = section.AmputationLegRtBka,
+                    AmputationLegRT_AKA = section.AmputationLegRtAka,
+                    AmputationLegRT_Toe = section.AmputationLegRtToe,
+                    AmputationLegLT_BKA = section.AmputationLegLtBka,
+                    AmputationLegLT_AKA = section.AmputationLegLtAka,
+                    AmputationLegLT_Toe = section.AmputationLegLtToe,
+
+                    AbdomenNotes = section.AbdomenNotes,
+                    AbdomenOptions_Masses = abdomen?.Masses,
+                    AbdomenOptions_Tenderness = abdomen?.Tenderness,
+                    AbdomenOptions_Hernia = abdomen?.Hernia,
+                    AbdomenOptions_LiverEnlargement = abdomen?.LiverEnlargement,
+                    AbdomenOptions_SpleenEnlargement = abdomen?.SpleenEnlargement,
+                    AbdomenOptions_Colostomy = abdomen?.Colostomy,
+                    AbdomenOptions_Ileostomy = abdomen?.Ileostomy,
+                    AbdomenOptions_Gastrostomy = abdomen?.Gastrostomy,
+                    AbdomenOptions_WNL = abdomen?.Wnl,
+                    AbdomenOptions_Cystostomy = abdomen?.Cystostomy,
+                    AbdomenOptions_UmbilicalInfection = abdomen?.UmbilicalInfection,
+                    AbdomenOptions_Distention = abdomen?.Distention,
+                    AbdomenOptions_Constipation = abdomen?.Constipation,
+                    AbdomenOptions_Colics = abdomen?.Colics,
+                    AbdomenOptions_Reflux = abdomen?.Reflux,
+                    AbdomenOptions_Rebound = abdomen?.Rebound,
+                    AbdomenOptions_Guarding = abdomen?.Guarding,
+
+                    GenitaliaNotes = section.GenitaliaGroinButtocksNotes,
+                    GenitaliaGroinButtocksNotesOptions_DefferedGeneralAppearance = genitaliaGroinButtocks?.DefferedGeneralAppearance,
+                    GenitaliaGroinButtocksNotesOptions_HairDistribution = genitaliaGroinButtocks?.HairDistribution,
+                    GenitaliaGroinButtocksNotesOptions_Lesions = genitaliaGroinButtocks?.Lesions,
+                    GenitaliaGroinButtocksNotesOptions_Cyst = genitaliaGroinButtocks?.Cyst,
+                    GenitaliaGroinButtocksNotesOptions_Rashes = genitaliaGroinButtocks?.Rashes,
+                    GenitaliaGroinButtocksNotesOptions_Size = genitaliaGroinButtocks?.Size,
+                    GenitaliaGroinButtocksNotesOptions_Symmetry = genitaliaGroinButtocks?.Symmetry,
+                    GenitaliaGroinButtocksNotesOptions_Masses = genitaliaGroinButtocks?.Masses,
+                    GenitaliaGroinButtocksNotesOptions_Discharge = genitaliaGroinButtocks?.Discharge,
+                    GenitaliaGroinButtocksNotesOptions_Scarring = genitaliaGroinButtocks?.Scarring,
+                    GenitaliaGroinButtocksNotesOptions_Deformities = genitaliaGroinButtocks?.Deformities,
+                    GenitaliaGroinButtocksNotesOptions_Nodularity = genitaliaGroinButtocks?.Nodularity,
+                    GenitaliaGroinButtocksNotesOptions_Tenderness = genitaliaGroinButtocks?.Tenderness,
+                    GenitaliaGroinButtocksNotesOptions_Enlargement = genitaliaGroinButtocks?.Enlargement,
+                    GenitaliaGroinButtocksNotesOptions_Hemorrhoids = genitaliaGroinButtocks?.Hemorrhoids,
+                    GenitaliaGroinButtocksNotesOptions_Prolapse = genitaliaGroinButtocks?.Prolapse,
+                    GenitaliaGroinButtocksNotesOptions_EstrogenEffect = genitaliaGroinButtocks?.EstrogenEffect,
+                    GenitaliaGroinButtocksNotesOptions_PelvicSupport = genitaliaGroinButtocks?.PelvicSupport,
+                    GenitaliaGroinButtocksNotesOptions_Cystocele = genitaliaGroinButtocks?.Cystocele,
+                    GenitaliaGroinButtocksNotesOptions_Rectocele = genitaliaGroinButtocks?.Rectocele,
+                    GenitaliaGroinButtocksNotesOptions_WNL = genitaliaGroinButtocks?.Wnl,
+                    GenitaliaGroinButtocksNotesOptions_Urostomy = genitaliaGroinButtocks?.Urostomy,
+                    GenitaliaGroinButtocksNotesOptions_FoleyCatheterUse = genitaliaGroinButtocks?.FoleyCatheterUse,
+
+                    MusculokeletalNotes = section.MusculoskeletalNotes,
+                    MusculokeletalOptions_AbnormalGait = musculoskeletal?.AbnormalGait,
+                    MusculokeletalOptions_ClubbingNails = musculoskeletal?.ClubbingNails,
+                    MusculokeletalOptions_CyanosisDigits = musculoskeletal?.CyanosisDigits,
+                    MusculokeletalOptions_UpperExtremitiesAsymmetry = musculoskeletal?.UpperExtremitiesAsymmetry,
+                    MusculokeletalOptions_LowerExtremitiesAsymmetry = musculoskeletal?.LowerExtremitiesAsymmetry,
+                    MusculokeletalOptions_Dislocation = musculoskeletal?.Dislocation,
+                    MusculokeletalOptions_DislocationNotes = musculoskeletal?.DislocationNotes,
+                    MusculokeletalOptions_AbnormalMuscleStrengthTone = musculoskeletal?.AbnormalMuscleStrengthTone,
+                    MusculokeletalOptions_Flaccid = musculoskeletal?.Flaccid,
+                    MusculokeletalOptions_CogWheel = musculoskeletal?.CogWheel,
+                    MusculokeletalOptions_Spastic = musculoskeletal?.Spastic,
+                    MusculokeletalOptions_AbnormalMovements = musculoskeletal?.AbnormalMovements,
+                    MusculokeletalOptions_WNL = musculoskeletal?.Wnl,
+                    MusculoskeletalOption_NoDeformitiesOrDeformations = musculoskeletal?.NoDeformitiesOrDeformations,
+                    MusculoskeletalOption_NormalGait = musculoskeletal?.NormalGait,
+                    MusculoskeletalOption_AdequateROM = musculoskeletal?.AdequateRom,
+                    MusculoskeletalOption_InadequateROM = musculoskeletal?.InadequateRom,
+
+                    SkinNotes = section.SkinNotes,
+                    SkinOptions_Rashes = skin?.Rashes,
+                    SkinOptions_Lesions = skin?.Lesions,
+                    SkinOptions_Ulcers = skin?.Ulcers,
+                    SkinOptions_Nodules = skin?.Nodules,
+                    SkinOptions_Induration = skin?.Induration,
+                    SkinOptions_Tightening = skin?.Tightening,
+                    SkinOptions_WNL = skin?.Wnl,
+                    SkinOptions_PurpuricLesionsNoted = skin?.PurpuricLesionsNoted,
+
+                    PsychiatricNotes = section.PsychiatricNeurologicNotes,
+                    PsychiatricNeurologicOptions_CranialNervesWithDeficits = psychiatricNeurologic?.CranialNervesWithDeficits,
+                    PsychiatricNeurologicOptions_Babinsky = psychiatricNeurologic?.Babinsky,
+                    PsychiatricNeurologicOptions_SentationByTouch = psychiatricNeurologic?.SensationByTouch,
+                    PsychiatricNeurologicOptions_NoSensationTouchLegs = psychiatricNeurologic?.NoSensationTouchLegs,
+                    PsychiatricNeurologicOptions_OrientedToTime = psychiatricNeurologic?.OrientedToTime,
+                    PsychiatricNeurologicOptions_PlaceAndPerson = psychiatricNeurologic?.PlaceAndPerson,
+                    PsychiatricNeurologicOptions_DepressedMode = psychiatricNeurologic?.DepressedMode,
+                    PsychiatricNeurologicOptions_Anxiety = psychiatricNeurologic?.Anxiety,
+                    PsychiatricNeurologicOptions_Agitation = psychiatricNeurologic?.Agitation,
+                    PsychiatricNeurologicOptions_WNL = psychiatricNeurologic?.Wnl,
+                    PsychiatricNeurologicOptions_Hemiplejia = psychiatricNeurologic?.Hemiplejia,
+                    PsychiatricNeurologicOptions_Cuadriplejia = psychiatricNeurologic?.Cuadriplejia,
+                    PsychiatricNeurologicOptions_Paraplejia = psychiatricNeurologic?.Paraplejia,
+                    NeurologicOption_AmbulatingWOLimitation = psychiatricNeurologic?.AmbulatingWoLimitation,
+                    NeurologicOption_NormalMuscleStrengthTone = psychiatricNeurologic?.NormalMuscleStrengthTone,
+                    NeurologicOption_AbnormalMuscleStrengthTone = psychiatricNeurologic?.AbnormalMuscleStrengthTone,
+                    NeurologicOption_FocalDeficits = psychiatricNeurologic?.FocalDeficits,
+
+                    HemotalogicNotes = section.HematologicLymphaticImmunologicNotes,
+                    HematologicLymphaticImmunologicOptions_LymphNodes = hematologicLymphaticImmunologic?.LymphNodes,
+                    HematologicLymphaticImmunologicOptions_LymphNodesNotes = hematologicLymphaticImmunologic?.LymphNodesNotes,
+                    HematologicLymphaticImmunologicOptions_WNL = hematologicLymphaticImmunologic?.Wnl,
+
+                    section.HeadCircumference,
+                    PercentilWT = section.PercentilWt,
+                    PercentilHT = section.PercentilHt,
+                    section.PercentilHead,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save physical examination for claim {ClaimId}", claimId);
+            return false;
+        }
     }
 
     private async Task<bool> SaveScreeningScheduleAsync(long claimId, ScreeningScheduleSection? section, CancellationToken cancellationToken)

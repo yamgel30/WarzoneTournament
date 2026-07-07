@@ -124,10 +124,30 @@ service does. It breaks down into two very different shapes of work:
   (1753-01-01 to 2999-12-31) used for `AdvanceDirective`. Worth tightening
   once/if the real `Globals` source turns up.
 
-  Not started: Page 3's **Physical Examination** section (a tree of ~15
-  sub-sections spanning ~2,700 lines of the model file — likely the single
-  largest remaining piece of the whole migration) and **Screening Schedule
-  2023+**; Page 4 (~20 sections, several GHP/year/at-home conditional).
+  Ported: **Physical Examination** (~230 fields across vitals, amputation,
+  and 15 body-system sub-sections: HEENT/Oral, Constitutional,
+  Integumentary, Respiratory, Gastrointestinal, Genitourinary, Neck, Chest,
+  Cardiovascular, Abdomen, Genitalia/Groin/Buttocks, Musculoskeletal, Skin,
+  Psychiatric/Neurologic, Hematologic/Lymphatic/Immunologic) — turned out
+  to be a single stored procedure (`uspSavePhysicalExamination`), not the
+  fan-out its ~2,700-line model tree suggested. Vitals
+  (Temperature/Height/Weight/BMI) keep the legacy behavior of sending an
+  explicit default (0, or `"lbs"` for `WeightType`) instead of `NULL` when
+  missing.
+
+  **This page (and Page 1) always send every parameter to the stored
+  procedure**, relying on Dapper to convert an absent value to `NULL`.
+  Legacy instead *omits* many parameters entirely when their field is
+  absent. For most parameters this is equivalent, but if any stored
+  procedure declares a non-`NULL` default for a parameter (`@Foo BIT =
+  0`), SQL Server only applies that default when the parameter is omitted
+  from the call — an explicit `NULL` overrides it. Worth checking against
+  the actual stored procedure definitions once available; not something
+  that's verifiable from the VB source alone.
+
+  Not started: **Screening Schedule 2023+** (`uspSaveScreeningTest2023`,
+  similar size to the pre-2023 version already ported); Page 4 (~20
+  sections, several GHP/year/at-home conditional).
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
@@ -150,8 +170,8 @@ nothing breaks mid-migration.
 
 ## Next
 
-Finish Page 3 (Physical Examination, then Screening Schedule 2023+), then
-Page 4. Same recipe each time — read the section class(es) in
+Finish Page 3 (Screening Schedule 2023+), then Page 4. Same recipe each
+time — read the section class(es) in
 `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
 `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
 endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
