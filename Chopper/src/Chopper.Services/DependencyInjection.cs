@@ -1,5 +1,6 @@
 using Chopper.Services.Abstractions;
 using Chopper.Services.Acknowledgements;
+using Chopper.Services.AhaClaims;
 using Chopper.Services.AiInfo;
 using Chopper.Services.Claims;
 using Chopper.Services.Common;
@@ -17,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<IAcknowledgementService, AcknowledgementService>();
         services.AddScoped<IClaimsVerificationService, ClaimsVerificationService>();
         services.AddScoped<IAiInfoService, AiInfoService>();
+        services.AddScoped<IAhaClaimService, AhaClaimService>();
 
         return services;
     }

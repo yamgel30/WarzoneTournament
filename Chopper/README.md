@@ -18,6 +18,9 @@ Chopper/
     AHADataAdapter.vb    Legacy VB data-access layer (reference only, not
                           part of the build) — every stored procedure call
                           in the old app currently lives in this one class.
+    AHAEDM.vb            Legacy VB model/data-contract layer (reference only)
+                          — AHAFormItem, AHAFormItemShort, and every
+                          `*Section` class SaveClaim writes to the DB.
   src/
     Chopper.Api/         ASP.NET Core Web API (controllers, Program.cs)
     Chopper.Services/    Business logic + data access (Dapper against
@@ -62,12 +65,36 @@ service does. It breaks down into two very different shapes of work:
 - **`SaveClaim` and its ~35 private `Save*Section` helpers** — this is the
   actual AHA form submission: one big operation that writes the whole
   assessment (demographics, medical history, screenings, exam findings,
-  diagnoses, etc.) across dozens of stored procedures inside a single save.
-  It isn't split into independent endpoints in the legacy code, so it isn't
-  a "poco a poco" candidate the same way the list above was — it needs the
-  model classes (`AHAFormItem`, `AHAFormItemShort`, and every `*Section`
-  type) before it can be ported at all. **Not started yet** — pending the
-  models source file.
+  diagnoses, etc.) across dozens of stored procedures. Turns out it's
+  **not atomic** — `SavePage1`-`SavePage4` each call a fixed list of section
+  savers, and every section saver catches its own DB error, flags
+  `_saveError`, and keeps going rather than rolling back or stopping. That
+  means it genuinely can be migrated section-by-section / page-by-page, the
+  same "poco a poco" way as the list above — it just needed the model
+  classes first to know each section's fields.
+
+  Legacy fields aren't plain values — every field (`StringField`,
+  `DateField`, `BooleanField`, ...) wraps a value plus UI validation
+  metadata (`FieldID`, `HasError`, `ErrorDescription`, `IsFromAI`, ...) left
+  over from the old WebForms client-side validation. The new DTOs carry
+  **plain values only** (`bool?`, `string?`, `int?`, ...) — the adapter only
+  ever reads `.Value` when building stored-procedure parameters, so the
+  metadata never reached the database anyway.
+
+  Ported: **Page 2** (`PUT /api/aha-claims/{claimId}/pages/2`) — Medication
+  Review, Cognitive Assessment, Pain Screening, Activities of Daily Living.
+  Matches legacy behavior exactly, including that Medication Review and
+  Cognitive Assessment always call their stored procedure (even with an
+  empty section), while Pain Screening and Activities of Daily Living skip
+  entirely when their section is absent — and a legacy quirk in Pain
+  Screening (submitting `Others` forces `PainEvaluationOtherCondition` to
+  `true` and copies `Others` into `PainEvaluationOtherConditionText`) is
+  preserved rather than "fixed".
+
+  Not started: Page 1 (6 sections, includes two large ones — Chief
+  Complaint/Patient Medical History and Medical/Family/Social History),
+  Page 3 (Screening Test + the very large Physical Examination section
+  tree), Page 4 (~20 sections, several GHP/year/at-home conditional).
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
@@ -88,12 +115,13 @@ Migrate operation by operation instead of a big-bang rewrite:
 Repeat per operation. The old SOAP service keeps running throughout, so
 nothing breaks mid-migration.
 
-## Next: the models file
+## Next
 
-To port `SaveClaim`, add the VB source file(s) defining `AHAFormItem`,
-`AHAFormItemShort`, and the `*Section` classes (the ~11,000-line "models"
-file) the same way `AHADataAdapter.vb` was added — as an attachment in chat,
-or committed under `Chopper/legacy/`.
+Continue `SaveClaim` page-by-page: Page 1, then Page 3, then Page 4 (see
+above for what's in each). Same recipe each time — read the section
+class(es) in `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s)
+in `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
+endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
 
 Also useful, if available: the `.asmx`/WSDL for the SOAP service itself, to
 confirm which `AHADataAdapter` methods are actually exposed as SOAP
