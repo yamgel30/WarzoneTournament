@@ -1,6 +1,9 @@
 using Chopper.Services.Abstractions;
+using Chopper.Services.Acknowledgements;
+using Chopper.Services.AiInfo;
+using Chopper.Services.Claims;
 using Chopper.Services.Common;
-using Chopper.Services.Patients;
+using Chopper.Services.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Chopper.Services;
@@ -10,7 +13,10 @@ public static class DependencyInjection
     public static IServiceCollection AddChopperServices(this IServiceCollection services, string connectionString)
     {
         services.AddSingleton<ISqlConnectionFactory>(_ => new SqlConnectionFactory(connectionString));
-        services.AddScoped<IPatientService, PatientService>();
+        services.AddScoped<ISessionService, SessionService>();
+        services.AddScoped<IAcknowledgementService, AcknowledgementService>();
+        services.AddScoped<IClaimsVerificationService, ClaimsVerificationService>();
+        services.AddScoped<IAiInfoService, AiInfoService>();
 
         return services;
     }
