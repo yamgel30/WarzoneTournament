@@ -12,12 +12,12 @@ public sealed record ScreeningSchedule2023Extras
     public bool? ProliferativeEyeLt { get; init; }
 
     public DateTime? UrineAlbuminDate { get; init; }
-    public decimal? UrineAlbuminResult { get; init; }
+    public string? UrineAlbuminResult { get; init; }
     public string? UrineAlbuminNaFor { get; init; }
     public bool? UrineAlbuminPrescribed { get; init; }
 
     public DateTime? UrineCreatinineDate { get; init; }
-    public decimal? UrineCreatinineResult { get; init; }
+    public string? UrineCreatinineResult { get; init; }
     public string? UrineCreatinineNaFor { get; init; }
     public bool? UrineCreatininePrescribed { get; init; }
 

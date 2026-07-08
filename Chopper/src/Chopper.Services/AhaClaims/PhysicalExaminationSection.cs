@@ -4,10 +4,10 @@ public sealed record PhysicalExaminationSection
 {
     public decimal? Temperature { get; init; }
     public string? TemperatureType { get; init; }
-    public decimal? Pulse { get; init; }
-    public decimal? Breathing { get; init; }
-    public decimal? BloodPressure1 { get; init; }
-    public decimal? BloodPressure2 { get; init; }
+    public int? Pulse { get; init; }
+    public int? Breathing { get; init; }
+    public int? BloodPressure1 { get; init; }
+    public int? BloodPressure2 { get; init; }
     public decimal? Height { get; init; }
     public string? HeightType { get; init; }
     public decimal? Weight { get; init; }

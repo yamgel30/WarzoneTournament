@@ -13,9 +13,9 @@ public sealed record ChronicKidneyDiseaseSection
     public string? AdditionalTreatment { get; init; }
     public bool? Hyperparathyroidism { get; init; }
     public string? HyperparathyroidismTreatment { get; init; }
-    public decimal? Gfr { get; init; }
-    public decimal? SerumCalcium { get; init; }
-    public decimal? SerumPth { get; init; }
+    public string? Gfr { get; init; }
+    public string? SerumCalcium { get; init; }
+    public string? SerumPth { get; init; }
     public bool? Nephropathy { get; init; }
     public string? NephropathyType { get; init; }
     public bool? Nephritis { get; init; }
