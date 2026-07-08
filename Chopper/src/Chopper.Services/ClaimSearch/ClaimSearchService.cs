@@ -13,7 +13,7 @@ internal sealed class ClaimSearchService(ISqlConnectionFactory connectionFactory
         using var connection = connectionFactory.CreateConnection();
 
         var ahaYear = criteria.AhaYear == 0 ? options.DefaultYear : criteria.AhaYear;
-        var claimClass = await GetClaimClassByYearAsync(connection, ahaYear, cancellationToken);
+        var claimClass = await ClaimClassLookup.GetByYearAsync(connection, ahaYear, cancellationToken);
 
         var parameters = BuildBaseParameters(criteria, ahaYear, claimClass);
         if (criteria.AtHome)
@@ -60,7 +60,7 @@ internal sealed class ClaimSearchService(ISqlConnectionFactory connectionFactory
         using var connection = connectionFactory.CreateConnection();
 
         var ahaYear = criteria.AhaYear == 0 ? options.DefaultYear : criteria.AhaYear;
-        var claimClass = await GetClaimClassByYearAsync(connection, ahaYear, cancellationToken);
+        var claimClass = await ClaimClassLookup.GetByYearAsync(connection, ahaYear, cancellationToken);
 
         var parameters = BuildBaseParameters(criteria, ahaYear, claimClass);
         parameters.Add("AtHome", criteria.AtHome);
@@ -149,17 +149,6 @@ internal sealed class ClaimSearchService(ISqlConnectionFactory connectionFactory
         }
 
         return parameters;
-    }
-
-    // Legacy derives this from the AHAYears table rather than a stored procedure.
-    private static async Task<int> GetClaimClassByYearAsync(IDbConnection connection, int year, CancellationToken cancellationToken)
-    {
-        var command = new CommandDefinition(
-            "SELECT ay.ClaimClass FROM AHAYears AS ay WHERE ay.AHAYear = @Year",
-            new { Year = year },
-            cancellationToken: cancellationToken);
-
-        return await connection.ExecuteScalarAsync<int>(command);
     }
 
     private static DataTable BuildNpiTable(IReadOnlyList<string>? npis)

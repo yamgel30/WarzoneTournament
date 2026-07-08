@@ -9,4 +9,6 @@ public interface IClaimsVerificationService
     Task<bool> FormExistsForDateOfServiceAsync(string memberId, DateTime dateOfService, short claimClass, long? claimId, CancellationToken cancellationToken = default);
 
     Task<bool> IsSubProjectActiveAsync(string projectName, short year, CancellationToken cancellationToken = default);
+
+    Task<bool> MemberAlreadyHasAhaAsync(string memberId, bool isEdit, bool isResubmit, int ahaYear, bool atHome, CancellationToken cancellationToken = default);
 }

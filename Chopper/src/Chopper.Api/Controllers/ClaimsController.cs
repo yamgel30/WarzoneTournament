@@ -37,4 +37,17 @@ public sealed class ClaimsController(IClaimsVerificationService claimsVerificati
         var exists = await claimsVerificationService.FormExistsForDateOfServiceAsync(memberId, dateOfService, claimClass, claimId, cancellationToken);
         return Ok(new { exists });
     }
+
+    [HttpGet("aha-already-exists")]
+    public async Task<IActionResult> MemberAlreadyHasAha(
+        [FromQuery] string memberId,
+        [FromQuery] bool isEdit,
+        [FromQuery] bool isResubmit,
+        [FromQuery] int ahaYear,
+        [FromQuery] bool atHome,
+        CancellationToken cancellationToken)
+    {
+        var alreadyHasAha = await claimsVerificationService.MemberAlreadyHasAhaAsync(memberId, isEdit, isResubmit, ahaYear, atHome, cancellationToken);
+        return Ok(new { alreadyHasAha });
+    }
 }

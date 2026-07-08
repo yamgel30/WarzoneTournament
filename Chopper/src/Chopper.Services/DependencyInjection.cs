@@ -3,8 +3,10 @@ using Chopper.Services.Acknowledgements;
 using Chopper.Services.AhaClaims;
 using Chopper.Services.AiInfo;
 using Chopper.Services.Claims;
+using Chopper.Services.ClaimConditions;
 using Chopper.Services.ClaimSearch;
 using Chopper.Services.Common;
+using Chopper.Services.Providers;
 using Chopper.Services.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,6 +24,8 @@ public static class DependencyInjection
         services.AddScoped<IAiInfoService, AiInfoService>();
         services.AddScoped<IAhaClaimService, AhaClaimService>();
         services.AddScoped<IClaimSearchService, ClaimSearchService>();
+        services.AddScoped<IProviderService, ProviderService>();
+        services.AddScoped<IClaimConditionService, ClaimConditionService>();
 
         return services;
     }

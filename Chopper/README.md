@@ -380,6 +380,86 @@ verifying once possible:
   mirror VB's forgiving `CLng`/`CBool`/`CDate` conversions rather than risk
   an `InvalidCastException` on a type guess that turns out wrong.
 
+### Ported: provider/billing/eligibility (`ProviderService`, `api/providers/*`)
+
+- `GetBillingOfRendering` → `GET /api/providers/{renderingNpi}/billing`.
+- `GetProvidersInformation` → `POST /api/providers/information`.
+- `GetProvidersInformationFromBilling` → `POST /api/providers/information-from-billing`.
+  Preserves a real business rule: the **first** rendering provider's billing
+  list comes from every authorized billing NPI (`uspGetBillingsName`), but
+  every **subsequent** provider's billing list is filtered down to just the
+  billings that provider actually has among the authorized set
+  (`uspGetBillingsOfRendering_FromAuthBilling`) — not unified into one
+  code path even though it would be simpler, because legacy genuinely
+  treats the first result differently.
+- `GetRenderingNPIOfMember`/`GetRenderingNPIOfMemberPRAI` →
+  `POST /api/providers/{memberId}/rendering-npi{,-prai}`.
+- `GetPendingClaim`/`GetPendingClaim2023` →
+  `GET /api/providers/pending-claim{,-2023}`. Legacy **completely ignores**
+  the caller-supplied `claimClass`/`status` arguments here — `claimClass` is
+  overridden from the same app-wide constant as `AhaSearchOptions.DefaultClaimClass`,
+  and `status` is derived as `claimClass * -1` rather than using what's
+  passed in. Preserved as-is even though it looks like it should just not
+  take those parameters.
+- `VerifyEligibility` → `GET /api/providers/eligibility`. Legacy's
+  `FirstPlusDummyNPI` table-valued parameter (built from
+  `AppSettings("FirstPlusDummyProvider")`, a comma-separated NPI list) is
+  now `AhaSearchOptions.FirstPlusDummyProviderNpis` — another `AppSettings`-
+  derived constant taken as configuration instead of guessed. The
+  `billingNpi`-required precondition is enforced as a `400 Bad Request` at
+  the controller instead of a DB-less "required information" error response,
+  which fits REST conventions better than legacy's original shape without
+  changing the actual behavior (no query is run either way).
+
+### Ported: claim conditions and diagnoses (`ClaimConditionService`, `api/claim-conditions/*`)
+
+- `GetMemberActiveCondition`/`GetMemberSuspiciousCondition` →
+  `GET /api/claim-conditions/members/{memberId}/{active,suspicious}-conditions`.
+- `GetClaimDiagnosticList` → `GET /api/claim-conditions/{claimId}/diagnoses`.
+- `GetRejectNotes` → `GET /api/claim-conditions/{claimId}/reject-notes`. The
+  underlying `GetClaimRejectedNotes` helper reads two result sets from
+  `uspClaim_GetAHARejectNotes` (`QueryMultipleAsync`) — a single header row
+  of general notes, and a list of per-diagnosis rejection notes — and
+  substitutes a fixed "period to attach document has expired" message when
+  the header isn't exactly one row, exactly as legacy does.
+- `SaveAHADxHxSelection`/`GetMemberDxHistory` →
+  `PUT /api/claim-conditions/{claimId}/dx-history-selection` /
+  `GET /api/claim-conditions/members/{memberId}/dx-history`, using the
+  `AHADxHistorySelection` table-valued parameter (exact column-for-column
+  match against the real `CREATE TYPE`, unlike the `Providers` inference
+  above — high confidence even without the actual `uspAHA_SaveDxHistorySelection`
+  definition).
+- **`GetAHADxHxSelection` → `GET /api/claim-conditions/{claimId}/dx-history-selection`
+  is a no-op in legacy** (the method body is just `Return resp` with an
+  empty list, no query at all) — ported verbatim as a stub that always
+  returns an empty list, not because there's a gap, but because that really
+  is what it does today.
+- `SaveAHASuspiciousCondDxHxSelection`/`_V2` →
+  `PUT /api/claim-conditions/{claimId}/suspicious-condition-dx-history-selection{,/v2}`,
+  using `AHASuspiciousConditionDxHistorySelection`/`_v2` (again an exact
+  column match against the real table types — V2 adds one `ReasonForNo`
+  column the V1 type doesn't have).
+- `GetICDLookup` → `GET /api/claim-conditions/icd-lookup`.
+- `GetMemberClaimStatus` → `GET /api/claim-conditions/members/{memberId}/status`.
+  Legacy's `EnumHelper.MemberClaimStatus` source isn't available; its
+  member names are inferred from usage (`InProgress`/`Submitted`/`Rejected`/`Pending`)
+  and status values outside `{<2, 2, 3}` fall back to `Pending` as a
+  best guess for the enum's zero-value default — worth confirming once that
+  enum's source turns up.
+- `CheckMemberHasAHA` → `GET /api/claims/aha-already-exists` (added to the
+  existing `ClaimsVerificationService`/`ClaimsController` rather than a new
+  domain, since it's the same kind of yes/no eligibility check as the
+  THA/form-exists/sub-project checks already there). Only actually queries
+  when creating brand new (`isEdit`/`isResubmit` both false) — same
+  short-circuit as legacy.
+
+Not ported in this batch (need a closer read first): Addendum handling
+(`SaveAddendumProvider`, `GetAddendumInfo`, `LoadCodUserAndNotes`,
+`LoadRejectedCodes`, `LoadQuestions`) — `GetAddendumInfo` alone already pulls
+in both the deferred `GetAHA` read-side and report generation, so it's
+tangled up with the two biggest deferred pieces rather than being
+self-contained.
+
 ## Migration approach (strangler fig)
 
 Migrate operation by operation instead of a big-bang rewrite:
@@ -420,19 +500,18 @@ are available. What's still open:
   differently than an omitted parameter would.
 
 `AHADataAdapter.vb`/`SaveClaim` is done. The migration has now moved on to
-`AHAService1.vb` (see above) — claim list/search is ported; next up, roughly
-in order of how implementable each is right now:
+`AHAService1.vb` (see above) — claim list/search **and** provider/billing/
+eligibility/Dx-condition operations are ported; next up, roughly in order of
+how implementable each is right now:
 
-1. **Provider/billing/eligibility lookups and Dx/condition operations** —
-   moderate size, no external dependencies spotted yet, similar shape to
-   what's already ported. Good next candidates.
-2. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
+1. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
    `LoadCodUserAndNotes`, `LoadRejectedCodes`, `LoadQuestions`) — needs a
-   closer read first.
-3. **The full read side of a claim** (`GetAHA`, `GetMemberAHATemplate`,
+   closer read first, and `GetAddendumInfo` itself pulls in both deferred
+   pieces below.
+2. **The full read side of a claim** (`GetAHA`, `GetMemberAHATemplate`,
    `GetAHAShort`) — not blocked, just large (~5,000 lines combined);
    probably its own multi-batch effort the same way `SaveClaim` was.
-4. **Submit/Update/PartialSave orchestrators** — the session/business-rule
+3. **Submit/Update/PartialSave orchestrators** — the session/business-rule
    layer wrapped around the already-ported `SaveClaim` call.
 
 Confirmed not implementable yet, without more source:

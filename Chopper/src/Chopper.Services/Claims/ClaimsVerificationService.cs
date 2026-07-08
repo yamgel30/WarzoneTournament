@@ -89,4 +89,45 @@ internal sealed class ClaimsVerificationService(
             return false;
         }
     }
+
+    // Legacy only runs this check when creating brand new (not editing, not resubmitting) --
+    // callers get true (already has one) back for isEdit/isResubmit without a query.
+    public async Task<bool> MemberAlreadyHasAhaAsync(string memberId, bool isEdit, bool isResubmit, int ahaYear, bool atHome, CancellationToken cancellationToken = default)
+    {
+        if (isEdit || isResubmit)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var claimClass = await ClaimClassLookup.GetByYearAsync(connection, ahaYear, cancellationToken);
+
+            var command = new CommandDefinition(
+                """
+                SELECT ISNULL(COUNT(*),0) AS CountOfSubmitted
+                FROM Claims WITH (NOLOCK)
+                INNER JOIN vwMSV_Master WITH (NOLOCK) ON Claims.sPatientContract = vwMSV_Master.memberID
+                INNER JOIN Claims_AHADetail WITH (NOLOCK) ON Claims_AHADetail.biClaimID = Claims.biClaimID
+                WHERE Claims.iStatus > 1
+                  AND ISNULL(Claims.RejectTypeId, 0) <> 1
+                  AND Claims.nClaimClass = @ClaimClass
+                  AND Claims.nClaimClassTag = 1
+                  AND vwMSV_Master.useForPCPEligibility = 1
+                  AND Claims.sPatientContract = @MemberId
+                  AND Claims_AHADetail.AtHome = @AtHome
+                """,
+                new { ClaimClass = claimClass, MemberId = memberId, AtHome = atHome },
+                cancellationToken: cancellationToken);
+
+            var countOfSubmitted = await connection.ExecuteScalarAsync<int>(command);
+            return countOfSubmitted > 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to check whether member {MemberId} already has an AHA for {AhaYear}", memberId, ahaYear);
+            return false;
+        }
+    }
 }
