@@ -28,4 +28,11 @@ public sealed class AhaClaimsController(IAhaClaimService ahaClaimService) : Cont
         var success = await ahaClaimService.SavePage2Async(claimId, request, cancellationToken);
         return success ? Ok() : Problem(statusCode: StatusCodes.Status500InternalServerError);
     }
+
+    [HttpPut("{claimId:long}/pages/4")]
+    public async Task<IActionResult> SavePage4(long claimId, [FromBody] SavePage4Request request, CancellationToken cancellationToken)
+    {
+        var success = await ahaClaimService.SavePage4Async(claimId, request, cancellationToken);
+        return success ? Ok() : Problem(statusCode: StatusCodes.Status500InternalServerError);
+    }
 }

@@ -1092,6 +1092,353 @@ internal sealed class AhaClaimService(
     private static DateTime? ClampToSqlDateRange(DateTime? value) =>
         value is null || value < SqlDateTimeMin || value > SqlDateTimeMax ? null : value;
 
+    // Page 4 -- ~20 sections total; only the ones ported so far are wired in here (see README).
+    public async Task<bool> SavePage4Async(long claimId, SavePage4Request request, CancellationToken cancellationToken = default)
+    {
+        var bmiOk = await SaveBmiAssociatedDiagnosesAsync(claimId, request.BmiAssociatedDiagnoses, cancellationToken);
+        var rheumatoidArthritisOk = await SaveRheumatoidArthritisAsync(claimId, request.RheumatoidArthritis, cancellationToken);
+        var assessmentPlanOk = await SaveAssessmentPlanOfTreatmentAsync(claimId, request.AssessmentPlanOfTreatment, cancellationToken);
+        var cancerDiagnosesOk = await SaveCancerDiagnosesAsync(claimId, request.CancerDiagnoses, request.CancerDiagnosisNa, cancellationToken);
+        var ckdOk = await SaveCkdAsync(claimId, request.Ckd, cancellationToken);
+        var pressureSoresOk = await SavePressureSoresAsync(claimId, request.PressureSores, cancellationToken);
+
+        return bmiOk && rheumatoidArthritisOk && assessmentPlanOk && cancerDiagnosesOk && ckdOk && pressureSoresOk;
+    }
+
+    private async Task<bool> SaveBmiAssociatedDiagnosesAsync(long claimId, BmiAssociatedDiagnosesSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section (NA = false, everything else
+        // omitted) when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveBMIAssociatedDiagnoses",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    section?.Obesity,
+                    section?.MorbidObesity,
+                    section?.Malnutrition,
+                    BMIPlanTreatment = section?.EvaluationTreatmentPlan,
+                    section?.MalnutritionGradeTypeText,
+                    section?.DeficiencyBComplex,
+                    section?.DeficiencyVitaminB12,
+                    section?.DeficiencyVitaminB6,
+                    section?.DeficiencyOtherVitaminNutrients,
+                    section?.DeficiencyOtherVitaminNutrientsComments,
+                    section?.MalnutritionScreeningAssesment,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save BMI associated diagnoses for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveRheumatoidArthritisAsync(long claimId, RheumatoidArthritisSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveRheumatoidArthritis",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    section?.RaNoManifestations,
+                    section?.RaWithPolyneuropathy,
+                    section?.RaWithMyopathy,
+                    section?.RaOtherManifestations,
+                    DMARDs = section?.Dmards,
+                    DMARDsSpecify = section?.DmardsSpecify,
+                    PtRefuses = section?.PtRefuses,
+                    section?.OtherTreatmentConditions,
+                    section?.Arthritis,
+                    section?.ArthritisLocationType,
+                    NSAIDS = section?.Nsaids,
+                    NSAIDSOtherTreatment = section?.NsaidsOtherTreatment,
+                    section?.AffectedJoints,
+                    section?.InflammatoryPolyarthritis,
+                    section?.InflammatoryPolyarthritisComments,
+                    section?.ArthropathySequelaViralInfection,
+                    section?.ArthropathySequelaViralInfectionComments,
+                    section?.ArtritisPsoriatrica,
+                    section?.Osteoartritis,
+                    section?.ArtritisPsoriatricaComment,
+                    section?.OsteoartritisComment,
+                    RAOtherManifestationsCheckBox = section?.RaOtherManifestationsCheckBox,
+                    section?.Osteoporosis,
+                    section?.Osteopenia,
+                    section?.OsteoTreatmentPlan,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save rheumatoid arthritis for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveAssessmentPlanOfTreatmentAsync(long claimId, AssessmentPlanOfTreatmentSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            // When "No" (no diabetes complications) is set, legacy blanks out the whole detail
+            // block below regardless of what was passed in.
+            var clearDetails = section?.No ?? false;
+
+            var command = new CommandDefinition(
+                "uspSaveAssessmentPlanOfTreatment",
+                new
+                {
+                    ClaimID = claimId,
+                    AssessmentPlanTreatment_No = section?.No,
+                    AssessmentPlanTreatment_DMType = clearDetails ? null : section?.DmType,
+                    AssessmentPlanTreatment_Controlled = clearDetails ? null : section?.Controlled,
+                    AssessmentPlanTreatment_PoorlyController = clearDetails ? null : section?.PoorlyController,
+                    AssessmentPlanTreatment_DMComments = clearDetails ? null : section?.DmComments,
+                    AssessmentPlanTreatment_DiabeticNeuropathy = clearDetails ? null : section?.DiabeticNeuropathy,
+                    AssessmentPlanTreatment_DiabeticPVD = clearDetails ? null : section?.DiabeticPvd,
+                    AssessmentPlanTreatment_DiabeticNephropathy = clearDetails ? null : section?.DiabeticNephropathy,
+                    AssessmentPlanTreatment_OtherComplication = clearDetails ? string.Empty : section?.OtherDiabeticComplication,
+                    AssessmentPlanTreatment_DiabeticNeuropathyComments = clearDetails ? null : section?.DiabeticNeuropathyComments,
+                    AssessmentPlanTreatment_DiabeticNephropathyComments = clearDetails ? null : section?.DiabeticNephropathyComments,
+                    AssessmentPlanTreatment_DiabeticPVDComments = clearDetails ? null : section?.DiabeticPvdComments,
+                    AssessmentPlanTreatment_OtherComplicationComments = clearDetails ? string.Empty : section?.OtherDiabeticComplicationComments,
+                    AssessmentPlanTreatment_DiabeticCataracts = clearDetails ? null : section?.DiabeticCataracts,
+                    AssessmentPlanTreatment_DiabeticCataractsComments = clearDetails ? null : section?.DiabeticCataractsComments,
+                    AssessmentPlanTreatment_DMSecundary = section?.DmSecondary,
+                    AssessmentPlanTreatment_Retinopathy = clearDetails ? null : section?.Retinopathy,
+                    AssessmentPlanTreatment_RetinopathyComments = clearDetails ? null : section?.RetinopathyComments,
+                    AssessmentPlanTreatment_Proliferative = clearDetails ? null : section?.Proliferative,
+                    AssessmentPlanTreatment_ProliferativeComments = clearDetails ? null : section?.ProliferativeComments,
+                    AssessmentPlanTreatment_Dermatitis = clearDetails ? null : section?.Dermatitis,
+                    AssessmentPlanTreatment_DermatitisComments = clearDetails ? null : section?.DermatitisComments,
+                    AssessmentPlanTreatment_Periodontal = clearDetails ? null : section?.Periodontal,
+                    AssessmentPlanTreatment_PeriodontalComments = clearDetails ? null : section?.PeriodontalComments,
+                    DMSecondaryText = section?.DmSecondaryText,
+                    section?.OutOfControl,
+                    section?.UncontrolledWithHyperglycemia,
+                    section?.UncontrolledWithHypoglycemia,
+                    HyperlipidemiaDueDM = section?.HyperlipidemiaDueDm,
+                    section?.DmPlanAndTreatmentComments1,
+                    section?.DmPlanAndTreatmentComments2,
+                    section?.DmPlanAndTreatmentComments3,
+                    DiabeticArthropathy = clearDetails ? null : section?.DiabeticArthropathy,
+                    DiabeticArthropathyComment = clearDetails ? null : section?.DiabeticArthropathyComment,
+                    section?.GestionalDiabetes,
+                    section?.GestionalDiabetesComment,
+                    AssessmentPlanTreatment_Remission = section?.Remission,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save assessment plan of treatment for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy always deletes existing rows in the shared Claims_DX table for this claim (and stamps
+    // CancerDiagnosisNA) before re-inserting one dummy-coded row per diagnosis, via raw SQL text
+    // rather than a stored procedure. Diagnoses from other sections (e.g. SaveOtherCondition, not
+    // yet ported) write to the same table, so call order matters -- this matches legacy running
+    // cancer diagnoses first.
+    private async Task<bool> SaveCancerDiagnosesAsync(long claimId, IReadOnlyList<CancerDiagnosisItem>? diagnoses, bool na, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var deleteCommand = new CommandDefinition(
+                "DELETE FROM Claims_DX WHERE biClaimID=@ClaimID; UPDATE Claims_AHADetail SET CancerDiagnosisNA = @NA WHERE biClaimID = @ClaimID",
+                new { ClaimID = claimId, NA = na },
+                commandType: CommandType.Text,
+                cancellationToken: cancellationToken);
+            await connection.ExecuteAsync(deleteCommand);
+
+            if (diagnoses is not null)
+            {
+                var index = 0;
+                foreach (var dx in diagnoses)
+                {
+                    index++;
+                    var insertCommand = new CommandDefinition(
+                        "uspClaimsDX_Save_New",
+                        new
+                        {
+                            biClaimID = claimId,
+                            nIndex = index,
+                            sDx = "999.99",
+                            bIsNew = false,
+                            bIsDummy = true,
+                            bIsRejected = false,
+                            bIsDeleted = false,
+                            sDxText = dx.Diagnoses,
+                            sDxReason = dx.Treatment,
+                            dx.Remission,
+                            dx.Active,
+                            Controlled = (bool?)null,
+                            dx.History,
+                            Primary = dx.Primary,
+                            dx.Secondary,
+                            dx.CurrentlyInChemotherapy,
+                            dx.CurrentlyInRadiotherapy,
+                            dx.CurrentlyInImmunotherapy,
+                            dx.CurrentlyRefusesTreatment,
+                        },
+                        commandType: CommandType.StoredProcedure,
+                        cancellationToken: cancellationToken);
+                    await connection.ExecuteAsync(insertCommand);
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save cancer diagnoses for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveCkdAsync(long claimId, ChronicKidneyDiseaseSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy skips the SP call entirely (and never flags an error) when the section is absent.
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveCKD",
+                new
+                {
+                    ClaimID = claimId,
+                    CKD_NA = section.Na,
+                    CKD_Stage = section.Stage,
+                    CKD_DueToDM = section.DueToDm,
+                    CKD_DueToOtherCondition = section.DueToOtherCondition,
+                    CKD_Controlled = section.Controlled,
+                    CKD_LowFatDiet = section.LowFatDiet,
+                    CKD_Dialysis = section.Dialysis,
+                    CKD_NoMeetDialysis = section.NoMeetDialysis,
+                    CKD_AdditionalTreatment = section.AdditionalTreatment,
+                    section.Hyperparathyroidism,
+                    section.HyperparathyroidismTreatment,
+                    GFR = section.Gfr,
+                    section.SerumCalcium,
+                    SerumPTH = section.SerumPth,
+                    section.Nephropathy,
+                    section.NephropathyType,
+                    section.Nephritis,
+                    section.NephritisType,
+                    section.HasFistula,
+                    CKDBox = section.CkdBox,
+                    CKD_StressIncontinence = section.StressIncontinence,
+                    CKD_UrgeIncontinence = section.UrgeIncontinence,
+                    CKD_PostMicturitionDribble = section.PostMicturitionDribble,
+                    CKD_OveractiveBladder = section.OveractiveBladder,
+                    CKD_BladderTreatmentPlan = section.BladderTreatmentPlan,
+                    CKD_KidneyTransplant = section.KidneyTransplant,
+                    CKD_GFRDate = ClampToSqlDateRange(section.GfrDate),
+                    CKD_GFROrdered = section.GfrOrdered,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save CKD for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SavePressureSoresAsync(long claimId, PressureSoresSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy skips the SP call entirely (and never flags an error) when the section is absent.
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSavePressureSores",
+                new
+                {
+                    ClaimID = claimId,
+                    PressureSores_NA = section.Na,
+                    PressureSores_HighBackPressureUlcerStage = section.HighBackPressureUlcerStage,
+                    PressureSores_LowBackPressureUlcerStage = section.LowBackPressureUlcerStage,
+                    PressureSores_HipPressureUlcerStageLeft = section.HipPressureUlcerStageLeft,
+                    PressureSores_HipPressureUlcerStageRight = section.HipPressureUlcerStageRight,
+                    PressureSores_HipPressureUlcerLeft = section.HipPressureUlcerLeft,
+                    PressureSores_HipPressureUlcerRight = section.HipPressureUlcerRight,
+                    PressureSores_HeelPressureUlcerStageLeft = section.HeelPressureUlcerStageLeft,
+                    PressureSores_HeelPressureUlcerStageRight = section.HeelPressureUlcerStageRight,
+                    PressureSores_HeelPressureUlcerLeft = section.HeelPressureUlcerLeft,
+                    PressureSores_HeelPressureUlcerRight = section.HeelPressureUlcerRight,
+                    PressureSores_OtherAreasStage = section.OtherAreasStage,
+                    PressureSores_OtherAreas = section.OtherAreas,
+                    PressureSores_Healing = section.Healing,
+                    PressureSores_Healed = section.Healed,
+                    PressureSores_Worse = section.Worse,
+                    PressureSores_Hydrocolloid = section.Hydrocolloid,
+                    PressureSores_SilverDressing = section.SilverDressing,
+                    PressureSores_Hydrogel = section.Hydrogel,
+                    PressureSores_Antibiotic = section.Antibiotic,
+                    PressureSores_Alginate = section.Alginate,
+                    PressureSores_Enzyme = section.Enzyme,
+                    PressureSores_TransparentDressing = section.TransparentDressing,
+                    PressureSores_OthersTreatment = section.OthersTreatment,
+                    PressureSores_ByPressure = section.ByPressure,
+                    PressureSores_Chronicle = section.Chronicle,
+                    PressureSores_AnatomicalSite = section.AnatomicalSite,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save pressure sores for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
     public async Task<bool> SavePage2Async(long claimId, SavePage2Request request, CancellationToken cancellationToken = default)
     {
         var medicationReviewOk = await SaveMedicationReviewAsync(claimId, request.MedicationReview, cancellationToken);

@@ -148,8 +148,54 @@ service does. It breaks down into two very different shapes of work:
   the actual stored procedure definitions once available; not something
   that's verifiable from the VB source alone.
 
-  **Page 3 is now fully ported.** Not started: Page 4 (~20 sections,
-  several GHP/year/at-home conditional).
+  **Page 3 is now fully ported.**
+
+  Ported (partial): **Page 4** (`PUT /api/aha-claims/{claimId}/pages/4`) —
+  6 of ~20 sections: BMI Associated Diagnoses, Rheumatoid Arthritis,
+  Assessment Plan of Treatment, Cancer Diagnoses, CKD, Pressure Sores.
+
+  `AssessmentPlanOfTreatment` has a real business rule preserved as-is:
+  when `No` (no diabetes complications) is set, legacy blanks out the
+  whole diabetic-complication detail block regardless of what the caller
+  sent — see the field-level comments on `AssessmentPlanOfTreatmentSection`
+  for exactly which fields that covers.
+
+  `CancerDiagnoses` (a list) doesn't use a stored procedure for the whole
+  section: legacy runs a raw `DELETE FROM Claims_DX ... UPDATE
+  Claims_AHADetail SET CancerDiagnosisNA = ...` first, then calls
+  `uspClaimsDX_Save_New` once per diagnosis with a hardcoded dummy ICD
+  code (`999.99`). Other sections (like `SaveOtherCondition`, not ported)
+  write to the same `Claims_DX` table, so save order matters — this
+  matches legacy running cancer diagnoses first, ahead of other
+  conditions.
+
+  A handful of fields (`BMIAssociatedDiagnosesSection.Na`,
+  `RheumatoidArthritisSection.Na`, and `ChronicKidneyDiseaseSection`'s
+  `Gfr`/`SerumCalcium`/`SerumPth`) are passed to `AddWithValue` as the raw
+  field-wrapper object in the legacy code instead of `.Value` — almost
+  certainly a bug that would throw at the ADO.NET layer and get silently
+  swallowed by the surrounding try/catch (`_saveError = True`, no rethrow).
+  This migration sends the actual `.Value` instead, since that's clearly
+  the intended behavior everywhere else in the codebase — worth confirming
+  against the real stored procedures, since if the legacy bug is somehow
+  load-bearing (SPs default these columns and never actually receive a
+  value today), sending real data changes what gets persisted.
+
+  Not started: the other ~14 Page 4 sections — Congenital Diseases,
+  Pressure Sores List, Diseases of the Skin, Other Condition (blocked —
+  see below), Cardiovascular Diseases, Pulmonary Diseases, Im/Lab Ref,
+  Malnutrition Criteria, Screening Substance Use, Eye and Neurology
+  (+2023 variant), Social Determinants (+2023 variant), Screening Result,
+  Gastrointestinal Diseases, and the GHP-only Gastrointestinal/Musculoskeletal
+  pair.
+
+  **Blocked: Other Condition.** Same table-valued-parameter problem as
+  Page 1's Medication List (`SqlParameter.TypeName` never set in the VB
+  source), plus it calls `AppShared.GetICDCodeType`,
+  `AppShared.GetDefaultRejectCode`, and `AppShared.GetRejectCodeDescription`
+  — helper methods that live in a class not present in either legacy file
+  provided so far. Needs that `AppShared` source (or at least those three
+  methods) in addition to the SQL type name to port.
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
@@ -172,8 +218,8 @@ nothing breaks mid-migration.
 
 ## Next
 
-Page 4 next (the last page — ~20 sections, several GHP/year/at-home
-conditional). Same recipe each time — read the section class(es) in
+Keep working through Page 4's remaining ~14 sections (see above for the
+list). Same recipe each time — read the section class(es) in
 `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
 `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
 endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
@@ -181,6 +227,10 @@ endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClai
 Also need:
 - The SQL Server table type name for `MedicationListSection` /
   `AllergiesMedicationList` (see above) to finish Page 1.
+- The `AppShared` class source (at least `GetICDCodeType`,
+  `GetDefaultRejectCode`, `GetRejectCodeDescription`) plus the SQL table
+  type name for its own table-valued parameter, to unblock Page 4's Other
+  Condition section.
 - The `Globals` class source (at least `ValidateDateMinMaxRange`,
   `LogError`, `ValidatePayerID`) if exact legacy behavior matters beyond
   what's already been reasonably approximated.
