@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IClaimsVerificationService, ClaimsVerificationService>();
         services.AddScoped<IAiInfoService, AiInfoService>();
         services.AddScoped<IAhaClaimService, AhaClaimService>();
+        services.AddScoped<IAhaClaimReadService, AhaClaimReadService>();
         services.AddScoped<IClaimSearchService, ClaimSearchService>();
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IClaimConditionService, ClaimConditionService>();

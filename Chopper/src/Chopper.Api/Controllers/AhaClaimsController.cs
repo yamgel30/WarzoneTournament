@@ -6,8 +6,15 @@ namespace Chopper.Api.Controllers;
 
 [ApiController]
 [Route("api/aha-claims")]
-public sealed class AhaClaimsController(IAhaClaimService ahaClaimService) : ControllerBase
+public sealed class AhaClaimsController(IAhaClaimService ahaClaimService, IAhaClaimReadService ahaClaimReadService) : ControllerBase
 {
+    [HttpGet("{claimId:long}/header")]
+    public async Task<ActionResult<AhaFormHeader>> GetFormHeader(long claimId, CancellationToken cancellationToken)
+    {
+        var header = await ahaClaimReadService.GetFormHeaderAsync(claimId, cancellationToken);
+        return header is null ? NotFound() : Ok(header);
+    }
+
     [HttpPut("{claimId:long}/pages/1")]
     public async Task<IActionResult> SavePage1(long claimId, [FromBody] SavePage1Request request, CancellationToken cancellationToken)
     {

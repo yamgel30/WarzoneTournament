@@ -513,6 +513,51 @@ Revisit once `AHAValidator2`'s source is available and/or the "how should
 the new API be shaped" question (3 front-end forms, one page-at-a-time API
 vs. one whole-form submission) has an answer.
 
+### Started: the read side of a claim (`GetAHA`, `IAhaClaimReadService`)
+
+`GetAHA` (2,850 lines) is bigger than the entirety of `SaveClaim` combined
+— it's one method built around a single stored procedure (`uspGetAHA2`)
+that returns an **11-table result set** (a `DataSet` in legacy), with every
+field mapped by column name into the same section tree `SaveClaim` writes.
+Being ported the same incremental way `SaveClaim` was, one section (or
+group of tables) at a time.
+
+**Ported so far: the form header** — `GET /api/aha-claims/{claimId}/header`.
+Everything at the top of `AHAFormItem`/`FormHeaderSection` that isn't part
+of any page (demographics, billing/rendering NPIs, status, approval date,
+member demographic-data-collection fields added in later years). Comes
+entirely from `Tables(0)`'s single row, except `PayerId` which legacy reads
+from a different result set (`Tables(2)`) — preserved as-is. `MemberDob` is
+read twice in legacy (once from `birthDate`, then unconditionally
+overwritten by `PatientBirth` when present) — same behavior here, last
+value wins.
+
+Two implementation notes that'll apply to every future batch of this port:
+
+- **Legacy re-throws on failure** (`Catch ... Globals.LogError(...) ...
+  Throw`), unlike `SaveClaim`'s section savers which swallow and return
+  `False`. `AhaClaimReadService` doesn't catch either, letting exceptions
+  reach ASP.NET Core's normal error handling — consistent with every other
+  read-side service ported so far (`ClaimSearchService`, `ProviderService`,
+  `ClaimConditionService`, `FormReferenceService`). A `null`/`404` return
+  means the claim genuinely wasn't found (`Tables(0)` has no rows), not
+  that something went wrong.
+- **Column types for `uspGetAHA2`'s ~300 columns aren't independently
+  confirmed** (not part of the SP definitions provided so far, and at this
+  size probably impractical to fully cross-verify by hand the way the
+  `SaveClaim` stored procedures were). Reads go through `Convert.ToXxx` on
+  the boxed dynamic row value rather than a strict typed access, same
+  reasoning as the claim list/search stored procedures.
+
+Still to come, roughly in the order legacy reads them: Chief Complaint/
+Patient Medical History + Medical/Family/Social History, Advance Directive,
+Review of System, Medication List (+ Allergies, spread across two more
+result-set tables), then everything else through Page 4 (Physical
+Examination, Screening Schedule, CKD, Pressure Sores, Cancer Diagnosis,
+Other Conditions, Diseases of the Skin, Eyes and Neurology, Dx history
+selection, Malnutrition Criteria, ...). `GetMemberAHATemplate` (2,180
+lines) and `GetAHAShort` are separate, still-unstarted methods after this.
+
 ## Migration approach (strangler fig)
 
 Migrate operation by operation instead of a big-bang rewrite:
@@ -554,17 +599,19 @@ are available. What's still open:
 
 `AHADataAdapter.vb`/`SaveClaim` is done. The migration has now moved on to
 `AHAService1.vb` (see above) — claim list/search, provider/billing/
-eligibility/Dx-condition operations, and a handful of small standalone
-lookups are ported; next up, roughly in order of how implementable each is
-right now:
+eligibility/Dx-condition operations, a handful of small standalone lookups,
+and the first slice of `GetAHA` (the form header) are ported; next up,
+roughly in order of how implementable each is right now:
 
-1. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
+1. **Keep working through `GetAHA`** (see above) — Chief Complaint/Medical
+   Family Social History next, then the rest of Page 1-4's read side.
+   Large but well understood now that the header slice has proven out the
+   approach (one `uspGetAHA2` call, 11 result-set tables, reuse the
+   existing plain-value section shapes where the fields line up).
+2. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
    `LoadCodUserAndNotes`, `LoadRejectedCodes`, `LoadQuestions`) — needs a
-   closer read first, and `GetAddendumInfo` itself pulls in both deferred
-   pieces below.
-2. **The full read side of a claim** (`GetAHA`, `GetMemberAHATemplate`,
-   `GetAHAShort`) — not blocked, just large (~5,000 lines combined);
-   probably its own multi-batch effort the same way `SaveClaim` was.
+   closer read first, and `GetAddendumInfo` itself depends on `GetAHA`
+   (now in progress) plus report generation (still deferred).
 
 Confirmed not implementable yet, without more source:
 - **`SubmitAHA`/`UpdateAHA`/`PartialSaveAHA` orchestrators** — blocked on
