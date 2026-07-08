@@ -8,5 +8,8 @@ public sealed record SavePage3Request
 
     public ScreeningScheduleSection? ScreeningSchedule { get; init; }
 
+    // Only used when DateOfVisit falls in 2023 or later (uspSaveScreeningTest2023).
+    public ScreeningSchedule2023Extras? ScreeningSchedule2023Extras { get; init; }
+
     public PhysicalExaminationSection? PhysicalExamination { get; init; }
 }

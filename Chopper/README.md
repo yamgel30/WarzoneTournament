@@ -105,17 +105,20 @@ service does. It breaks down into two very different shapes of work:
   need that (or the CREATE TYPE definition) to port these two sections
   without guessing.
 
-  Ported (partial): **Page 3** (`PUT /api/aha-claims/{claimId}/pages/3`) —
-  Screening Schedule, pre-2023 form only (~135 fields;
-  `uspSaveScreeningTest`). Legacy branches on `DateOfVisit.Year`: before
-  2023 it calls `uspSaveScreeningTest`, 2023+ calls the separate, similarly
-  large `uspSaveScreeningTest2023`. Since only the pre-2023 mapping is
-  ported, the endpoint throws `NotSupportedException` for 2023+ visits
-  rather than silently calling the wrong stored procedure with the wrong
-  fields. One field, `ColorectalColonoscopyResult`, is intentionally
-  dropped: legacy computes it from the individual `Colorectal_ColonoscopyResult_*`
-  flags but the parameter add is commented out in the source, so it never
-  actually reaches the database today.
+  Ported: **Page 3** (`PUT /api/aha-claims/{claimId}/pages/3`) — Screening
+  Schedule, both the pre-2023 form (~135 fields; `uspSaveScreeningTest`)
+  and the 2023+ form (`uspSaveScreeningTest2023`). Legacy branches on
+  `DateOfVisit.Year`, and this does the same. The two stored procedures
+  share ~85% of their fields (all modeled once on `ScreeningScheduleSection`);
+  `ScreeningSchedule2023Extras` carries what's new for 2023+ (detailed
+  retinopathy/eye findings, urine albumin/creatinine, Td/Tdap and Zoster
+  vaccines). 2023+ drops COVID-19 vaccine tracking, the microalbumin block,
+  and the glaucoma test date (result/NAFor/prescribed are still sent) —
+  those `ScreeningScheduleSection` fields are simply not sent when saving
+  a 2023+ visit. One field, `ColorectalColonoscopyResult`, is intentionally
+  dropped from both: legacy computes it from the individual
+  `Colorectal_ColonoscopyResult_*` flags but the parameter add is commented
+  out in the source, so it never actually reaches the database today.
 
   Legacy calls `Globals.ValidateDateMinMaxRange(date)` before sending most
   Screening Schedule dates, clearing the value instead of sending it if the
@@ -145,9 +148,8 @@ service does. It breaks down into two very different shapes of work:
   the actual stored procedure definitions once available; not something
   that's verifiable from the VB source alone.
 
-  Not started: **Screening Schedule 2023+** (`uspSaveScreeningTest2023`,
-  similar size to the pre-2023 version already ported); Page 4 (~20
-  sections, several GHP/year/at-home conditional).
+  **Page 3 is now fully ported.** Not started: Page 4 (~20 sections,
+  several GHP/year/at-home conditional).
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
@@ -170,8 +172,8 @@ nothing breaks mid-migration.
 
 ## Next
 
-Finish Page 3 (Screening Schedule 2023+), then Page 4. Same recipe each
-time — read the section class(es) in
+Page 4 next (the last page — ~20 sections, several GHP/year/at-home
+conditional). Same recipe each time — read the section class(es) in
 `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
 `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
 endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
