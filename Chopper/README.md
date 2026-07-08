@@ -522,15 +522,60 @@ field mapped by column name into the same section tree `SaveClaim` writes.
 Being ported the same incremental way `SaveClaim` was, one section (or
 group of tables) at a time.
 
-**Ported so far: the form header** — `GET /api/aha-claims/{claimId}/header`.
-Everything at the top of `AHAFormItem`/`FormHeaderSection` that isn't part
-of any page (demographics, billing/rendering NPIs, status, approval date,
-member demographic-data-collection fields added in later years). Comes
-entirely from `Tables(0)`'s single row, except `PayerId` which legacy reads
-from a different result set (`Tables(2)`) — preserved as-is. `MemberDob` is
-read twice in legacy (once from `birthDate`, then unconditionally
-overwritten by `PatientBirth` when present) — same behavior here, last
-value wins.
+**Ported so far** — `GET /api/aha-claims/{claimId}/header` (form header
+only) and `GET /api/aha-claims/{claimId}` (`AhaClaimSnapshot`, everything
+below plus the header):
+
+- **Form header.** Everything at the top of `AHAFormItem`/`FormHeaderSection`
+  that isn't part of any page (demographics, billing/rendering NPIs, status,
+  approval date, member demographic-data-collection fields added in later
+  years). Comes entirely from `Tables(0)`'s single row, except `PayerId`
+  which legacy reads from a different result set (`Tables(2)`) — preserved
+  as-is. `MemberDob` is read twice in legacy (once from `birthDate`, then
+  unconditionally overwritten by `PatientBirth` when present) — same
+  behavior here, last value wins.
+- **Page 1 / Page 2 equivalent sections**: Chief Complaint/Patient Medical
+  History, Medical/Family/Social History, Advance Directive, Review of
+  System, Medication List (current + adherence, from `Tables(5)`;
+  allergies come from a different table, still to come), Medication
+  Review, Cognitive Assessment, Pain Screening, Activities of Daily
+  Living. Two fields turned up that `GetAHA` reads but `SaveClaim` never
+  sends — added as nullable additions to the existing DTOs rather than
+  skipped: `ChiefComplaintPatientMedicalHistorySection.RecentSurgery`/
+  `RecentSurgeryDate`, `PainScreeningSection.CausalCondition`.
+- **Screening Schedule** (`ScreeningScheduleSection` +
+  `ScreeningSchedule2023Extras`). Legacy computes localized (ES/EN)
+  comma-joined summary strings for `ColorectalColonoscopyResult`/
+  `ColorectalFlexibleSigmoidoscopyResult` purely for report display — not
+  replicated here, since it's presentation formatting and every underlying
+  checkbox is already exposed as a plain boolean. The diabetes-specific
+  screening fields (dilated eye exam, HGA1C, glaucoma) are gated by a
+  legacy `GoTo` that — despite the misleading local variable name
+  `isDiabetic` — actually skips populating them when
+  `AssessmentPlanTreatment_No` is true; preserved as the same gate here.
+  `DiabetesScreeningMicroalbumin*` is never populated: the GHP branch that
+  would read it is permanently disabled in legacy (`If False Then`), so it
+  always falls through to Urine Albumin/Creatinine instead.
+  `ScreeningSchedule2023Extras` (Urine Albumin/Creatinine,
+  CreatinineAlbuminRatio, TdTdap*, Zoster*, Retinopathy) is read
+  unconditionally by `GetAHA` regardless of visit year — unlike
+  `SaveClaim`, which only sends it to `uspSaveScreeningTest2023` for
+  2023+ visits — so it's populated for every claim here, not just
+  2023+ ones.
+- **Physical Examination** (~230 fields across vitals, HEENT/Oral,
+  Constitutional, Integumentary, Respiratory, Gastrointestinal,
+  Genitourinary, Neck, Chest, Cardiovascular, amputation flags, Abdomen,
+  Genitalia/Groin/Buttocks, Musculoskeletal, Skin, Psychiatric/Neurologic,
+  Hematologic/Lymphatic/Immunologic). Confirms the same `IsGhp` formula
+  documented below (`PayerId == "660653763"`) gates a second, newer axis
+  here: several entire sub-option groups (`ConstitutionalOptions`,
+  `IntegumentaryOptions`, `RespiratoryOptions`, `GastrointestinalOptions`,
+  `GenitourinaryOptions`) plus scattered fields inside `HeenOralOptions`,
+  `CardiovascularOptions`, `MusculoskeletalOptions`, and
+  `PsychiatricNeurologicOptions` only apply to GHP visits from 2025
+  onward (`isGhp2025 = PayerId == "660653763" && DateOfVisit.Year > 2024`,
+  computed once in `GetClaimSnapshotAsync` and threaded through) — left
+  `null` otherwise rather than guessing a default.
 
 Two implementation notes that'll apply to every future batch of this port:
 
@@ -549,14 +594,20 @@ Two implementation notes that'll apply to every future batch of this port:
   the boxed dynamic row value rather than a strict typed access, same
   reasoning as the claim list/search stored procedures.
 
-Still to come, roughly in the order legacy reads them: Chief Complaint/
-Patient Medical History + Medical/Family/Social History, Advance Directive,
-Review of System, Medication List (+ Allergies, spread across two more
-result-set tables), then everything else through Page 4 (Physical
-Examination, Screening Schedule, CKD, Pressure Sores, Cancer Diagnosis,
-Other Conditions, Diseases of the Skin, Eyes and Neurology, Dx history
-selection, Malnutrition Criteria, ...). `GetMemberAHATemplate` (2,180
-lines) and `GetAHAShort` are separate, still-unstarted methods after this.
+Still to come, roughly in the order legacy reads them: the rest of Page 4
+(Assessment Plan of Treatment, Congenital Diseases, CKD, Pressure Sores,
+Rheumatoid Arthritis, Depression Inventory, DME Use, BMI-Associated
+Diagnoses, Myocardial Infarction, Other Current Conditions, Major
+Depression + PHQ9, Cardiovascular Diseases, Pulmonary Diseases,
+Gastrointestinal, Musculoskeletal, Gastrointestinal Diseases, Im/Lab/Ref,
+Eyes and Neurology), then the list-type tables read from separate
+result-set tables (Cancer Diagnosis + Other Current Conditions from
+`Tables(1)`, Pressure Sores List from `Tables(3)`, Diseases of the Skin
+from `Tables(4)`, Dx History Selection from `Tables(6)`, Allergies
+Medication List from `Tables(7)`, Malnutrition Criteria from `Tables(10)`),
+and Social Determinants near the very end of the method.
+`GetMemberAHATemplate` (2,180 lines) and `GetAHAShort` are separate,
+still-unstarted methods after this.
 
 ## Migration approach (strangler fig)
 

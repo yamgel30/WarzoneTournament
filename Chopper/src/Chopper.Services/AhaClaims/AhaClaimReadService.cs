@@ -36,10 +36,17 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         }
 
         var row = tables[0][0];
+        var header = MapHeader(tables, claimId);
+
+        // Legacy computes _isGHP from Globals.ValidatePayerID(aha) right after Screening Schedule
+        // and reuses it below to gate the "2025" Physical Examination option groups (GHP visits
+        // from 2025 onward only). Globals.ValidatePayerID's source isn't available, but the
+        // simpler PayerID = "660653763" formula confirmed elsewhere in this file is used here too.
+        var isGhp2025 = header.PayerId == "660653763" && header.DateOfVisit is { Year: > 2024 };
 
         return new AhaClaimSnapshot
         {
-            Header = MapHeader(tables, claimId),
+            Header = header,
             ChiefComplaintPatientMedicalHistory = MapChiefComplaint(row),
             MedicalFamilySocialHistory = MapMedicalFamilySocialHistory(row),
             AdvanceDirective = MapAdvanceDirective(row),
@@ -51,6 +58,7 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             ActivitiesOfDailyLiving = MapActivitiesOfDailyLiving(row),
             ScreeningSchedule = MapScreeningSchedule(row),
             ScreeningSchedule2023Extras = MapScreeningSchedule2023Extras(row),
+            PhysicalExamination = MapPhysicalExamination(row, isGhp2025),
         };
     }
 
@@ -413,6 +421,313 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         DependenceOnOxygen = GetBoolOrNull(row, "DependenceOnOxygen"),
         DependenceOnRespirator = GetBoolOrNull(row, "DependenceOnRespirator"),
         DependenceOnWheelchair = GetBoolOrNull(row, "DependenceOnWheelchair"),
+    };
+
+    // The "2025" option groups (isGhp2025) only apply to GHP visits from 2025 onward -- a newer
+    // addition legacy gates the same way in several of these sub-sections.
+    private static PhysicalExaminationSection MapPhysicalExamination(IDictionary<string, object> row, bool isGhp2025) => new()
+    {
+        Temperature = GetDecimalOrNull(row, "p2_nTempeture"),
+        TemperatureType = GetString(row, "p2_sTempetureType"),
+        Pulse = GetIntOrNull(row, "p2_nPulse"),
+        Breathing = GetIntOrNull(row, "p2_nBreathing"),
+        BloodPressure1 = GetIntOrNull(row, "p2_nBloodPressure1"),
+        BloodPressure2 = GetIntOrNull(row, "p2_nBloodPressure2"),
+        Height = GetDecimalOrNull(row, "p2_nHeight"),
+        HeightType = GetString(row, "p2_sHeightType"),
+        Weight = GetDecimalOrNull(row, "p2_nWeight"),
+        WeightType = GetString(row, "p2_sWeightType"),
+        Bmi = GetDecimalOrNull(row, "p2_nBMI"),
+        HeadCircumference = GetDecimalOrNull(row, "HeadCircumference"),
+        PercentilHt = GetDecimalOrNull(row, "PercentilHT"),
+        PercentilWt = GetDecimalOrNull(row, "PercentilWT"),
+        PercentilHead = GetDecimalOrNull(row, "PercentilHead"),
+
+        HeenOralNotes = GetString(row, "p2_sHEENTNotes"),
+        HeenOralOptions = new HeenOralOptions
+        {
+            BleedingGums = GetBoolOrNull(row, "HEENOralOptions_BleedingGums"),
+            DryMouth = GetBoolOrNull(row, "HEENOralOptions_DryMouth"),
+            DryNose = GetBoolOrNull(row, "HEENOralOptions_DryNose"),
+            NoTeeth = GetBoolOrNull(row, "HEENOralOptions_NoTeeth"),
+            Peerl = GetBoolOrNull(row, "HEENOralOptions_Peerl"),
+            Wnl = GetBoolOrNull(row, "HEENOralOptions_WNL"),
+            Strabismus = GetBoolOrNull(row, "HEENOralOptions_Strabismus"),
+            Ptosis = GetBoolOrNull(row, "HEENOralOptions_Ptosis"),
+            RedReflex = GetBoolOrNull(row, "HEENOralOptions_Redreflex"),
+            AbnormalPupillaryReflex = GetBoolOrNull(row, "HEENOralOptions_AbnormalPupillaryReflex"),
+            BlockedNasolacrimalDucts = GetBoolOrNull(row, "HEENOralOptions_BlockedNasolacrimalDucts"),
+            NasalDischarge = GetBoolOrNull(row, "HEENOralOptions_NasalDischarge"),
+            ExudatingTonsils = GetBoolOrNull(row, "HEENOralOptions_ExudatingTonsils"),
+            Normocephalic = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_Normocephalic") : null,
+            ScalpLessionsMasses = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_ScalpLessionsMasses") : null,
+            NeckSupple = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_NeckSupple") : null,
+            Adenopathies = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_Adenopathies") : null,
+            ClearOropharynxn = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_ClearOropharynxn") : null,
+            LessionExudate = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_LessionExudate") : null,
+            TympanicMembranesIntact = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_TympanicMembranesIntact") : null,
+            EqualAirConductionAndAcousticReflexes = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_EqualAirConductionAndAcousticReflexes") : null,
+            NoNystagmus = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_NoNystagmus") : null,
+            Eomi = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_EOMI") : null,
+            Other = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_Other") : null,
+            None = isGhp2025 ? GetBoolOrNull(row, "HEENOptions_None") : null,
+        },
+
+        ConstitutionalNotes = isGhp2025 ? GetString(row, "ConstitutionalOptions_Notes") : null,
+        ConstitutionalOptions = isGhp2025
+            ? new ConstitutionalOptions
+            {
+                WellDeveloped = GetBoolOrNull(row, "ConstitutionalOptions_WellDeveloped"),
+                PoorDeveloped = GetBoolOrNull(row, "ConstitutionalOptions_PoorDeveloped"),
+                AdequateNourishment = GetBoolOrNull(row, "ConstitutionalOptions_AdequateNourishment"),
+                InadequateNourishment = GetBoolOrNull(row, "ConstitutionalOptions_InadequateNourishment"),
+                InAcuteDistress = GetBoolOrNull(row, "ConstitutionalOptions_InAcuteDistress"),
+                NoAcuteDistress = GetBoolOrNull(row, "ConstitutionalOptions_NoAcuteDistress"),
+                Caox = GetBoolOrNull(row, "ConstitutionalOptions_CAOX"),
+                Others = GetBoolOrNull(row, "ConstitutionalOptions_Others"),
+                None = GetBoolOrNull(row, "ConstitutionalOptions_None"),
+            }
+            : null,
+
+        IntegumentaryNotes = isGhp2025 ? GetString(row, "IntegumentaryOptions_Notes") : null,
+        IntegumentaryOptions = isGhp2025
+            ? new IntegumentaryOptions
+            {
+                Warm = GetBoolOrNull(row, "IntegumentaryOptions_Warm"),
+                Cold = GetBoolOrNull(row, "IntegumentaryOptions_Cold"),
+                AdequatePerfusion = GetBoolOrNull(row, "IntegumentaryOptions_AdequatePerfusion"),
+                InadequatePerfusion = GetBoolOrNull(row, "IntegumentaryOptions_InadequatePerfusion"),
+                AdequateSkinTurgor = GetBoolOrNull(row, "IntegumentaryOptions_AdequateSkinTurgor"),
+                InadequateSkinTurgor = GetBoolOrNull(row, "IntegumentaryOptions_InadequateSkinTurgor"),
+                Acne = GetBoolOrNull(row, "IntegumentaryOptions_Acne"),
+                Rash = GetBoolOrNull(row, "IntegumentaryOptions_Rash"),
+                SkinSpots = GetBoolOrNull(row, "IntegumentaryOptions_SkinSpots"),
+                Others = GetBoolOrNull(row, "IntegumentaryOptions_Others"),
+                None = GetBoolOrNull(row, "Integumentary_None"),
+            }
+            : null,
+
+        RespiratoryNotes = isGhp2025 ? GetString(row, "RespiratoryOptions_Notes") : null,
+        RespiratoryOptions = isGhp2025
+            ? new RespiratoryOptions
+            {
+                ClearToAuscultations = GetBoolOrNull(row, "RespiratoryOptions_ClearToAuscultations"),
+                Wheezes = GetBoolOrNull(row, "RespiratoryOptions_Wheezes"),
+                RonchiOrRales = GetBoolOrNull(row, "RespiratoryOptions_RonchiOrRales"),
+                AdequatePercussionSounds = GetBoolOrNull(row, "RespiratoryOptions_AdequatePercussionSounds"),
+                InadequatePercussionSounds = GetBoolOrNull(row, "RespiratoryOptions_InadequatePercussionSounds"),
+                PainUponPalpitation = GetBoolOrNull(row, "RespiratoryOptions_PainUponPalpitation"),
+                Others = GetBoolOrNull(row, "RespiratoryOptions_Others"),
+                None = GetBoolOrNull(row, "RespiratoryOptions_None"),
+            }
+            : null,
+
+        GastrointestinalNotes = isGhp2025 ? GetString(row, "GastrointestinalOptions_Notes") : null,
+        GastrointestinalOptions = isGhp2025
+            ? new GastrointestinalOptions
+            {
+                GoodDentation = GetBoolOrNull(row, "GastrointestinalOptions_GoodDentation"),
+                PoorDentation = GetBoolOrNull(row, "GastrointestinalOptions_PoorDentation"),
+                HardToPalpation = GetBoolOrNull(row, "GastrointestinalOptions_HardToPalpation"),
+                SoftToPalpation = GetBoolOrNull(row, "GastrointestinalOptions_SoftToPalpation"),
+                Tenderness = GetBoolOrNull(row, "GastrointestinalOptions_Tenderness"),
+                Visceromegaly = GetBoolOrNull(row, "GastrointestinalOptions_Visceromegaly"),
+                Wnl = GetBoolOrNull(row, "GastrointestinalOptions_WNL"),
+            }
+            : null,
+
+        GenitourinaryNotes = isGhp2025 ? GetString(row, "GenitourinaryOptions_Notes") : null,
+        GenitourinaryOptions = isGhp2025
+            ? new GenitourinaryOptions
+            {
+                DeferedGeneralAppereance = GetBoolOrNull(row, "GenitourinaryOptions_DeferedGeneralAppereance"),
+                WhithinNormalLimits = GetBoolOrNull(row, "GenitourinaryOptions_WhithinNormalLimits"),
+            }
+            : null,
+
+        NeckNotes = GetString(row, "p2_sNeckNotes"),
+        NeckOptions = new NeckOptions
+        {
+            Crepitus = GetBoolOrNull(row, "NeckOptions_Crepitus"),
+            Masses = GetBoolOrNull(row, "NeckOptions_Masses"),
+            NormalTrachealPosition = GetBoolOrNull(row, "NeckOptions_NormalTrachelPosition"),
+            OverallAppearance = GetBoolOrNull(row, "NeckOptions_OverallAppearance"),
+            Symmetry = GetBoolOrNull(row, "NeckOptions_Symmetry"),
+            ThyroidEnlargement = GetBoolOrNull(row, "NeckOptions_ThyroidEnlargement"),
+            ThyroidMass = GetBoolOrNull(row, "NeckOptions_ThyroidMass"),
+            ThyroidTenderness = GetBoolOrNull(row, "NeckOptions_ThyroidTenderness"),
+            Tracheostomy = GetBoolOrNull(row, "NeckOptions_Tracheostomy"),
+            Wnl = GetBoolOrNull(row, "NeckOptions_WNL"),
+            Rigity = GetBoolOrNull(row, "NeckOption_Rigity"),
+            MovementLimitation = GetBoolOrNull(row, "NeckOption_MovementLimitation"),
+            Crackle = GetBoolOrNull(row, "NeckOption_Crackle"),
+        },
+
+        ChestNotes = GetString(row, "p2_sChestNotes"),
+        ChestOptions = new ChestOptions
+        {
+            AdventitiousSounds = GetBoolOrNull(row, "ChestOptions_AdventitiousSounds"),
+            BreastsTenderness = GetBoolOrNull(row, "ChestOptions_BreastsTenderness"),
+            Crackels = GetBoolOrNull(row, "ChestOptions_Crackels"),
+            DiaphragmaticMovement = GetBoolOrNull(row, "ChestOptions_DiaphragmaticMovement"),
+            Dullness = GetBoolOrNull(row, "ChestOptions_Dullness"),
+            Flatness = GetBoolOrNull(row, "ChestOptions_Flatness"),
+            Hyperresonance = GetBoolOrNull(row, "ChestOptions_Hyperresonance"),
+            IntercostalRetractions = GetBoolOrNull(row, "ChestOptions_IntercostalRetractions"),
+            NippleDischargeBreastsMassesLumps = GetBoolOrNull(row, "ChestOptions_NippleDischargeBreastsMassesLumps"),
+            NormalBreathSounds = GetBoolOrNull(row, "ChestOptions_NormalBreathSounds"),
+            Rubs = GetBoolOrNull(row, "ChestOptions_Rubs"),
+            TactileFremitus = GetBoolOrNull(row, "ChestOptions_TactileFremitus"),
+            UseOfAccesoryMuscles = GetBoolOrNull(row, "ChestOptions_UseOfAccesoryMuscles"),
+            WheezingSymmetryBreasts = GetBoolOrNull(row, "ChestOptions_WheezingsSymmetryBreasts"),
+            Wnl = GetBoolOrNull(row, "ChestOptions_WNL"),
+            BreastsMasses = GetBoolOrNull(row, "ChestOptions_BreastsMasses"),
+            NippleDischarge = GetBoolOrNull(row, "ChestOptions_NippleDischarge"),
+            RtFootToeAmputation = GetBoolOrNull(row, "ChestOptions_RTFootToeAmputation"),
+            LtFootToeAmputation = GetBoolOrNull(row, "ChestOptions_LTFootToeAmputation"),
+        },
+
+        CardiovascularNotes = GetString(row, "CardiovascularNotes"),
+        CardiovascularOptions = new CardiovascularOptions
+        {
+            AbnormalHeartSound = GetBoolOrNull(row, "CardiovascularOptions_AbnormalHeartSound"),
+            AbnormalTemperature = GetBoolOrNull(row, "CardiovascularOptions_AbnormalTemperature"),
+            LegEdema = GetBoolOrNull(row, "CardiovascularOptions_LegEdema"),
+            MurmursDecreasedPedalPulses = GetBoolOrNull(row, "CardiovascularOptions_MurmursDecreasedPedalPulses"),
+            Varicosities = GetBoolOrNull(row, "CardiovascularOptions_Varicosities"),
+            Wnl = GetBoolOrNull(row, "CardiovascularOptions_WNL"),
+            DecreasedPedalPulses = GetBoolOrNull(row, "CardiovascularOptions_DecreasedPedalPulses"),
+            RegularRateRhytm = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_RegularRateRhytm") : null,
+            IrregularRateRhytm = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_IrregularRateRhytm") : null,
+            Murmurs = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_Murmurs") : null,
+            Gallops = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_Gallops") : null,
+            Rubs = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_Rubs") : null,
+            PainUponPrecordialPalpation = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_PainUponPrecordialPalpation") : null,
+            Other = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_Other") : null,
+            None = isGhp2025 ? GetBoolOrNull(row, "CardiovascularOptions_None") : null,
+        },
+
+        AmputationLegRtBka = GetBoolOrNull(row, "AmputationLegRT_BKA"),
+        AmputationLegRtAka = GetBoolOrNull(row, "AmputationLegRT_AKA"),
+        AmputationLegRtToe = GetBoolOrNull(row, "AmputationLegRT_Toe"),
+        AmputationLegLtBka = GetBoolOrNull(row, "AmputationLegLT_BKA"),
+        AmputationLegLtAka = GetBoolOrNull(row, "AmputationLegLT_AKA"),
+        AmputationLegLtToe = GetBoolOrNull(row, "AmputationLegLT_Toe"),
+
+        AbdomenNotes = GetString(row, "p2_sAbdomenNotes"),
+        AbdomenOptions = new AbdomenOptions
+        {
+            Colostomy = GetBoolOrNull(row, "AbdomenOptions_Colostomy"),
+            Gastrostomy = GetBoolOrNull(row, "AbdomenOptions_Gastrostomy"),
+            Hernia = GetBoolOrNull(row, "AbdomenOptions_Hernia"),
+            Ileostomy = GetBoolOrNull(row, "AbdomenOptions_Ileostomy"),
+            LiverEnlargement = GetBoolOrNull(row, "AbdomenOptions_LiverEnlargement"),
+            Masses = GetBoolOrNull(row, "AbdomenOptions_Masses"),
+            SpleenEnlargement = GetBoolOrNull(row, "AbdomenOptions_SpleenEnlargement"),
+            Tenderness = GetBoolOrNull(row, "AbdomenOptions_Tenderness"),
+            Wnl = GetBoolOrNull(row, "AbdomenOptions_WNL"),
+            Cystostomy = GetBoolOrNull(row, "AbdomenOptions_Cystostomy"),
+            UmbilicalInfection = GetBoolOrNull(row, "AbdomenOptions_UmbilicalInfection"),
+            Distention = GetBoolOrNull(row, "AbdomenOptions_Distention"),
+            Constipation = GetBoolOrNull(row, "AbdomenOptions_Constipation"),
+            Colics = GetBoolOrNull(row, "AbdomenOptions_Colics"),
+            Reflux = GetBoolOrNull(row, "AbdomenOptions_Reflux"),
+            Rebound = GetBoolOrNull(row, "AbdomenOptions_Rebound"),
+            Guarding = GetBoolOrNull(row, "AbdomenOptions_Guarding"),
+        },
+
+        GenitaliaGroinButtocksNotes = GetString(row, "p2_sGenitaliaNotes"),
+        GenitaliaGroinButtocksOptions = new GenitaliaGroinButtocksOptions
+        {
+            Cyst = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Cyst"),
+            Cystocele = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Cystocele"),
+            DefferedGeneralAppearance = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_DefferedGeneralAppearance"),
+            Deformities = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Deformities"),
+            Discharge = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Discharge"),
+            Enlargement = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Enlargement"),
+            EstrogenEffect = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_EstrogenEffect"),
+            HairDistribution = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_HairDistribution"),
+            Hemorrhoids = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Hemorrhoids"),
+            Lesions = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Lesions"),
+            Masses = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Masses"),
+            Nodularity = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Nodularity"),
+            PelvicSupport = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_PelvicSupport"),
+            Prolapse = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Prolapse"),
+            Rashes = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Rashes"),
+            Rectocele = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Rectocele"),
+            Scarring = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Scarring"),
+            Size = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Size"),
+            Symmetry = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Symmetry"),
+            Tenderness = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Tenderness"),
+            Wnl = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_WNL"),
+            Urostomy = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_Urostomy"),
+            FoleyCatheterUse = GetBoolOrNull(row, "GenitaliaGroinButtocksNotesOptions_FoleyCatheterUse"),
+        },
+
+        MusculoskeletalNotes = GetString(row, "MusculokeletalNotes"),
+        MusculoskeletalOptions = new MusculoskeletalOptions
+        {
+            AbnormalGait = GetBoolOrNull(row, "MusculokeletalOptions_AbnormalGait"),
+            AbnormalMovements = GetBoolOrNull(row, "MusculokeletalOptions_AbnormalMovements"),
+            AbnormalMuscleStrengthTone = GetBoolOrNull(row, "MusculokeletalOptions_AbnormalMuscleStrengthTone"),
+            ClubbingNails = GetBoolOrNull(row, "MusculokeletalOptions_ClubbingNails"),
+            CogWheel = GetBoolOrNull(row, "MusculokeletalOptions_CogWheel"),
+            CyanosisDigits = GetBoolOrNull(row, "MusculokeletalOptions_CyanosisDigits"),
+            Dislocation = GetBoolOrNull(row, "MusculokeletalOptions_Dislocation"),
+            DislocationNotes = GetString(row, "MusculokeletalOptions_DislocationNotes"),
+            Flaccid = GetBoolOrNull(row, "MusculokeletalOptions_Flaccid"),
+            LowerExtremitiesAsymmetry = GetBoolOrNull(row, "MusculokeletalOptions_LowerExtremitiesAsymmetry"),
+            Spastic = GetBoolOrNull(row, "MusculokeletalOptions_Spastic"),
+            UpperExtremitiesAsymmetry = GetBoolOrNull(row, "MusculokeletalOptions_UpperExtremitiesAsymmetry"),
+            Wnl = GetBoolOrNull(row, "MusculokeletalOptions_WNL"),
+            NoDeformitiesOrDeformations = isGhp2025 ? GetBoolOrNull(row, "MusculoskeletalOption_NoDeformitiesOrDeformations") : null,
+            NormalGait = isGhp2025 ? GetBoolOrNull(row, "MusculoskeletalOption_NormalGait") : null,
+            AdequateRom = isGhp2025 ? GetBoolOrNull(row, "MusculoskeletalOption_AdequateROM") : null,
+            InadequateRom = isGhp2025 ? GetBoolOrNull(row, "MusculoskeletalOption_InadequateROM") : null,
+        },
+
+        SkinNotes = GetString(row, "p2_sSkinNotes"),
+        SkinOptions = new SkinOptions
+        {
+            Induration = GetBoolOrNull(row, "SkinOptions_Induration"),
+            Lesions = GetBoolOrNull(row, "SkinOptions_Lesions"),
+            Nodules = GetBoolOrNull(row, "SkinOptions_Nodules"),
+            Rashes = GetBoolOrNull(row, "SkinOptions_Rashes"),
+            Tightening = GetBoolOrNull(row, "SkinOptions_Tightening"),
+            Ulcers = GetBoolOrNull(row, "SkinOptions_Ulcers"),
+            PurpuricLesionsNoted = GetBoolOrNull(row, "SkinOptions_PurpuricLesionsNoted"),
+            Wnl = GetBoolOrNull(row, "SkinOptions_WNL"),
+        },
+
+        PsychiatricNeurologicNotes = GetString(row, "p2_sPsychiatricNotes"),
+        PsychiatricNeurologicOptions = new PsychiatricNeurologicOptions
+        {
+            Agitation = GetBoolOrNull(row, "PsychiatricNeurologicOptions_Agitation"),
+            Anxiety = GetBoolOrNull(row, "PsychiatricNeurologicOptions_Anxiety"),
+            Babinsky = GetBoolOrNull(row, "PsychiatricNeurologicOptions_Babinsky"),
+            CranialNervesWithDeficits = GetBoolOrNull(row, "PsychiatricNeurologicOptions_CranialNervesWithDeficits"),
+            DepressedMode = GetBoolOrNull(row, "PsychiatricNeurologicOptions_DepressedMode"),
+            NoSensationTouchLegs = GetBoolOrNull(row, "PsychiatricNeurologicOptions_NoSensationTouchLegs"),
+            OrientedToTime = GetBoolOrNull(row, "PsychiatricNeurologicOptions_OrientedToTime"),
+            PlaceAndPerson = GetBoolOrNull(row, "PsychiatricNeurologicOptions_PlaceAndPerson"),
+            SensationByTouch = GetBoolOrNull(row, "PsychiatricNeurologicOptions_SentationByTouch"),
+            Wnl = GetBoolOrNull(row, "PsychiatricNeurologicOptions_WNL"),
+            Hemiplejia = GetBoolOrNull(row, "PsychiatricNeurologicOptions_Hemiplejia"),
+            Cuadriplejia = GetBoolOrNull(row, "PsychiatricNeurologicOptions_Cuadriplejia"),
+            Paraplejia = GetBoolOrNull(row, "PsychiatricNeurologicOptions_Paraplejia"),
+            AmbulatingWoLimitation = isGhp2025 ? GetBoolOrNull(row, "NeurologicOption_AmbulatingWOLimitation") : null,
+            NormalMuscleStrengthTone = isGhp2025 ? GetBoolOrNull(row, "NeurologicOption_NormalMuscleStrengthTone") : null,
+            AbnormalMuscleStrengthTone = isGhp2025 ? GetBoolOrNull(row, "NeurologicOption_AbnormalMuscleStrengthTone") : null,
+            FocalDeficits = isGhp2025 ? GetBoolOrNull(row, "NeurologicOption_FocalDeficits") : null,
+        },
+
+        HematologicLymphaticImmunologicNotes = GetString(row, "p2_sHemotalogicNotes"),
+        HematologicLymphaticImmunologicOptions = new HematologicLymphaticImmunologicOptions
+        {
+            LymphNodes = GetBoolOrNull(row, "HematologicLymphaticImmunologicOptions_LymphNodes"),
+            LymphNodesNotes = GetString(row, "HematologicLymphaticImmunologicOptions_LymphNodesNotes"),
+            Wnl = GetBoolOrNull(row, "HematologicLymphaticImmunologicOptions_WNL"),
+        },
     };
 
     // Legacy computes localized (ES/EN), comma-joined summary strings for

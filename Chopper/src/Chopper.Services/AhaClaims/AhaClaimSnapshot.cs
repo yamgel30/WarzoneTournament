@@ -26,4 +26,6 @@ public sealed record AhaClaimSnapshot
     // Save, which only sends these to uspSaveScreeningTest2023). Populated for every claim, not
     // just 2023+ ones -- GetAHA has no year branch at this point the way SaveClaim does.
     public ScreeningSchedule2023Extras? ScreeningSchedule2023Extras { get; init; }
+
+    public PhysicalExaminationSection? PhysicalExamination { get; init; }
 }
