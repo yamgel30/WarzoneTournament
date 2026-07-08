@@ -18,4 +18,12 @@ public sealed record AhaClaimSnapshot
     public CognitiveAssessmentSection? CognitiveAssessment { get; init; }
     public PainScreeningSection? PainScreening { get; init; }
     public ActivitiesOfDailyLivingSection? ActivitiesOfDailyLiving { get; init; }
+
+    // Page 3
+    public ScreeningScheduleSection? ScreeningSchedule { get; init; }
+
+    // Fields legacy reads unconditionally into the same row regardless of visit year (unlike
+    // Save, which only sends these to uspSaveScreeningTest2023). Populated for every claim, not
+    // just 2023+ ones -- GetAHA has no year branch at this point the way SaveClaim does.
+    public ScreeningSchedule2023Extras? ScreeningSchedule2023Extras { get; init; }
 }

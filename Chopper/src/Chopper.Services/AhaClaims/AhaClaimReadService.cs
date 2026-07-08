@@ -49,6 +49,8 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             CognitiveAssessment = MapCognitiveAssessment(row),
             PainScreening = MapPainScreening(row),
             ActivitiesOfDailyLiving = MapActivitiesOfDailyLiving(row),
+            ScreeningSchedule = MapScreeningSchedule(row),
+            ScreeningSchedule2023Extras = MapScreeningSchedule2023Extras(row),
         };
     }
 
@@ -413,6 +415,197 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         DependenceOnWheelchair = GetBoolOrNull(row, "DependenceOnWheelchair"),
     };
 
+    // Legacy computes localized (ES/EN), comma-joined summary strings for
+    // ColorectalColonoscopyResult/ColorectalFlexibleSigmoidoscopyResult from the individual
+    // checkboxes below, capped at 8 terms, for report display. Not replicated here -- it's
+    // presentation formatting, not data, and every checkbox it would summarize is already exposed
+    // as a plain boolean.
+    private static ScreeningScheduleSection MapScreeningSchedule(IDictionary<string, object> row)
+    {
+        var isDiabeticGate = GetBoolOrNull(row, "AssessmentPlanTreatment_No") ?? false;
+
+        return new ScreeningScheduleSection
+        {
+            BoneMineralDensityDate = GetDateOrNull(row, "p4_dScreeningSchRecBmdDone"),
+            BoneMineralDensityResult = GetString(row, "Screening_BMD_Result"),
+            BoneMineralDensityPrescribed = GetBoolOrNull(row, "Screening_BMD_Prescribed"),
+            BoneMineralDensityNaFor = GetString(row, "BoneMineralDensity_NAFor"),
+            BoneMineralDensityRxOrdered = GetBoolOrNull(row, "Screening_BMD_RxOrdered"),
+            BoneMineralDensityResultNa = GetBoolOrNull(row, "ScreeningSchedule_BoneMineralDensityResult_NA"),
+            BoneMineralDensityResultNormal = GetBoolOrNull(row, "ScreeningSchedule_BoneMineralDensityResult_Normal"),
+            BoneMineralDensityResultOsteopenia = GetBoolOrNull(row, "ScreeningSchedule_BoneMineralDensityResult_Osteopenia"),
+            BoneMineralDensityResultOsteoporosis = GetBoolOrNull(row, "ScreeningSchedule_BoneMineralDensityResult_Osteoporosis"),
+            BoneMineralDensityResultOther = GetBoolOrNull(row, "ScreeningSchedule_BoneMineralDensityResult_Other"),
+
+            CardiovascularLdlDate = GetDateOrNull(row, "Screening_Cardio_LDL_DoneDate"),
+            CardiovascularLdlResult = GetString(row, "Screening_Cardio_LDL_Result"),
+            CardiovascularLdlPrescribed = GetBoolOrNull(row, "Screening_Cardio_LDL_Prescribed"),
+            CardiovascularLdlNaFor = GetString(row, "Screening_Cardio_LDL_NAFor"),
+            CardiovascularBetaDate = GetDateOrNull(row, "Screening_Cardio_BetaBlocker_DoneDate"),
+            CardiovascularBetaResult = GetString(row, "Screening_Cardio_BetaBlocker_Result"),
+            CardiovascularBetaPrescribed = GetBoolOrNull(row, "Screening_Cardio_BetaBlocker_Prescribed"),
+            CardiovascularBetaNaFor = GetString(row, "Screening_Cardio_BetaBlocke_NAFor"),
+
+            ColorectalCancerScreeningDate = GetDateOrNull(row, "p4_dScreeningSchRecColonCancerDone"),
+            ColorectalCancerScreeningResult = GetString(row, "Screening_ColorectalCancer_Result"),
+            ColorectalCancerScreeningPrescribed = GetBoolOrNull(row, "Screening_ColorectalCancer_Prescribe"),
+            ColorectalCancerScreeningSelectedIndex = GetIntOrNull(row, "Screening_ColorectalCancer_SelectedIndex"),
+            ColorectalCancerScreeningNaFor = GetString(row, "Screening_ColorectalCancer_NAFor"),
+
+            ColorectalColonoscopy = GetBoolOrNull(row, "ColorectalColonoscopy"),
+            ColorectalColonoscopyDate = GetDateOrNull(row, "ColorectalColonoscopyDate"),
+            ColorectalColonoscopyNaFor = GetString(row, "ColorectalColonoscopyNAFor"),
+            ColorectalColonoscopyPrescribe = GetBoolOrNull(row, "ColorectalColonoscopyPrescribe"),
+            ColorectalColonoscopyResultNa = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_NA"),
+            ColorectalColonoscopyResultNegative = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_Negative"),
+            ColorectalColonoscopyResultDiverticles = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_Diverticles"),
+            ColorectalColonoscopyResultBleedingAreas = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_BleedingAreas"),
+            ColorectalColonoscopyResultCaInColon = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_CAInColon"),
+            ColorectalColonoscopyResultCaInRectum = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_CAInRectum"),
+            ColorectalColonoscopyResultColitis = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_Colitis"),
+            ColorectalColonoscopyResultUlcerativeColitis = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_UlcerativeOlitis"),
+            ColorectalColonoscopyResultCrohnsDisease = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_CrohnsDisease"),
+            ColorectalColonoscopyResultPolyps = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_Polyps"),
+            ColorectalColonoscopyResultOther = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_ColonoscopyResult_Other"),
+
+            ColorectalFitDna = GetBoolOrNull(row, "ColorectalFITDNA"),
+            ColorectalFitDnaDate = GetDateOrNull(row, "ColorectalFITDNADate"),
+            ColorectalFitDnaResult = GetString(row, "ColorectalFITDNAResult"),
+            ColorectalFitDnaNaFor = GetString(row, "ColorectalFITDNANAFor"),
+            ColorectalFitDnaPrescribe = GetBoolOrNull(row, "ColorectalFITDNAPrescribe"),
+
+            ColorectalColonographyCt = GetBoolOrNull(row, "ColorectalColonographyCT"),
+            ColorectalColonographyCtDate = GetDateOrNull(row, "ColorectalColonographyCTDate"),
+            ColorectalColonographyCtResult = GetString(row, "ColorectalColonographyCTResult"),
+            ColorectalColonographyCtNaFor = GetString(row, "ColorectalColonographyCTNAFor"),
+            ColorectalColonographyCtPrescribe = GetBoolOrNull(row, "ColorectalColonographyCTPrescribe"),
+
+            ColorectalOccultBlood = GetBoolOrNull(row, "ColorectalOccultBlood"),
+            ColorectalOccultBloodDate = GetDateOrNull(row, "ColorectalOccultBloodDate"),
+            ColorectalOccultBloodResult = GetString(row, "ColorectalOccultBloodResult"),
+            ColorectalOccultBloodNaFor = GetString(row, "ColorectalOccultBloodNAFor"),
+            ColorectalOccultBloodPrescribe = GetBoolOrNull(row, "ColorectalOccultBloodPrescribe"),
+
+            ColorectalFlexibleSigmoidoscopy = GetBoolOrNull(row, "ColorectalFlexibleSigmoidoscopy"),
+            ColorectalFlexibleSigmoidoscopyDate = GetDateOrNull(row, "ColorectalFlexibleSigmoidoscopyDate"),
+            ColorectalFlexibleSigmoidoscopyNaFor = GetString(row, "ColorectalFlexibleSigmoidoscopyNAFor"),
+            ColorectalFlexibleSigmoidoscopyPrescribe = GetBoolOrNull(row, "ColorectalFlexibleSigmoidoscopyPrescribe"),
+            ColorectalFlexibleSigmoidoscopyResultNa = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_NA"),
+            ColorectalFlexibleSigmoidoscopyResultNegative = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_Negative"),
+            ColorectalFlexibleSigmoidoscopyResultAnalFissure = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_AnalFissure"),
+            ColorectalFlexibleSigmoidoscopyResultAnorectalAbscess = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_AnorectalAbscess"),
+            ColorectalFlexibleSigmoidoscopyResultIntestinalOcclusion = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_IntestinalOcclusion"),
+            ColorectalFlexibleSigmoidoscopyResultCaEnElSigmoideo = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_CAEnElSigmoideo"),
+            ColorectalFlexibleSigmoidoscopyResultCaInRectum = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_CAInRectum"),
+            ColorectalFlexibleSigmoidoscopyResultCaInTheRectosigmoidJunction = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_CAInTheRectosigmoidJunction"),
+            ColorectalFlexibleSigmoidoscopyResultColorectalPolyps = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_ColorectalPolyps"),
+            ColorectalFlexibleSigmoidoscopyResultDiverticles = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_Diverticles"),
+            ColorectalFlexibleSigmoidoscopyResultHemorrhoids = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_Hemorrhoids"),
+            ColorectalFlexibleSigmoidoscopyResultHirschsprungDisease = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_HirschsprungDisease"),
+            ColorectalFlexibleSigmoidoscopyResultInflammatoryBowelDisease = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_InflammatoryBowelDisease"),
+            ColorectalFlexibleSigmoidoscopyResultInflammationOrInfection = GetBoolOrNull(row, "ScreeningSchedule_Colorectal_FlexibleSigmoidoscopyResult_InflammationOrInfection"),
+
+            IsDiabetic = GetBoolOrNull(row, "Screening_IsDiabetics"),
+
+            // Legacy skips this whole block (GoTo notDiabeticScreening) when
+            // AssessmentPlanTreatment_No is true -- despite the "isDiabetic" local variable name,
+            // that flag actually gates whether diabetes screening fields are populated at all.
+            DiabetesScreeningDilatedEyeExamDate = isDiabeticGate ? null : GetDateOrNull(row, "Screening_Diabetes_DilatedEye_Date"),
+            DiabetesScreeningDilatedEyeExamResult = isDiabeticGate ? null : GetString(row, "Screening_Diabetes_DilatedEye_Result"),
+            DiabetesScreeningDilatedEyeExamPrescribed = isDiabeticGate ? null : GetBoolOrNull(row, "Screening_Diabetes_DilatedEye_Prescribed"),
+            DiabetesScreeningDilatedEyeExamNaFor = isDiabeticGate ? null : GetString(row, "Screening_Diabetes_DilatedEye_NAFor"),
+            DiabetesScreeningHga1CDate = isDiabeticGate ? null : GetDateOrNull(row, "DiabetesScreening_HGA1C_Date"),
+            DiabetesScreeningHga1CResult = isDiabeticGate ? null : GetString(row, "DiabetesScreening_HGA1C_Result"),
+            DiabetesScreeningHga1CPrescribed = isDiabeticGate ? null : GetBoolOrNull(row, "DiabetesScreening_HGA1C_Prescribed"),
+            DiabetesScreeningHga1CNaFor = isDiabeticGate ? null : GetString(row, "DiabetesScreening_HGA1C_NAFor"),
+            // DiabetesScreeningMicroalbumin* is never populated: legacy's GHP branch that would
+            // read it is permanently disabled (If False Then), so it always takes the Urine
+            // Albumin/Creatinine path instead (see ScreeningSchedule2023Extras).
+            GlaucomaTestDate = isDiabeticGate ? null : GetDateOrNull(row, "p4_dScreeningSchGlaucomaDone"),
+            GlaucomaTestResult = isDiabeticGate ? null : GetString(row, "Screening_Diabetes_GlaucomaTest_Result"),
+            GlaucomaTestPrescribed = isDiabeticGate ? null : GetBoolOrNull(row, "Screening_Diabetes_GlaucomaTest_Prescribed"),
+            GlaucomaTestNaFor = isDiabeticGate ? null : GetString(row, "Screening_Diabetes_GlaucomaTest_NAFor"),
+
+            DiabetesScreeningLdlDate = GetDateOrNull(row, "Screening_Diabetes_LDL_Date"),
+            DiabetesScreeningLdlResult = GetString(row, "Screening_Diabetes_LDL_Result"),
+            DiabetesScreeningLdlPrescribed = GetBoolOrNull(row, "Screening_Diabetes_LDL_Prescribed"),
+            DiabetesScreeningLdlNaFor = GetString(row, "Screening_Diabetes_LDL_NAFor"),
+
+            MammogramProstateCancerDate = GetDateOrNull(row, "Screening_Diabetes_MammogramProstate_Date"),
+            MammogramProstateCancerResult = GetString(row, "Screening_Diabetes_MammogramProstate_Result"),
+            MammogramProstateCancerPrescribed = GetBoolOrNull(row, "Screening_Diabetes_MammogramProstate_Prescribed"),
+            MammogramProstateCancerNaFor = GetString(row, "Screening_Diabetes_MammogramProstate_NAFor"),
+
+            FluShotDate = GetDateOrNull(row, "p4_dScreeningSchRecFluShotDone"),
+            FluShotComments = GetString(row, "Screening_Diabetes_FluShot_Comments"),
+            FluShotPrescribed = GetBoolOrNull(row, "Screening_Diabetes_FluShot_Prescribed"),
+            FluShotPatientRefuses = GetBoolOrNull(row, "ScreeningSchedule_FluShot_PatientRefuses"),
+
+            PneumococcalShotDate = GetDateOrNull(row, "p4_dScreeningSchRecPneumococcalDone"),
+            PneumococcalShotComments = GetString(row, "Screening_Diabetes_PneumococcalShot_Comments"),
+            PneumococcalShotPrescribed = GetBoolOrNull(row, "Screening_Diabetes_PneumococcalShot_Prescribed"),
+            PneumococcalShotPatientRefuses = GetBoolOrNull(row, "ScreeningSchedule_PneumococcalShot_PatientRefuses"),
+
+            Covid19VaccineHouse = GetString(row, "COVID19VaccineHouse"),
+            Covid19VaccineShot = GetIntOrNull(row, "COVID19VaccineShot"),
+            Covid19VaccineShotDate1 = GetDateOrNull(row, "COVID19VaccineShotDate1"),
+            Covid19VaccineShotDate2 = GetDateOrNull(row, "COVID19VaccineShotDate2"),
+            Covid19VaccineShotDate3 = GetDateOrNull(row, "COVID19VaccineShotDate3"),
+            Covid19VaccineRefuse = GetBoolOrNull(row, "COVID19VaccineRefuse"),
+            Covid19VaccineOrdered = GetBoolOrNull(row, "COVID19VaccineOrdered"),
+
+            PapSmearDate = GetDateOrNull(row, "PAPSMEAR_Date"),
+            PapSmearResult = GetString(row, "PAPSMEAR_Result"),
+            PapSmearNaFor = GetString(row, "PAPSMEAR_NAFor"),
+            PapSmearPrescribed = GetBoolOrNull(row, "PAPSMEAR_Prescribed"),
+
+            ProstateCancerDate = GetDateOrNull(row, "ProstateCancerDate"),
+            ProstateCancerResult = GetString(row, "ProstateCancerResult"),
+            ProstateCancerNaFor = GetString(row, "ProstateCancerNAFor"),
+            ProstateCancerPrescribed = GetBoolOrNull(row, "ProstateCancerPrescribed"),
+
+            MammogramCancerDate = GetDateOrNull(row, "MammogramCancerDate"),
+            MammogramCancerResult = GetString(row, "MammogramCancerResult"),
+            MammogramCancerNaFor = GetString(row, "MammogramCancerNAFor"),
+            MammogramCancerPrescribed = GetBoolOrNull(row, "MammogramCancerPrescribed"),
+            MammogramCancerResultNa = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_NA"),
+            MammogramCancerResultCategory0 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_0"),
+            MammogramCancerResultCategory1 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_1"),
+            MammogramCancerResultCategory2 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_2"),
+            MammogramCancerResultCategory3 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_3"),
+            MammogramCancerResultCategory4 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_4"),
+            MammogramCancerResultCategory5 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_5"),
+            MammogramCancerResultCategory6 = GetBoolOrNull(row, "ScreeningSchedule_Mammogram_CancerResult_Category_6"),
+
+            ScreeningHpvDate = GetDateOrNull(row, "Screening_HPV_Date"),
+            ScreeningHpvResult = GetString(row, "Screening_HPV_Result"),
+            ScreeningHpvOrdered = GetBoolOrNull(row, "Screening_HPV_Ordered"),
+            ScreeningHpvComment = GetString(row, "Screening_HPV_Comment"),
+        };
+    }
+
+    private static ScreeningSchedule2023Extras MapScreeningSchedule2023Extras(IDictionary<string, object> row) => new()
+    {
+        UrineAlbuminDate = GetDateOrNull(row, "Screening_Diabetes_Urine_Albumin_Date"),
+        UrineAlbuminResult = GetString(row, "Screening_Diabetes_Urine_Albumin_Result"),
+        UrineAlbuminPrescribed = GetBoolOrNull(row, "Screening_Diabetes_Urine_Albumin_Prescribed"),
+        UrineAlbuminNaFor = GetString(row, "Screening_Diabetes_Urine_Albumin_Comment"),
+        UrineCreatinineDate = GetDateOrNull(row, "Screening_Diabetes_Urine_Creatinine_Date"),
+        UrineCreatinineResult = GetString(row, "Screening_Diabetes_Urine_Creatinine_Result"),
+        UrineCreatininePrescribed = GetBoolOrNull(row, "Screening_Diabetes_Urine_Creatinine_Prescribed"),
+        UrineCreatinineNaFor = GetString(row, "Screening_Diabetes_Urine_Creatinine_Comment"),
+        CreatinineAlbuminRatio = GetDecimalOrNull(row, "Screening_Diabetes_Albumin_Creatinine_Ratio"),
+        TdTdapDoneDate = GetDateOrNull(row, "Screening_Vaccine_TdTdap_Done_Date"),
+        TdTdapComments = GetString(row, "Screening_Vaccine_TdTdap_Comments"),
+        TdTdapPrescribed = GetBoolOrNull(row, "Screening_Vaccine_TdTdap_Prescribed"),
+        TdTdapPatientRefuses = GetBoolOrNull(row, "Screening_Vaccine_TdTdap_PatientRefuses"),
+        ZosterVaccineOrdered = GetBoolOrNull(row, "Screening_Vaccine_ZosterVaccineOrdered"),
+        ZosterVaccineRefuse = GetBoolOrNull(row, "Screening_Vaccine_ZosterVaccineRefuse"),
+        ZosterVaccineShotDate1 = GetDateOrNull(row, "Screening_Vaccine_ZosterVaccineShotDate1"),
+        ZosterVaccineShotDate2 = GetDateOrNull(row, "Screening_Vaccine_ZosterVaccineShotDate2"),
+        RetinopathyNegative = GetBoolOrNull(row, "Retinopathy_Negative"),
+    };
+
     // uspGetAHA2 returns an 11-table result set (DataSet in legacy); read once and keep every
     // table around so later batches can pull whichever ones they need without a second round trip.
     private static async Task<IReadOnlyList<IReadOnlyList<dynamic>>> LoadAhaDataSetAsync(IDbConnection connection, long claimId, CancellationToken cancellationToken)
@@ -450,4 +643,6 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
     private static long? GetLongOrNull(IDictionary<string, object> row, string column) => GetRawValue(row, column) is { } v ? Convert.ToInt64(v) : null;
 
     private static bool? GetBoolOrNull(IDictionary<string, object> row, string column) => GetRawValue(row, column) is { } v ? Convert.ToBoolean(v) : null;
+
+    private static decimal? GetDecimalOrNull(IDictionary<string, object> row, string column) => GetRawValue(row, column) is { } v ? Convert.ToDecimal(v) : null;
 }
