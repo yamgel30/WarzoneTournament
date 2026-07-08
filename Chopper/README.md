@@ -98,12 +98,19 @@ service does. It breaks down into two very different shapes of work:
   clamp of out-of-range dates to the minimum valid SQL `datetime`
   (1753-01-01) before insert is preserved.
 
-  **Not ported: Medication List / Allergies Medication List** (also part of
-  Page 1). The legacy save uses a SQL Server table-valued parameter
-  (`SqlDbType.Structured`) and the VB source never sets `SqlParameter.TypeName`,
-  so the actual server-side table type name isn't available from the code —
-  need that (or the CREATE TYPE definition) to port these two sections
-  without guessing.
+  Ported: **Medication List / Allergies Medication List** (also part of
+  Page 1), using the `MedicationList2020` table-valued parameter (now known
+  from the real `CREATE TYPE` definition). `uspSaveMedicationList2020`
+  folds `CurrentMedication` (`isAdherence = false`) together with either
+  `AllergiesMedicationList` or `AdherenceMedicationList` (`isAdherence =
+  true`) into one table — legacy uses `AllergiesMedicationList` here only
+  when the member is GHP and under 21, otherwise `AdherenceMedicationList`.
+  `uspSaveAlergMedicationList2020` is only called in that same GHP/under-21
+  case, saving `AllergiesMedicationList` again on its own with every row's
+  `isAdherence` forced to `false`. Since this service has no session state
+  to derive GHP status or member age from (legacy computes both from the
+  payer and member DOB), `SavePage1Request.IsGhp`/`MemberAge` take them as
+  caller-supplied input instead.
 
   Ported: **Page 3** (`PUT /api/aha-claims/{claimId}/pages/3`) — Screening
   Schedule, both the pre-2023 form (~135 fields; `uspSaveScreeningTest`)
@@ -150,12 +157,12 @@ service does. It breaks down into two very different shapes of work:
 
   **Page 3 is now fully ported.**
 
-  **Page 4 is now fully ported** except the one blocked section (`PUT
-  /api/aha-claims/{claimId}/pages/4`) — BMI Associated Diagnoses,
-  Rheumatoid Arthritis, Assessment Plan of Treatment, Cancer Diagnoses,
-  CKD, Pressure Sores, Major Depression, Congenital Diseases, Pressure
-  Sore List, Cardiovascular Diseases, Eyes and Neurology, Im/Lab/Ref,
-  Other Condition Additional, Pulmonary Diseases, Gastrointestinal
+  **Page 4 is now fully ported** (`PUT /api/aha-claims/{claimId}/pages/4`)
+  — BMI Associated Diagnoses, Rheumatoid Arthritis, Assessment Plan of
+  Treatment, Cancer Diagnoses, CKD, Pressure Sores, Major Depression,
+  Congenital Diseases, Pressure Sore List, Cardiovascular Diseases,
+  Diseases of the Skin, Eyes and Neurology, Im/Lab/Ref, Other Condition
+  Additional, Other Condition, Pulmonary Diseases, Gastrointestinal
   Diseases (+ the GHP-only Gastrointestinal/Musculoskeletal pair),
   Social Determinants (both years), Malnutrition Criteria, Screening
   Substance Use, and Screening Result.
@@ -182,10 +189,12 @@ service does. It breaks down into two very different shapes of work:
   certainly a bug that would throw at the ADO.NET layer and get silently
   swallowed by the surrounding try/catch (`_saveError = True`, no rethrow).
   This migration sends the actual `.Value` instead, since that's clearly
-  the intended behavior everywhere else in the codebase — worth confirming
-  against the real stored procedures, since if the legacy bug is somehow
-  load-bearing (SPs default these columns and never actually receive a
-  value today), sending real data changes what gets persisted.
+  the intended behavior everywhere else in the codebase. Confirmed against
+  the real stored procedures: `uspSaveBMIAssociatedDiagnoses`/
+  `uspSaveRheumatoidArthritis` both declare a plain `@NA bit`, and
+  `uspSaveCKD` declares `@GFR`/`@SerumCalcium`/`@SerumPTH` as
+  `varchar(100)` — nothing about those declarations suggests the legacy
+  bug was somehow load-bearing, so sending real `.Value` data is correct.
 
   `EyesAndNeurology` shares one stored procedure pair the same way Screening
   Schedule does (see Page 3): `uspSaveEyeAndNeurology` (pre-2023) and
@@ -199,9 +208,13 @@ service does. It breaks down into two very different shapes of work:
   `uspSaveEyeAndNeurology2023`. Pre-2023 visits always save regardless of
   GHP.
 
-  `Diseases of the Skin` is **blocked**: same unresolvable table-valued-parameter
-  gap as `MedicationList` and `OtherCondition` (`SqlParameter.TypeName`
-  never set in the VB source). This is the only Page 4 section not ported.
+  `Diseases of the Skin` uses the `DiseasesOfTheSkin2022` table-valued
+  parameter (32 columns) with `uspSaveDiseasesOfTheSkin2022`. Legacy always
+  calls this SP, even with no items: when the item list is `null` it still
+  sends a single default/empty row (`IndexRow = 0`); when the list is
+  non-null but empty it sends zero rows. Both cases are preserved as-is
+  rather than skipping the call the way most other sections do when their
+  section is absent.
 
   `GastrointestinalDiseasesSection` gets saved via `uspSaveGastrointestinal`
   unconditionally, then — for GHP members — legacy calls the **same stored
@@ -228,16 +241,49 @@ service does. It breaks down into two very different shapes of work:
   (`SavePage4Request.ScreeningSubstanceUseResult` etc.) rather than trying
   to derive them.
 
-  **Blocked: Other Condition.** Same table-valued-parameter problem as
-  Page 1's Medication List (`SqlParameter.TypeName` never set in the VB
-  source), plus it calls `AppShared.GetICDCodeType`,
-  `AppShared.GetDefaultRejectCode`, and `AppShared.GetRejectCodeDescription`
-  — helper methods that live in a class not present in either legacy file
-  provided so far. Needs that `AppShared` source (or at least those three
-  methods) in addition to the SQL type name to port.
+  `Other Condition` uses the `AHADxOtherConditions` table-valued parameter
+  with `uspClaimsDX_Save_New_V2024`. Legacy skips the call entirely when
+  the item list is null or empty. The stored procedure's actual text
+  confirmed it hardcodes `nICDCodeType` to `10` for every inserted row and
+  never reads the TVP's `ICDCodeType` column at all — so
+  `AppShared.GetICDCodeType` (source unavailable) turned out not to be
+  needed. `AppShared.GetDefaultRejectCode()`/`GetRejectCodeDescription()`
+  are still unavailable and are genuinely per-call constants (both take no
+  parameters), so `SavePage4Request.OtherConditionDefaultRejectCode`/
+  `OtherConditionRejectCodeDescription` take the same values as
+  caller-supplied input instead, applied identically to every row exactly
+  as the parameterless legacy calls did.
 
   `ErrorLog_Insert` and `InsertDBDebugLog` (the legacy error/debug logging
   infrastructure) are deliberately skipped rather than ported.
+
+## Stored procedure cross-verification
+
+Once the real stored procedure definitions and table-type (`CREATE TYPE`)
+definitions became available, every parameter this migration sends was
+cross-referenced against the actual `CREATE PROCEDURE` text — name
+existence and declared SQL type — across all 33 stored-procedure calls in
+`AhaClaimService.cs`. Result: zero name mismatches (every parameter name
+this migration sends matches a real declared parameter). Three type
+mismatches were found and fixed:
+
+- `ChronicKidneyDiseaseSection.Gfr`/`SerumCalcium`/`SerumPth` were modeled
+  as `decimal?`; `uspSaveCKD` actually declares them `varchar(100)`. Now
+  `string?`.
+- `PhysicalExaminationSection.Pulse`/`Breathing`/`BloodPressure1`/
+  `BloodPressure2` were modeled as `decimal?`; `uspSavePhysicalExamination`
+  actually declares them `smallint`. Now `int?`.
+- `ScreeningSchedule2023Extras.UrineAlbuminResult`/`UrineCreatinineResult`
+  were modeled as `decimal?`; `uspSaveScreeningTest2023` actually declares
+  them `varchar`. Now `string?`.
+
+One apparent mismatch turned out not to be a bug:
+`EyesAndNeurologySection.RetinopathySeverity`/`ProliferativeSeverity` are
+sent as `int?` to both `uspSaveEyeAndNeurology` (pre-2023, declares
+`varchar`) and `uspSaveEyeAndNeurology2023` (declares `int`) — but
+`AHADataAdapter.vb` sends `VerifyIntegerNull(...)` (an integer) to both
+calls too, relying on SQL Server's implicit int-to-varchar conversion for
+the pre-2023 case. Matches legacy exactly; left as-is.
 
 ## Migration approach (strangler fig)
 
@@ -257,20 +303,26 @@ nothing breaks mid-migration.
 
 ## Next
 
-**`SaveClaim` (all 4 pages) is now ported**, except 3 sections blocked on
-the same table-valued-parameter gap: Page 1's Medication List/Allergies
-Medication List, and Page 4's Other Condition and Diseases of the Skin.
-Unblocking those needs:
-- The SQL Server table type name(s) for those three `SqlDbType.Structured`
-  parameters (`MedList`, `dxTable`, `DiseasesSkinTable`) — the VB source
-  never sets `SqlParameter.TypeName`, so it's not recoverable from code
-  alone.
-- For Other Condition specifically, also the `AppShared` class source (at
-  least `GetICDCodeType`, `GetDefaultRejectCode`,
-  `GetRejectCodeDescription`).
+**`SaveClaim` (all 4 pages) is now fully ported** — every section that was
+previously blocked on the table-valued-parameter gap (Medication
+List/Allergies Medication List, Diseases of the Skin, Other Condition) is
+unblocked now that the real stored procedure and table-type definitions
+are available. What's still open:
+- `AppShared.GetDefaultRejectCode()`/`GetRejectCodeDescription()` (used by
+  Other Condition) are still unavailable — currently taken as
+  caller-supplied input (see above). Worth revisiting if/when that source
+  turns up, in case they're not actually constant.
 - The `Globals` class source (at least `ValidateDateMinMaxRange`,
   `LogError`, `ValidatePayerID`) if exact legacy behavior matters beyond
-  what's already been reasonably approximated.
+  what's already been reasonably approximated (SQL `datetime` min/max used
+  as a stand-in).
+- **Page 1 and Page 3 always send every parameter** to their stored
+  procedures (relying on Dapper to convert an absent value to `NULL`),
+  where legacy instead *omits* many parameters entirely when their field
+  is absent. Now that real SP definitions are available, this is worth
+  checking systematically for any parameter with a non-`NULL` default
+  (`@Foo BIT = 0`) where an explicit `NULL` would override that default
+  differently than an omitted parameter would.
 
 Beyond that, this is genuinely open — there's no `AHADataAdapter.vb`
 methods left to mine for `SaveClaim`. Worth deciding together:
