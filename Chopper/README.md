@@ -576,6 +576,38 @@ below plus the header):
   onward (`isGhp2025 = PayerId == "660653763" && DateOfVisit.Year > 2024`,
   computed once in `GetClaimSnapshotAsync` and threaded through) — left
   `null` otherwise rather than guessing a default.
+- **Page 4, batch 1**: Assessment Plan of Treatment, Congenital Diseases,
+  CKD, Pressure Sores, Rheumatoid Arthritis, Depression Inventory, DME
+  Use, BMI-Associated Diagnoses, Myocardial Infarction, Other Current
+  Conditions (Additional), Major Depression + PHQ9. Three new DTOs
+  (`DepressionInventorySection`, `DmeUseSection`,
+  `OtherCurrentConditionsAdditionalSection`) since `SaveClaim`'s ported
+  Page 4 never sends these — `GetAHA` reads them but there's no Save-side
+  counterpart to reuse yet. Notable findings:
+  - The same "isDiabetic" `GoTo` gate from Screening Schedule reappears
+    here (`AssessmentPlanTreatment_No` true → skip the diabetic-complication
+    detail block) — reproduced the same way, as a local `isDiabeticGate`.
+  - `AssessmentPlanTreatment_Retinopathy`/`_Proliferative` are read into
+    `aha.ScreeningSchedule.Retinopathy`/`Proliferative`, **not**
+    `AssessmentPlanOfTreatment.Retinopathy`/`Proliferative` — then
+    unconditionally overwritten (in duplicated code, twice) by the plain
+    `Retinopathy`/`Proliferative` columns when not null. Net effect:
+    prefer `Retinopathy`/`Proliferative`, fall back to the
+    `AssessmentPlanTreatment_*` column — modeled as
+    `GetBoolOrNull(row, "Retinopathy") ?? GetBoolOrNull(row,
+    "AssessmentPlanTreatment_Retinopathy")` on
+    `ScreeningSchedule2023Extras`. `AssessmentPlanOfTreatmentSection`'s own
+    `Retinopathy`/`Proliferative` properties (used by `SaveClaim`) are
+    therefore never actually populated by `GetAHA` — only their
+    `*Comments` siblings are.
+  - `DmeUseSection.Tracheostomy`: legacy checks the `DME_Tracheostomy`
+    column for null but then assigns the **`DME_Urostomy`** value — a
+    copy-paste bug at the source. Reproduced as-is rather than "fixed",
+    since it's what the legacy app has actually been returning.
+  - `PHQ9.AllTotals` (`TotalCol1 + TotalCol2 + TotalCol3`) is a display-only
+    computed sum, not replicated for the same reason as the Screening
+    Schedule summary strings — the three totals are already exposed
+    individually.
 
 Two implementation notes that'll apply to every future batch of this port:
 
@@ -595,19 +627,16 @@ Two implementation notes that'll apply to every future batch of this port:
   reasoning as the claim list/search stored procedures.
 
 Still to come, roughly in the order legacy reads them: the rest of Page 4
-(Assessment Plan of Treatment, Congenital Diseases, CKD, Pressure Sores,
-Rheumatoid Arthritis, Depression Inventory, DME Use, BMI-Associated
-Diagnoses, Myocardial Infarction, Other Current Conditions, Major
-Depression + PHQ9, Cardiovascular Diseases, Pulmonary Diseases,
-Gastrointestinal, Musculoskeletal, Gastrointestinal Diseases, Im/Lab/Ref,
-Eyes and Neurology), then the list-type tables read from separate
-result-set tables (Cancer Diagnosis + Other Current Conditions from
-`Tables(1)`, Pressure Sores List from `Tables(3)`, Diseases of the Skin
-from `Tables(4)`, Dx History Selection from `Tables(6)`, Allergies
-Medication List from `Tables(7)`, Malnutrition Criteria from `Tables(10)`),
-and Social Determinants near the very end of the method.
-`GetMemberAHATemplate` (2,180 lines) and `GetAHAShort` are separate,
-still-unstarted methods after this.
+(Cardiovascular Diseases, Pulmonary Diseases, Gastrointestinal,
+Musculoskeletal, Gastrointestinal Diseases, Im/Lab/Ref, Eyes and
+Neurology), then the list-type tables read from separate result-set
+tables (Cancer Diagnosis + Other Current Conditions from `Tables(1)`,
+Pressure Sores List from `Tables(3)`, Diseases of the Skin from
+`Tables(4)`, Dx History Selection from `Tables(6)`, Allergies Medication
+List from `Tables(7)`, Malnutrition Criteria from `Tables(10)`), and
+Social Determinants near the very end of the method. `GetMemberAHATemplate`
+(2,180 lines) and `GetAHAShort` are separate, still-unstarted methods
+after this.
 
 ## Migration approach (strangler fig)
 

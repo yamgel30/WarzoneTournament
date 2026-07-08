@@ -28,4 +28,17 @@ public sealed record AhaClaimSnapshot
     public ScreeningSchedule2023Extras? ScreeningSchedule2023Extras { get; init; }
 
     public PhysicalExaminationSection? PhysicalExamination { get; init; }
+
+    // Page 4
+    public AssessmentPlanOfTreatmentSection? AssessmentPlanOfTreatment { get; init; }
+    public CongenitalDiseasesSection? CongenitalDiseases { get; init; }
+    public ChronicKidneyDiseaseSection? Ckd { get; init; }
+    public PressureSoresSection? PressureSores { get; init; }
+    public RheumatoidArthritisSection? RheumatoidArthritis { get; init; }
+    public DepressionInventorySection? DepressionInventory { get; init; }
+    public DmeUseSection? DmeUse { get; init; }
+    public BmiAssociatedDiagnosesSection? BmiAssociatedDiagnoses { get; init; }
+    public MyocardialInfarctionSection? MyocardialInfarction { get; init; }
+    public OtherCurrentConditionsAdditionalSection? OtherCurrentConditionsAdditional { get; init; }
+    public MajorDepressionSection? MajorDepression { get; init; }
 }

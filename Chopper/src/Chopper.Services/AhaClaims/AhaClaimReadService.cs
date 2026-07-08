@@ -59,6 +59,17 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             ScreeningSchedule = MapScreeningSchedule(row),
             ScreeningSchedule2023Extras = MapScreeningSchedule2023Extras(row),
             PhysicalExamination = MapPhysicalExamination(row, isGhp2025),
+            AssessmentPlanOfTreatment = MapAssessmentPlanOfTreatment(row),
+            CongenitalDiseases = MapCongenitalDiseases(row),
+            Ckd = MapCkd(row),
+            PressureSores = MapPressureSores(row),
+            RheumatoidArthritis = MapRheumatoidArthritis(row),
+            DepressionInventory = MapDepressionInventory(row),
+            DmeUse = MapDmeUse(row),
+            BmiAssociatedDiagnoses = MapBmiAssociatedDiagnoses(row),
+            MyocardialInfarction = MapMyocardialInfarction(row),
+            OtherCurrentConditionsAdditional = MapOtherCurrentConditionsAdditional(row),
+            MajorDepression = MapMajorDepression(row),
         };
     }
 
@@ -901,6 +912,24 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
 
     private static ScreeningSchedule2023Extras MapScreeningSchedule2023Extras(IDictionary<string, object> row) => new()
     {
+        // Legacy sets these from AssessmentPlanTreatment_Retinopathy/Proliferative first, then
+        // unconditionally overwrites (twice, in duplicated code) with the plain Retinopathy/
+        // Proliferative columns if those aren't null -- net effect is "prefer Retinopathy/
+        // Proliferative, fall back to the AssessmentPlanTreatment_* column". Note this means the
+        // AssessmentPlanOfTreatmentSection.Retinopathy/Proliferative properties (used by
+        // SaveClaim) are never actually populated by GetAHA -- only the *Comments siblings are.
+        Retinopathy = GetBoolOrNull(row, "Retinopathy") ?? GetBoolOrNull(row, "AssessmentPlanTreatment_Retinopathy"),
+        Proliferative = GetBoolOrNull(row, "Proliferative") ?? GetBoolOrNull(row, "AssessmentPlanTreatment_Proliferative"),
+        ProliferativeEyeRt = GetBoolOrNull(row, "ProliferativeEyeRT"),
+        ProliferativeEyeLt = GetBoolOrNull(row, "ProliferativeEyeLT"),
+        RetinopathyNegativeEye = GetIntOrNull(row, "Retinopathy_Negative_Eye"),
+        RetinopathyEye = GetIntOrNull(row, "Screening_Retinopathy_Eye"),
+        ProliferativeEye = GetIntOrNull(row, "Screening_Proliferative_Eye"),
+        EyeSeverity = GetBoolOrNull(row, "Screening_Eye_Severity"),
+        EyeSeverityLevel = GetIntOrNull(row, "Screening_Eye_SeverityLevel"),
+        MacularEdema = GetBoolOrNull(row, "Screening_MacularEdema"),
+        MacularEdemaEye = GetIntOrNull(row, "Screening_MacularEdema_Eye"),
+        ScreeningRetinopathyNa = GetBoolOrNull(row, "ScreeningRetinopathy_NA"),
         UrineAlbuminDate = GetDateOrNull(row, "Screening_Diabetes_Urine_Albumin_Date"),
         UrineAlbuminResult = GetString(row, "Screening_Diabetes_Urine_Albumin_Result"),
         UrineAlbuminPrescribed = GetBoolOrNull(row, "Screening_Diabetes_Urine_Albumin_Prescribed"),
@@ -919,6 +948,311 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         ZosterVaccineShotDate1 = GetDateOrNull(row, "Screening_Vaccine_ZosterVaccineShotDate1"),
         ZosterVaccineShotDate2 = GetDateOrNull(row, "Screening_Vaccine_ZosterVaccineShotDate2"),
         RetinopathyNegative = GetBoolOrNull(row, "Retinopathy_Negative"),
+    };
+
+    // Same "isDiabetic" gate as MapScreeningSchedule: when AssessmentPlanTreatment_No is true,
+    // legacy skips (GoTo notDiabetic) the whole diabetic-complication detail block below --
+    // No/RetinopathyComments/ProliferativeComments/Dermatitis/Periodontal/PoorlyController and
+    // everything after them (which isn't gated) are still populated either way.
+    private static AssessmentPlanOfTreatmentSection MapAssessmentPlanOfTreatment(IDictionary<string, object> row)
+    {
+        var isDiabeticGate = GetBoolOrNull(row, "AssessmentPlanTreatment_No") ?? false;
+
+        return new AssessmentPlanOfTreatmentSection
+        {
+            No = GetBoolOrNull(row, "AssessmentPlanTreatment_No"),
+
+            DmType = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_DMType"),
+            Controlled = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_Controlled"),
+            DmSecondary = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_DMSecundary"),
+            DmComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_DMComments"),
+            DiabeticNeuropathy = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_DiabeticNeuropathy"),
+            DiabeticNeuropathyComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_DiabeticNeuropathyComments"),
+            DiabeticPvd = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_DiabeticPVD"),
+            DiabeticPvdComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_DiabeticPVDComments"),
+            DiabeticNephropathy = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_DiabeticNephropathy"),
+            DiabeticNephropathyComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_DiabeticNephropathyComments"),
+            DiabeticCataracts = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_DiabeticCataracts"),
+            DiabeticCataractsComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_DiabeticCataractsComments"),
+            OtherDiabeticComplication = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_OtherComplication"),
+            OtherDiabeticComplicationComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_OtherComplicationComments"),
+
+            // Legacy assigns these into aha.ScreeningSchedule.Retinopathy/Proliferative, not here
+            // -- see MapScreeningSchedule2023Extras. Only the *Comments siblings land on this
+            // section.
+            RetinopathyComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_RetinopathyComments"),
+            ProliferativeComments = isDiabeticGate ? null : GetString(row, "AssessmentPlanTreatment_ProliferativeComments"),
+
+            Remission = isDiabeticGate ? null : GetBoolOrNull(row, "AssessmentPlanTreatment_Remission"),
+
+            Dermatitis = GetBoolOrNull(row, "AssessmentPlanTreatment_Dermatitis"),
+            DermatitisComments = GetString(row, "AssessmentPlanTreatment_DermatitisComments"),
+            Periodontal = GetBoolOrNull(row, "AssessmentPlanTreatment_Periodontal"),
+            PeriodontalComments = GetString(row, "AssessmentPlanTreatment_PeriodontalComments"),
+            PoorlyController = GetBoolOrNull(row, "AssessmentPlanTreatment_PoorlyController"),
+
+            DmSecondaryText = GetString(row, "DMSecondaryText"),
+            OutOfControl = GetBoolOrNull(row, "OutOfControl"),
+            UncontrolledWithHyperglycemia = GetBoolOrNull(row, "UncontrolledWithHyperglycemia"),
+            UncontrolledWithHypoglycemia = GetBoolOrNull(row, "UncontrolledWithHypoglycemia"),
+            HyperlipidemiaDueDm = GetBoolOrNull(row, "HyperlipidemiaDueDM"),
+            DmPlanAndTreatmentComments1 = GetString(row, "DMPlanAndTreatmentComments1"),
+            DmPlanAndTreatmentComments2 = GetString(row, "DMPlanAndTreatmentComments2"),
+            DmPlanAndTreatmentComments3 = GetString(row, "DMPlanAndTreatmentComments3"),
+            DiabeticArthropathy = GetBoolOrNull(row, "DiabeticArthropathy"),
+            DiabeticArthropathyComment = GetString(row, "DiabeticArthropathyComment"),
+            GestionalDiabetes = GetBoolOrNull(row, "GestionalDiabetes"),
+            GestionalDiabetesComment = GetString(row, "GestionalDiabetesComment"),
+        };
+    }
+
+    private static CongenitalDiseasesSection MapCongenitalDiseases(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "CongenitalDiseases_NA"),
+        SpinaBifida = GetBoolOrNull(row, "CongenitalDiseases_SpinaBifida"),
+        SpinaBifidaComments = GetString(row, "CongenitalDiseases_SpinaBifidaComments"),
+        Hydrocephalus = GetBoolOrNull(row, "CongenitalDiseases_Hydrocephalus"),
+        HydrocephalusComments = GetString(row, "CongenitalDiseases_HydrocephalusComments"),
+        ChiariMalformation = GetBoolOrNull(row, "CongenitalDiseases_ChiariMalformation"),
+        ChiariMalformationComments = GetString(row, "CongenitalDiseases_ChiariMalformationComments"),
+        Hemophilia = GetBoolOrNull(row, "CongenitalDiseases_Hemophilia"),
+        HemophiliaComments = GetString(row, "CongenitalDiseases_HemophiliaComments"),
+        Cranofacial = GetBoolOrNull(row, "CongenitalDiseases_Cranofacial"),
+        CranofacialComments = GetString(row, "CongenitalDiseases_CranofacialComments"),
+        DistrofiaMuscular = GetBoolOrNull(row, "CongenitalDiseases_DistrofiaMuscular"),
+        DistrofiaMuscularComments = GetString(row, "CongenitalDiseases_DistrofiaMuscularComments"),
+        CerebralPalsy = GetBoolOrNull(row, "CongenitalDiseases_CerebralPalsy"),
+        CerebralPalsyText = GetString(row, "CongenitalDiseases_CerebralPalsyText"),
+        CerebralPalsyComments = GetString(row, "CongenitalDiseases_CerebralPalsyComments"),
+    };
+
+    private static ChronicKidneyDiseaseSection MapCkd(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "CKD_NA"),
+        Stage = GetIntOrNull(row, "CKD_Stage"),
+        DueToDm = GetBoolOrNull(row, "CKD_DueToDM"),
+        DueToOtherCondition = GetString(row, "CKD_DueToOtherCondition"),
+        Controlled = GetBoolOrNull(row, "CKD_Controlled"),
+        LowFatDiet = GetBoolOrNull(row, "CKD_LowFatDiet"),
+        Dialysis = GetBoolOrNull(row, "CKD_Dialysis"),
+        NoMeetDialysis = GetBoolOrNull(row, "CKD_NoMeetDialysis"),
+        AdditionalTreatment = GetString(row, "CKD_AdditionalTreatment"),
+        Hyperparathyroidism = GetBoolOrNull(row, "Hyperparathyroidism"),
+        HyperparathyroidismTreatment = GetString(row, "HyperparathyroidismTreatment"),
+        Gfr = GetString(row, "CKD_GFR"),
+        SerumCalcium = GetString(row, "CKD_SerumCalcium"),
+        SerumPth = GetString(row, "CKD_SerumPTH"),
+        Nephropathy = GetBoolOrNull(row, "Nephropathy"),
+        NephropathyType = GetString(row, "NephropathyType"),
+        Nephritis = GetBoolOrNull(row, "Nephritis"),
+        NephritisType = GetString(row, "NephritisType"),
+        HasFistula = GetBoolOrNull(row, "HasFistula"),
+        CkdBox = GetBoolOrNull(row, "CKDBox"),
+        StressIncontinence = GetBoolOrNull(row, "CKD_StressIncontinence"),
+        UrgeIncontinence = GetBoolOrNull(row, "CKD_UrgeIncontinence"),
+        PostMicturitionDribble = GetBoolOrNull(row, "CKD_PostMicturitionDribble"),
+        OveractiveBladder = GetBoolOrNull(row, "CKD_OveractiveBladder"),
+        BladderTreatmentPlan = GetString(row, "CKD_BladderTreatmentPlan"),
+        KidneyTransplant = GetBoolOrNull(row, "CKD_KidneyTransplant"),
+        GfrDate = GetDateOrNull(row, "CKD_GFRDate"),
+        GfrOrdered = GetBoolOrNull(row, "CKD_GFROrdered"),
+    };
+
+    private static PressureSoresSection MapPressureSores(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "PressureSores_NA"),
+        ByPressure = GetBoolOrNull(row, "PressureSores_ByPressure"),
+        Chronicle = GetBoolOrNull(row, "PressureSores_Chronicle"),
+        AnatomicalSite = GetString(row, "PressureSores_AnatomicalSite"),
+        HighBackPressureUlcerStage = GetIntOrNull(row, "PressureSores_HighBackPressureUlcerStage"),
+        LowBackPressureUlcerStage = GetIntOrNull(row, "PressureSores_LowBackPressureUlcerStage"),
+        HipPressureUlcerStageLeft = GetIntOrNull(row, "PressureSores_HipPressureUlcerStageLeft"),
+        HipPressureUlcerStageRight = GetIntOrNull(row, "PressureSores_HipPressureUlcerStageRight"),
+        HipPressureUlcerLeft = GetBoolOrNull(row, "PressureSores_HipPressureUlcerLeft"),
+        HipPressureUlcerRight = GetBoolOrNull(row, "PressureSores_HipPressureUlcerRight"),
+        HeelPressureUlcerStageLeft = GetIntOrNull(row, "PressureSores_HeelPressureUlcerStageLeft"),
+        HeelPressureUlcerStageRight = GetIntOrNull(row, "PressureSores_HeelPressureUlcerStageRight"),
+        HeelPressureUlcerLeft = GetBoolOrNull(row, "PressureSores_HeelPressureUlcerLeft"),
+        HeelPressureUlcerRight = GetBoolOrNull(row, "PressureSores_HeelPressureUlcerRight"),
+        OtherAreasStage = GetIntOrNull(row, "PressureSores_OtherAreasStage"),
+        OtherAreas = GetString(row, "PressureSores_OtherAreas"),
+        Hydrocolloid = GetBoolOrNull(row, "PressureSores_Hydrocolloid"),
+        Healing = GetBoolOrNull(row, "PressureSores_Healing"),
+        Healed = GetBoolOrNull(row, "PressureSores_Healed"),
+        Worse = GetBoolOrNull(row, "PressureSores_Worse"),
+        SilverDressing = GetBoolOrNull(row, "PressureSores_SilverDressing"),
+        Hydrogel = GetBoolOrNull(row, "PressureSores_Hydrogel"),
+        Antibiotic = GetBoolOrNull(row, "PressureSores_Antibiotic"),
+        Alginate = GetBoolOrNull(row, "PressureSores_Alginate"),
+        Enzyme = GetBoolOrNull(row, "PressureSores_Enzyme"),
+        TransparentDressing = GetBoolOrNull(row, "PressureSores_TransparentDressing"),
+        OthersTreatment = GetString(row, "PressureSores_OthersTreatment"),
+    };
+
+    private static RheumatoidArthritisSection MapRheumatoidArthritis(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "RA_NA"),
+        RaNoManifestations = GetBoolOrNull(row, "RA_RANoManifestations"),
+        RaWithPolyneuropathy = GetBoolOrNull(row, "RA_RAWithPolyneuropathy"),
+        RaWithMyopathy = GetBoolOrNull(row, "RA_RAWithMyopathy"),
+        RaOtherManifestations = GetString(row, "RA_RAOtherManifestations"),
+        RaOtherManifestationsCheckBox = GetBoolOrNull(row, "RAOtherManifestationsCheckBox"),
+        Dmards = GetBoolOrNull(row, "RA_DMARDs"),
+        DmardsSpecify = GetString(row, "RA_DMARDsSpecify"),
+        PtRefuses = GetBoolOrNull(row, "RA_PtRefuses"),
+        OtherTreatmentConditions = GetString(row, "RA_OtherTreatmentConditions"),
+        ArtritisPsoriatrica = GetBoolOrNull(row, "RheumatoidArthritis_ArtritisPsoriatrica"),
+        Osteoartritis = GetBoolOrNull(row, "RheumatoidArthritis_Osteoartritis"),
+        ArtritisPsoriatricaComment = GetString(row, "RheumatoidArthritis_ArtritisPsoriatricaComment"),
+        OsteoartritisComment = GetString(row, "RheumatoidArthritis_OsteoartritisComment"),
+        Arthritis = GetBoolOrNull(row, "Arthritis"),
+        ArthritisLocationType = GetString(row, "ArthritisLocationType"),
+        Nsaids = GetBoolOrNull(row, "NSAIDS"),
+        NsaidsOtherTreatment = GetString(row, "NSAIDSOtherTreatment"),
+        AffectedJoints = GetString(row, "AffectedJoints"),
+        InflammatoryPolyarthritis = GetBoolOrNull(row, "InflammatoryPolyarthritis"),
+        InflammatoryPolyarthritisComments = GetString(row, "InflammatoryPolyarthritisComments"),
+        ArthropathySequelaViralInfection = GetBoolOrNull(row, "ArthropathySequelaViralInfection"),
+        ArthropathySequelaViralInfectionComments = GetString(row, "ArthropathySequelaViralInfectionComments"),
+        Osteopenia = GetBoolOrNull(row, "Osteopenia"),
+        Osteoporosis = GetBoolOrNull(row, "Osteoporosis"),
+        OsteoTreatmentPlan = GetString(row, "OsteoTreatmentPlan"),
+    };
+
+    private static DepressionInventorySection MapDepressionInventory(IDictionary<string, object> row) => new()
+    {
+        Choose1 = GetIntOrNull(row, "p3_nDepressionInvSadLevel"),
+        Choose2 = GetIntOrNull(row, "p3_nDepressionInvLostInterestLevel"),
+        Choose3 = GetIntOrNull(row, "p3_nDepressionInvLackEnergyLevel"),
+        Choose4 = GetIntOrNull(row, "p3_nDepressionInvConfidentLevel"),
+        Choose5 = GetIntOrNull(row, "p3_nDepressionInvGuiltLevel"),
+        Choose6 = GetIntOrNull(row, "p3_nDepressionInvLifeInterestLevel"),
+        Choose7 = GetIntOrNull(row, "p3_nDepressionInvConcentrationLevel"),
+        Choose8a = GetIntOrNull(row, "p3_nDepressionInvRestlessLevel"),
+        Choose8b = GetIntOrNull(row, "p3_nDepressionInvSubduedLevel"),
+        Choose9 = GetIntOrNull(row, "p3_nDepressionInvSleepLevel"),
+        Choose10a = GetIntOrNull(row, "p3_nDepressionInvReducedAppetiteLevel"),
+        Choose10b = GetIntOrNull(row, "p3_nDepressionInvIncreaseAppetiteLevel"),
+        IsMild = GetBoolOrNull(row, "p3_bDepressionInvIsMild"),
+        IsSevere = GetBoolOrNull(row, "p3_bDepressionInvIsSevere"),
+        IsMajor = GetBoolOrNull(row, "p3_bDepressionInvIsMajor"),
+        IsModerate = GetBoolOrNull(row, "p3_bDepressionInvIsModerate"),
+        PlanOfTreatment = GetString(row, "p3_sDepressionInvTreatment"),
+    };
+
+    private static DmeUseSection MapDmeUse(IDictionary<string, object> row) => new()
+    {
+        UsingOxygen = GetBoolOrNull(row, "DME_UsingOxygen"),
+        DueToHypoxiaInAir = GetBoolOrNull(row, "DME_DuetoHypoxiaInAir"),
+        Cpap = GetBoolOrNull(row, "DME_CPAP"),
+        AboveKneeProsthesis = GetBoolOrNull(row, "DME_AboveKneeProsthesis"),
+        BelowKneeProsthesis = GetBoolOrNull(row, "DME_BelowKneeProsthesis"),
+        HasSuppliesNeeded = GetBoolOrNull(row, "DME_HasSuppliesNeeded"),
+        Gastrostomy = GetBoolOrNull(row, "DME_Gastrostomy"),
+        Colostomy = GetBoolOrNull(row, "DME_Colostomy"),
+        Urostomy = GetBoolOrNull(row, "DME_Urostomy"),
+        // See DmeUseSection.Tracheostomy: legacy checks DME_Tracheostomy for null but reads the
+        // DME_Urostomy value -- reproduced as-is.
+        Tracheostomy = GetRawValue(row, "DME_Tracheostomy") is not null ? GetBoolOrNull(row, "DME_Urostomy") : null,
+        UsingWheelchair = GetBoolOrNull(row, "DME_UsingWheelchair"),
+        UsingWheelchairReason = GetString(row, "DME_UsingWheelchairReason"),
+        Comments = GetString(row, "DME_Comments"),
+    };
+
+    private static BmiAssociatedDiagnosesSection MapBmiAssociatedDiagnoses(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "NutritionNA"),
+        Obesity = GetBoolOrNull(row, "Obesity"),
+        MorbidObesity = GetBoolOrNull(row, "MorbidObesity"),
+        Malnutrition = GetBoolOrNull(row, "Malnutrition"),
+        EvaluationTreatmentPlan = GetString(row, "BMIPlanTreatment"),
+        MalnutritionGradeTypeText = GetString(row, "MalnutritionGradeTypeText"),
+        DeficiencyBComplex = GetBoolOrNull(row, "DeficiencyBComplex"),
+        DeficiencyVitaminB12 = GetBoolOrNull(row, "DeficiencyVitaminB12"),
+        DeficiencyVitaminB6 = GetBoolOrNull(row, "DeficiencyVitaminB6"),
+        DeficiencyOtherVitaminNutrients = GetBoolOrNull(row, "DeficiencyOtherVitaminNutrients"),
+        DeficiencyOtherVitaminNutrientsComments = GetString(row, "DeficiencyOtherVitaminNutrientsComments"),
+        MalnutritionScreeningAssesment = GetString(row, "MalnutritionScreeningAssesment"),
+    };
+
+    private static MyocardialInfarctionSection MapMyocardialInfarction(IDictionary<string, object> row) => new()
+    {
+        OldMi = GetBoolOrNull(row, "OldMi"),
+        BetaBlocker = GetBoolOrNull(row, "BetaBlocker"),
+        BetaBlockerType = GetString(row, "BetaBlockerType"),
+        OtherTreatmentCircumstances = GetString(row, "OldMIOtherTreatment"),
+        Ami6Months = GetBoolOrNull(row, "MedicalHistory_AMI_6_Months"),
+    };
+
+    private static OtherCurrentConditionsAdditionalSection MapOtherCurrentConditionsAdditional(IDictionary<string, object> row) => new()
+    {
+        AdditionalRecomendation = GetString(row, "OtherCurrentConditionAdditionalRecomendation"),
+    };
+
+    // Legacy computes PHQ9.AllTotals as TotalCol1 + TotalCol2 + TotalCol3 purely for display --
+    // not replicated here, same reasoning as the Screening Schedule summary strings (presentation
+    // formatting derived entirely from data already exposed on TotalCol1-3).
+    private static MajorDepressionSection MapMajorDepression(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "MajorDepressionNA"),
+        IsMajorDepression = GetBoolOrNull(row, "MajorDepression"),
+        InRemission = GetBoolOrNull(row, "MajorDepression_InRemission"),
+        Recurrent = GetBoolOrNull(row, "MajorDepression_Recurrent"),
+        MildSeverity = GetBoolOrNull(row, "MajorDepression_MildSeverity"),
+        ModerateSeverity = GetBoolOrNull(row, "MajorDepression_ModerateSeverity"),
+        SevereSeverity = GetBoolOrNull(row, "MajorDepression_SevereSeverity"),
+        TreatmentPlan = GetString(row, "MajorDepression_TreatmentPlan"),
+        UseOfSubtancesTreatmentPlan = GetString(row, "MajorDepression_UseOfSubtancesTreatmentPlan"),
+        SeverWithoutPsychoticSymptoms = GetBoolOrNull(row, "MentalHealth_SeverWithoutPsychoticSymptoms"),
+        SingleEpisode = GetBoolOrNull(row, "SingleEpisode"),
+        PsychoticSymptoms = GetBoolOrNull(row, "PsychoticSymptoms"),
+        BipolarDisorder = GetBoolOrNull(row, "BipolarDisorder"),
+        BipolarDisorderTypeAndSeverity = GetString(row, "BipolarDisorderTypeAndSeverity"),
+        BipolarDisorderTreatmentPlan = GetString(row, "BipolarDisorderTreatmentPlan"),
+        Schizophrenia = GetBoolOrNull(row, "Schizophrenia"),
+        SchizophreniaType = GetString(row, "SchizophreniaType"),
+        SchizophreniaTreatmentPlan = GetString(row, "SchizophreniaTreatmentPlan"),
+        MoodDisorder = GetBoolOrNull(row, "MoodDisorder"),
+        MoodDisorderComments = GetString(row, "MoodDisorderComments"),
+        Phq9DoneDate = GetDateOrNull(row, "PHQ9DoneDate"),
+        Phq9ScoreResult = GetString(row, "PHQ9ScoreResult"),
+        Dysthymia = GetBoolOrNull(row, "Dysthymia"),
+        DysthymiaComments = GetString(row, "DysthymiaComments"),
+        Phq9ReasonNotDoneOther = GetString(row, "PHQ9ReasonNotDoneOther"),
+        Phq9ReasonNotDoneId = GetIntOrNull(row, "PHQ9ReasonNotDoneID"),
+        GeneralizedAnxietyDisorder = GetBoolOrNull(row, "GeneralizedAnxietyDisorder"),
+        OtherAnxiety = GetBoolOrNull(row, "OtherAnxiety"),
+        OtherAnxietyText = GetString(row, "OtherAnxietyText"),
+        GeneralizedAnxietyDisorderComments = GetString(row, "GeneralizedAnxietyDisorderComments"),
+        Adhd = GetBoolOrNull(row, "ADHD"),
+        AdhdComments = GetString(row, "ADHDComments"),
+        Autism = GetBoolOrNull(row, "Autism"),
+        AutismComments = GetString(row, "AutismComments"),
+        SubstanceAbuseFreeText = GetString(row, "MentalHealth_SubstanceAbuseFreeText"),
+        ScreeningSubstanceUseDatePerformed = GetDateOrNull(row, "MentalHealth_ScreeningSubstanceUseDatePerformed"),
+        SubstanceAbuseCheckBox = GetBoolOrNull(row, "MentalHealth_SubstanceAbuseCheckBox"),
+        Phq9 = new Phq9
+        {
+            Q1 = GetIntOrNull(row, "PHQ9_Q1"),
+            Q2 = GetIntOrNull(row, "PHQ9_Q2"),
+            Q3 = GetIntOrNull(row, "PHQ9_Q3"),
+            Q4 = GetIntOrNull(row, "PHQ9_Q4"),
+            Q5 = GetIntOrNull(row, "PHQ9_Q5"),
+            Q6 = GetIntOrNull(row, "PHQ9_Q6"),
+            Q7 = GetIntOrNull(row, "PHQ9_Q7"),
+            Q8 = GetIntOrNull(row, "PHQ9_Q8"),
+            Q9 = GetIntOrNull(row, "PHQ9_Q9"),
+            TotalCol1 = GetIntOrNull(row, "PHQ9_TotalCol1"),
+            TotalCol2 = GetIntOrNull(row, "PHQ9_TotalCol2"),
+            TotalCol3 = GetIntOrNull(row, "PHQ9_TotalCol3"),
+            NotDifficultAtAll = GetBoolOrNull(row, "PHQ9_NotDifficultAtAll"),
+            SomewhatDifficult = GetBoolOrNull(row, "PHQ9_SomewhatDifficult"),
+            VeryDifficult = GetBoolOrNull(row, "PHQ9_VeryDifficult"),
+            ExtremelyDifficult = GetBoolOrNull(row, "PHQ9_ExtremeDifficult"),
+            DepressedPastYear = GetBoolOrNull(row, "PHQ9_DepressedPastYear"),
+            SuicidePastMonth = GetBoolOrNull(row, "PHQ9_SuicidePastMonth"),
+            TriedSuicide = GetBoolOrNull(row, "PHQ9_TriedSuicide"),
+        },
     };
 
     // uspGetAHA2 returns an 11-table result set (DataSet in legacy); read once and keep every
