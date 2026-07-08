@@ -34,11 +34,24 @@ public sealed record SavePage4Request
 
     public CardiovascularDiseasesSection? CardiovascularDiseases { get; init; }
 
+    public IReadOnlyList<DiseasesOfTheSkinItem>? DiseasesOfTheSkin { get; init; }
+
+    public bool DiseasesOfTheSkinNa { get; init; }
+
     public EyesAndNeurologySection? EyesAndNeurology { get; init; }
 
     public ImLabRefSection? ImLabRef { get; init; }
 
     public string? OtherConditionAdditionalRecommendation { get; init; }
+
+    public IReadOnlyList<OtherConditionItem>? OtherConditions { get; init; }
+
+    // Legacy sources these from AppShared.GetDefaultRejectCode()/GetRejectCodeDescription(), which
+    // aren't part of the ported code -- the same value AppShared would have returned is supplied by
+    // the caller instead and applied identically to every row, matching legacy's per-row calls.
+    public string? OtherConditionDefaultRejectCode { get; init; }
+
+    public string? OtherConditionRejectCodeDescription { get; init; }
 
     public PulmonaryDiseasesSection? PulmonaryDiseases { get; init; }
 

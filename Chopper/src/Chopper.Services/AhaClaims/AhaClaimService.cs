@@ -15,7 +15,6 @@ internal sealed class AhaClaimService(
 
     // Mirrors the legacy SavePage1: each section saves independently against its own
     // stored procedure and swallows its own failure, so one bad section doesn't block the rest.
-    // MedicationList/AllergiesMedicationList aren't included yet -- see SavePage1Request.
     public async Task<bool> SavePage1Async(long claimId, SavePage1Request request, CancellationToken cancellationToken = default)
     {
         var chiefComplaintOk = await SaveChiefComplaintPatientMedicalHistoryAsync(
@@ -25,7 +24,16 @@ internal sealed class AhaClaimService(
         var reviewOfSystemOk = await SaveReviewOfSystemAsync(claimId, request.ReviewOfSystem, cancellationToken);
         var myocardialInfarctionOk = await SaveMyocardialInfarctionAsync(claimId, request.MyocardialInfarction, cancellationToken);
 
-        return chiefComplaintOk && medicalFamilySocialHistoryOk && advanceDirectiveOk && reviewOfSystemOk && myocardialInfarctionOk;
+        var isAllergyEligible = request.IsGhp && request.MemberAge < 21;
+        var medicationListOk = await SaveMedicationListAsync(claimId, request.MedicationList, isAllergyEligible, cancellationToken);
+        var allergiesMedicationListOk = true;
+        if (isAllergyEligible)
+        {
+            allergiesMedicationListOk = await SaveAllergiesMedicationListAsync(claimId, request.MedicationList, cancellationToken);
+        }
+
+        return chiefComplaintOk && medicalFamilySocialHistoryOk && advanceDirectiveOk && reviewOfSystemOk
+            && myocardialInfarctionOk && medicationListOk && allergiesMedicationListOk;
     }
 
     private async Task<bool> SaveChiefComplaintPatientMedicalHistoryAsync(
@@ -364,6 +372,111 @@ internal sealed class AhaClaimService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to save myocardial infarction for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private static DataTable BuildMedicationListTable()
+    {
+        var table = new DataTable();
+        table.Columns.Add("MedicationName", typeof(string));
+        table.Columns.Add("isAdherence", typeof(bool));
+        table.Columns.Add("isHistoric", typeof(bool));
+        table.Columns.Add("isConfirmed", typeof(bool));
+        return table;
+    }
+
+    // uspSaveMedicationList2020 folds CurrentMedication (isAdherence = false) together with either
+    // AllergiesMedicationList or AdherenceMedicationList (isAdherence = true) into a single
+    // MedicationList2020-typed table -- legacy uses AllergiesMedicationList here only when the
+    // member is GHP and under 21, otherwise it uses AdherenceMedicationList.
+    private async Task<bool> SaveMedicationListAsync(long claimId, MedicationListSection? section, bool useAllergiesAsAdherenceSource, CancellationToken cancellationToken)
+    {
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var currentMedication = section.CurrentMedication ?? [];
+            var adherenceSource = useAllergiesAsAdherenceSource
+                ? section.AllergiesMedicationList ?? []
+                : section.AdherenceMedicationList ?? [];
+
+            var medListTable = BuildMedicationListTable();
+            if (currentMedication.Count > 0 || adherenceSource.Count > 0)
+            {
+                foreach (var m in currentMedication)
+                {
+                    medListTable.Rows.Add(m.MedicationName.Trim(), false, m.IsHistoric, m.IsConfirmed);
+                }
+
+                foreach (var m in adherenceSource)
+                {
+                    medListTable.Rows.Add(m.MedicationName.Trim(), true, m.IsHistoric, m.IsConfirmed);
+                }
+            }
+
+            var command = new CommandDefinition(
+                "uspSaveMedicationList2020",
+                new
+                {
+                    ClaimID = claimId,
+                    PatientCurrentlyNoUse = section.CurrentlyDoesNotUse,
+                    MedList = medListTable.AsTableValuedParameter("MedicationList2020"),
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save medication list for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Only called when the member is GHP and under 21. Unlike SaveMedicationListAsync, every row
+    // here is isAdherence = false -- legacy never marks allergy-list rows as adherence in this table.
+    private async Task<bool> SaveAllergiesMedicationListAsync(long claimId, MedicationListSection? section, CancellationToken cancellationToken)
+    {
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var medListTable = BuildMedicationListTable();
+            foreach (var m in section.AllergiesMedicationList ?? [])
+            {
+                medListTable.Rows.Add(m.MedicationName.Trim(), false, m.IsHistoric, m.IsConfirmed);
+            }
+
+            var command = new CommandDefinition(
+                "uspSaveAlergMedicationList2020",
+                new
+                {
+                    ClaimID = claimId,
+                    section.NotKnowAllergies,
+                    MedList = medListTable.AsTableValuedParameter("MedicationList2020"),
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save allergies medication list for claim {ClaimId}", claimId);
             return false;
         }
     }
@@ -1105,6 +1218,7 @@ internal sealed class AhaClaimService(
         var congenitalDiseasesOk = await SaveCongenitalDiseasesAsync(claimId, request.CongenitalDiseases, cancellationToken);
         var pressureSoreListOk = await SavePressureSoreListAsync(claimId, request.PressureSoreList, cancellationToken);
         var cardiovascularDiseasesOk = await SaveCardiovascularDiseasesAsync(claimId, request.CardiovascularDiseases, cancellationToken);
+        var diseasesOfTheSkinOk = await SaveDiseasesOfTheSkinAsync(claimId, request.DiseasesOfTheSkin, request.DiseasesOfTheSkinNa, cancellationToken);
         var eyesAndNeurologyOk = await SaveEyesAndNeurologyAsync(claimId, request.EyesAndNeurology, request.DateOfVisit, request.IsGhp, cancellationToken);
         var imLabRefOk = await SaveImLabRefAsync(claimId, request.ImLabRef, cancellationToken);
         var malnutritionCriteriaOk = await SaveMalnutritionCriteriaAsync(claimId, request.MalnutritionCriteria, cancellationToken);
@@ -1125,6 +1239,9 @@ internal sealed class AhaClaimService(
             otherConditionAdditionalOk = await SaveOtherConditionAdditionalAsync(claimId, request.OtherConditionAdditionalRecommendation, cancellationToken);
         }
 
+        var otherConditionsOk = await SaveOtherConditionsAsync(
+            claimId, request.OtherConditions, request.OtherConditionDefaultRejectCode, request.OtherConditionRejectCodeDescription, cancellationToken);
+
         var ghpOnlyOk = true;
         if (request.IsGhp)
         {
@@ -1134,9 +1251,9 @@ internal sealed class AhaClaimService(
         }
 
         return bmiOk && rheumatoidArthritisOk && assessmentPlanOk && cancerDiagnosesOk && ckdOk && pressureSoresOk
-            && majorDepressionOk && congenitalDiseasesOk && pressureSoreListOk && cardiovascularDiseasesOk && eyesAndNeurologyOk
-            && imLabRefOk && malnutritionCriteriaOk && screeningSubstanceUseOk && socialDeterminantsOk && screeningResultOk
-            && gastrointestinalDiseasesOk && otherConditionAdditionalOk && ghpOnlyOk;
+            && majorDepressionOk && congenitalDiseasesOk && pressureSoreListOk && cardiovascularDiseasesOk && diseasesOfTheSkinOk
+            && eyesAndNeurologyOk && imLabRefOk && malnutritionCriteriaOk && screeningSubstanceUseOk && socialDeterminantsOk
+            && screeningResultOk && gastrointestinalDiseasesOk && otherConditionAdditionalOk && otherConditionsOk && ghpOnlyOk;
     }
 
     private async Task<bool> SaveImLabRefAsync(long claimId, ImLabRefSection? section, CancellationToken cancellationToken)
@@ -1252,6 +1369,71 @@ internal sealed class AhaClaimService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to save other condition additional recommendation for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy skips the SP call entirely when the list is null or empty. The stored procedure
+    // itself hardcodes ICDCodeType to 10 for every row regardless of what's sent in that column
+    // (it never reads dxTable.ICDCodeType), so AppShared.GetICDCodeType is not needed here.
+    private async Task<bool> SaveOtherConditionsAsync(
+        long claimId,
+        IReadOnlyList<OtherConditionItem>? items,
+        string? defaultRejectCode,
+        string? rejectCodeDescription,
+        CancellationToken cancellationToken)
+    {
+        if (items is null || items.Count == 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var table = new DataTable();
+            table.Columns.Add("ClaimID", typeof(long));
+            table.Columns.Add("DxCode", typeof(string));
+            table.Columns.Add("IsDummy", typeof(bool));
+            table.Columns.Add("sDxText", typeof(string));
+            table.Columns.Add("sDxReason", typeof(string));
+            table.Columns.Add("Controlled", typeof(bool));
+            table.Columns.Add("ICDCodeType", typeof(int));
+            table.Columns.Add("RejectCode", typeof(string));
+            table.Columns.Add("RejectedNotes", typeof(string));
+
+            foreach (var item in items)
+            {
+                var dxCode = item.DiagnosesCode ?? string.Empty;
+                table.Rows.Add(
+                    claimId,
+                    dxCode,
+                    dxCode.Length == 0,
+                    item.Diagnoses,
+                    item.Treatment,
+                    item.Controlled ?? false,
+                    10,
+                    defaultRejectCode,
+                    rejectCodeDescription);
+            }
+
+            var command = new CommandDefinition(
+                "uspClaimsDX_Save_New_V2024",
+                new
+                {
+                    biClaimID = claimId,
+                    dxTable = table.AsTableValuedParameter("AHADxOtherConditions"),
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save other conditions for claim {ClaimId}", claimId);
             return false;
         }
     }
@@ -2195,6 +2377,121 @@ internal sealed class AhaClaimService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to save cardiovascular diseases for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy always calls this SP. When the item list is null, it still sends a single default/empty
+    // row (IndexRow 0); when the list is non-null but empty, it sends zero rows. Either way ClaimID
+    // and NA are always sent.
+    private async Task<bool> SaveDiseasesOfTheSkinAsync(long claimId, IReadOnlyList<DiseasesOfTheSkinItem>? items, bool na, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var table = new DataTable();
+            table.Columns.Add("biClaimID", typeof(long));
+            table.Columns.Add("IndexRow", typeof(short));
+            table.Columns.Add("Dermatitis", typeof(bool));
+            table.Columns.Add("DermatitisTreatment", typeof(string));
+            table.Columns.Add("DermatitisTypeLocation", typeof(string));
+            table.Columns.Add("Psoriasis", typeof(bool));
+            table.Columns.Add("PsoriasisType", typeof(string));
+            table.Columns.Add("PsoriasicArthritis", typeof(bool));
+            table.Columns.Add("PsoriasicArthritisLocation", typeof(string));
+            table.Columns.Add("PsoriasisTreatment", typeof(string));
+            table.Columns.Add("Ulcer", typeof(bool));
+            table.Columns.Add("UlcerLocationAndDepth", typeof(string));
+            table.Columns.Add("DueToArteriosclerosisInExtremities", typeof(bool));
+            table.Columns.Add("DueToPVD", typeof(bool));
+            table.Columns.Add("UlcerTreatment", typeof(string));
+            table.Columns.Add("PressureUlcer", typeof(bool));
+            table.Columns.Add("PressureUlcerStage", typeof(int));
+            table.Columns.Add("PressureUlcerNoStage", typeof(bool));
+            table.Columns.Add("PressureUlcerLocation", typeof(string));
+            table.Columns.Add("PressureUlcerTreatment", typeof(string));
+            table.Columns.Add("PressureUlcerOtherCause", typeof(bool));
+            table.Columns.Add("PressureUlcerOtherCauseText", typeof(string));
+            table.Columns.Add("PressureUlcerOtherCauseTreatment", typeof(string));
+            table.Columns.Add("UlcerDepth", typeof(string));
+            table.Columns.Add("UlcerLocation", typeof(string));
+            table.Columns.Add("UlcerDueToDiabetes", typeof(bool));
+            table.Columns.Add("UlcerDueToVaricoseVeins", typeof(bool));
+            table.Columns.Add("UlcerDueToVaricoseVeinsWithInflamation", typeof(bool));
+            table.Columns.Add("UlcerDueToIdiopathicVenousHypertension", typeof(bool));
+            table.Columns.Add("UlcerDueToIdiopathicVenousHypertensionWithInflamation", typeof(bool));
+            table.Columns.Add("UlcerDueToOtherCause", typeof(bool));
+            table.Columns.Add("UlcerDueToOtherCauseText", typeof(string));
+
+            void AddRow(DiseasesOfTheSkinItem? item, int indexRow)
+            {
+                table.Rows.Add(
+                    claimId,
+                    (short)indexRow,
+                    item?.Dermatitis,
+                    item?.DermatitisTreatment,
+                    item?.DermatitisTypeLocation,
+                    item?.Psoriasis,
+                    item?.PsoriasisType,
+                    item?.PsoriasicArthritis,
+                    item?.PsoriasicArthritisLocation,
+                    item?.PsoriasisTreatment,
+                    item?.Ulcer,
+                    item?.UlcerLocationAndDepth,
+                    item?.DueToArteriosclerosisInExtremities,
+                    item?.DueToPvd,
+                    item?.UlcerTreatment,
+                    item?.PressureUlcer,
+                    item?.PressureUlcerStage,
+                    item?.PressureUlcerNoStage,
+                    item?.PressureUlcerLocation,
+                    item?.PressureUlcerTreatment,
+                    item?.PressureUlcerOtherCause,
+                    item?.PressureUlcerOtherCauseText,
+                    item?.PressureUlcerOtherCauseTreatment,
+                    item?.UlcerDepth,
+                    item?.UlcerLocation,
+                    item?.UlcerDueToDiabetes,
+                    item?.UlcerDueToVaricoseVeins,
+                    item?.UlcerDueToVaricoseVeinsWithInflamation,
+                    item?.UlcerDueToIdiopathicVenousHypertension,
+                    item?.UlcerDueToIdiopathicVenousHypertensionWithInflamation,
+                    item?.UlcerDueToOtherCause,
+                    item?.UlcerDueToOtherCauseText);
+            }
+
+            if (items is not null)
+            {
+                var indexRow = 0;
+                foreach (var item in items)
+                {
+                    indexRow++;
+                    AddRow(item, indexRow);
+                }
+            }
+            else
+            {
+                AddRow(null, 0);
+            }
+
+            var command = new CommandDefinition(
+                "uspSaveDiseasesOfTheSkin2022",
+                new
+                {
+                    ClaimID = claimId,
+                    DiseasesSkinTable = table.AsTableValuedParameter("DiseasesOfTheSkin2022"),
+                    NA = na,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save diseases of the skin for claim {ClaimId}", claimId);
             return false;
         }
     }

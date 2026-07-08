@@ -19,6 +19,13 @@ public sealed record SavePage1Request
 
     public MyocardialInfarctionSection? MyocardialInfarction { get; init; }
 
-    // MedicationList / AllergiesMedicationList are not yet supported here: the legacy save uses a
-    // SQL Server table-valued parameter and the source doesn't specify the server-side type name.
+    public MedicationListSection? MedicationList { get; init; }
+
+    // Legacy computes these off the member's payer and date of birth; the caller supplies them
+    // directly here since this service has no notion of member/payer records of its own.
+    // AllergiesMedicationList is only saved via its own procedure -- and folded into the main
+    // MedicationList save as adherence rows -- when IsGhp is true and MemberAge < 21.
+    public bool IsGhp { get; init; }
+
+    public decimal? MemberAge { get; init; }
 }
