@@ -50,4 +50,29 @@ public sealed class ClaimsController(IClaimsVerificationService claimsVerificati
         var alreadyHasAha = await claimsVerificationService.MemberAlreadyHasAhaAsync(memberId, isEdit, isResubmit, ahaYear, atHome, cancellationToken);
         return Ok(new { alreadyHasAha });
     }
+
+    [HttpGet("aha-verification")]
+    public async Task<IActionResult> VerifyMemberHasAha(
+        [FromQuery] string memberId,
+        [FromQuery] int year,
+        [FromQuery] string renderingNpi,
+        [FromQuery] int? claimClassTag,
+        CancellationToken cancellationToken)
+    {
+        var exists = await claimsVerificationService.MemberHasAhaForYearAsync(memberId, year, renderingNpi, claimClassTag ?? 1, cancellationToken);
+        return Ok(new { exists });
+    }
+
+    [HttpGet("aha-verification-v2")]
+    public async Task<IActionResult> VerifyMemberHasAhaV2(
+        [FromQuery] string memberId,
+        [FromQuery] int year,
+        [FromQuery] string renderingNpi,
+        [FromQuery] bool atHome,
+        [FromQuery] int? claimClassTag,
+        CancellationToken cancellationToken)
+    {
+        var exists = await claimsVerificationService.MemberHasAhaForYearV2Async(memberId, year, renderingNpi, atHome, claimClassTag ?? 1, cancellationToken);
+        return Ok(new { exists });
+    }
 }

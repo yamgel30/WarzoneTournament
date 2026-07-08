@@ -130,4 +130,88 @@ internal sealed class ClaimsVerificationService(
             return false;
         }
     }
+
+    // Distinct from MemberHasThaForYearAsync (a different legacy operation, VerifyMemberHasTHAForYear,
+    // that already calls its own stored procedure) -- this one runs a plain parameterized query
+    // against Claims/M_MSV_Master directly, exactly as legacy does, rather than a stored procedure.
+    public async Task<bool> MemberHasAhaForYearAsync(string memberId, int year, string renderingNpi, int claimClassTag = 1, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var claimClass = await ClaimClassLookup.GetByYearAsync(connection, year, cancellationToken);
+
+            var command = new CommandDefinition(
+                """
+                SELECT biClaimID
+                FROM Claims c (NOLOCK)
+                LEFT JOIN M_MSV_Master m (NOLOCK)
+                    ON c.sPatientContract = m.memberID
+                    AND m.useForPCPEligibility = 1
+                    AND c.sRenderingNPI = m.renderingNPI
+                WHERE c.sPatientContract = @MemberNumber
+                    AND c.sRenderingNPI = @RenderingNPI
+                    AND c.nClaimClass = @ClaimClass
+                    AND c.iStatus in (-1*@ClaimClass,2,3,4)
+                    AND c.nClaimClassTag = @ClaimClassTag
+                    AND (
+                        (c.iStatus in (2,4) AND c.nApproved = 1)
+                        OR c.iStatus = -1*@ClaimClass
+                    )
+                    AND DATEDIFF(DAY, c.dDOS, GETDATE()) <= 90
+                """,
+                new { RenderingNPI = renderingNpi, MemberNumber = memberId, ClaimClass = claimClass, ClaimClassTag = claimClassTag },
+                cancellationToken: cancellationToken);
+
+            var row = await connection.QueryFirstOrDefaultAsync(command);
+            return row is not null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to verify AHA for member {MemberId} for year {Year}", memberId, year);
+            return false;
+        }
+    }
+
+    public async Task<bool> MemberHasAhaForYearV2Async(string memberId, int year, string renderingNpi, bool atHome, int claimClassTag = 1, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var claimClass = await ClaimClassLookup.GetByYearAsync(connection, year, cancellationToken);
+
+            var command = new CommandDefinition(
+                """
+                SELECT c.biClaimID
+                FROM Claims c (NOLOCK)
+                LEFT JOIN M_MSV_Master m (NOLOCK)
+                    ON c.sPatientContract = m.memberID
+                    AND m.useForPCPEligibility = 1
+                    AND c.sRenderingNPI = m.renderingNPI
+                JOIN Claims_AHADetail d WITH (NOLOCK)
+                    ON c.biClaimID = d.biClaimID
+                    AND d.AtHome = @AtHome
+                WHERE c.sPatientContract = @MemberNumber
+                    AND c.sRenderingNPI = @RenderingNPI
+                    AND c.nClaimClass = @ClaimClass
+                    AND c.iStatus in (-1*@ClaimClass,2,3,4)
+                    AND c.nClaimClassTag = @ClaimClassTag
+                    AND (
+                        (c.iStatus in (2,4) AND c.nApproved = 1)
+                        OR c.iStatus = -1*@ClaimClass
+                    )
+                    AND DATEDIFF(DAY, c.dDOS, GETDATE()) <= 90
+                """,
+                new { RenderingNPI = renderingNpi, MemberNumber = memberId, ClaimClass = claimClass, ClaimClassTag = claimClassTag, AtHome = atHome },
+                cancellationToken: cancellationToken);
+
+            var row = await connection.QueryFirstOrDefaultAsync(command);
+            return row is not null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to verify AHA (v2) for member {MemberId} for year {Year}", memberId, year);
+            return false;
+        }
+    }
 }

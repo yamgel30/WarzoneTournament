@@ -11,4 +11,8 @@ public interface IClaimsVerificationService
     Task<bool> IsSubProjectActiveAsync(string projectName, short year, CancellationToken cancellationToken = default);
 
     Task<bool> MemberAlreadyHasAhaAsync(string memberId, bool isEdit, bool isResubmit, int ahaYear, bool atHome, CancellationToken cancellationToken = default);
+
+    Task<bool> MemberHasAhaForYearAsync(string memberId, int year, string renderingNpi, int claimClassTag = 1, CancellationToken cancellationToken = default);
+
+    Task<bool> MemberHasAhaForYearV2Async(string memberId, int year, string renderingNpi, bool atHome, int claimClassTag = 1, CancellationToken cancellationToken = default);
 }

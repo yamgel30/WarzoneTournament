@@ -460,6 +460,59 @@ in both the deferred `GetAHA` read-side and report generation, so it's
 tangled up with the two biggest deferred pieces rather than being
 self-contained.
 
+### Ported: a few more small standalone operations
+
+While reading the orchestrators below, found and ported four more
+self-contained operations:
+
+- `VerifyMemberHasAHAForYear`/`V2` → `GET /api/claims/aha-verification{,-v2}`
+  (added to `ClaimsVerificationService`). Distinct from
+  `VerifyMemberHasTHAForYear` (already ported) — this one runs a plain
+  parameterized query against `Claims`/`M_MSV_Master` directly rather than
+  calling a stored procedure, exactly as legacy does.
+- `GetAHAYearItem` → `GET /api/form-reference/aha-years/{ahaYear}`.
+- `GetAHAHeaderList` → `GET /api/form-reference/aha-headers` (new
+  `FormReferenceService`). The private `GetMemberHeaderList` helper it
+  calls takes a `clinicOrHeader` flag that turns out to be dead code — both
+  branches of the (commented-out) stored-procedure choice resolved to the
+  same call, so it's not exposed here.
+- `GetHistoryPresentIllnessOption` → `GET /api/form-reference/history-present-illness-options`.
+
+### Why `SubmitAHA`/`UpdateAHA`/`PartialSaveAHA` aren't ported as single endpoints
+
+Looked at these next (the orchestrators wrapping the already-ported
+`SaveClaim`), but they're blocked, not just large:
+
+- Every one of them calls `AHAValidator2.Validate(...)` — a whole-form
+  validator class whose source isn't available. `PartialSaveAHA`
+  additionally short-circuits on concurrency (`ValidateConcurrencyID`,
+  already ported) and duplicate-year checks
+  (`VerifyMemberHasAHAForYearV2`, now ported above) before calling
+  `SaveClaim`, so those specific pieces are now available even though the
+  orchestrator itself isn't.
+- They all take the single legacy `AHAFormItem` (the whole form, with
+  wrapped `StringField`/`BooleanField`/... values) as one parameter, not
+  the per-page plain-value DTOs (`SavePage1Request`, etc.) this migration
+  is built around — porting the orchestrator as-is would mean going back
+  on the plain-values design decision, or building a translation layer
+  from the legacy wrapped-field model that doesn't exist anywhere else in
+  Chopper.
+- Confirmed two real, reusable business rules while reading these,
+  independent of the validator problem: `IsGhp` is computed as
+  `PayerID = "660653763"`, and `MemberAge` as
+  `(Now - MemberDOB).TotalDays / 365.25` for `SubmitAHA`'s snapshot (the
+  Page 4 GHP-gate for Eyes/Neurology uses `DateOfVisit` instead of `Now` for
+  the same formula — a different snapshot for a different call site, not
+  an inconsistency). Both are still caller-supplied in this migration
+  (`SavePage1Request.IsGhp`/`MemberAge`, `SavePage4Request.IsGhp`) since
+  this service has no member/payer table access of its own, but now the
+  exact legacy formula is documented instead of just "computed
+  elsewhere, source unknown."
+
+Revisit once `AHAValidator2`'s source is available and/or the "how should
+the new API be shaped" question (3 front-end forms, one page-at-a-time API
+vs. one whole-form submission) has an answer.
+
 ## Migration approach (strangler fig)
 
 Migrate operation by operation instead of a big-bang rewrite:
@@ -500,9 +553,10 @@ are available. What's still open:
   differently than an omitted parameter would.
 
 `AHADataAdapter.vb`/`SaveClaim` is done. The migration has now moved on to
-`AHAService1.vb` (see above) — claim list/search **and** provider/billing/
-eligibility/Dx-condition operations are ported; next up, roughly in order of
-how implementable each is right now:
+`AHAService1.vb` (see above) — claim list/search, provider/billing/
+eligibility/Dx-condition operations, and a handful of small standalone
+lookups are ported; next up, roughly in order of how implementable each is
+right now:
 
 1. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
    `LoadCodUserAndNotes`, `LoadRejectedCodes`, `LoadQuestions`) — needs a
@@ -511,10 +565,12 @@ how implementable each is right now:
 2. **The full read side of a claim** (`GetAHA`, `GetMemberAHATemplate`,
    `GetAHAShort`) — not blocked, just large (~5,000 lines combined);
    probably its own multi-batch effort the same way `SaveClaim` was.
-3. **Submit/Update/PartialSave orchestrators** — the session/business-rule
-   layer wrapped around the already-ported `SaveClaim` call.
 
 Confirmed not implementable yet, without more source:
+- **`SubmitAHA`/`UpdateAHA`/`PartialSaveAHA` orchestrators** — blocked on
+  `AHAValidator2` (whole-form validator, source unavailable) and a model-shape
+  mismatch with the rest of this migration (see above for the full
+  explanation and what *was* extracted from reading them).
 - **Login/SingleSignOn** — needs the external `AUS.Library`/
   `AUSAuthentication` assemblies.
 - **`GetPRAIReport`** — needs the external `AUS.MMM.PRAI.Library` assembly.

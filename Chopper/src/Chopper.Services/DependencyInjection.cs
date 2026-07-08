@@ -6,6 +6,7 @@ using Chopper.Services.Claims;
 using Chopper.Services.ClaimConditions;
 using Chopper.Services.ClaimSearch;
 using Chopper.Services.Common;
+using Chopper.Services.FormReference;
 using Chopper.Services.Providers;
 using Chopper.Services.Sessions;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IClaimSearchService, ClaimSearchService>();
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IClaimConditionService, ClaimConditionService>();
+        services.AddScoped<IFormReferenceService, FormReferenceService>();
 
         return services;
     }
