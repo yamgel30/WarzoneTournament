@@ -1106,9 +1106,517 @@ internal sealed class AhaClaimService(
         var pressureSoreListOk = await SavePressureSoreListAsync(claimId, request.PressureSoreList, cancellationToken);
         var cardiovascularDiseasesOk = await SaveCardiovascularDiseasesAsync(claimId, request.CardiovascularDiseases, cancellationToken);
         var eyesAndNeurologyOk = await SaveEyesAndNeurologyAsync(claimId, request.EyesAndNeurology, request.DateOfVisit, request.IsGhp, cancellationToken);
+        var imLabRefOk = await SaveImLabRefAsync(claimId, request.ImLabRef, cancellationToken);
+        var malnutritionCriteriaOk = await SaveMalnutritionCriteriaAsync(claimId, request.MalnutritionCriteria, cancellationToken);
+        var screeningSubstanceUseOk = await SaveScreeningSubstanceUseAsync(claimId, request.ScreeningSubstanceUse, cancellationToken);
+
+        var socialDeterminantsOk = request.DateOfVisit.Year < 2023
+            ? await SaveSocialDeterminants2020Async(claimId, request.SocialDeterminants2020, cancellationToken)
+            : await SaveSocialDeterminants2023Async(claimId, request.SocialDeterminants2023, cancellationToken);
+
+        var screeningResultOk = await SaveScreeningResultAsync(
+            claimId, request.ScreeningSubstanceUseResult, request.SocialDeterminantsResult, request.MalnutritionCriteriaResult, cancellationToken);
+
+        var gastrointestinalDiseasesOk = await SaveGastrointestinalDiseasesAsync(claimId, request.GastrointestinalDiseases, cancellationToken);
+
+        var otherConditionAdditionalOk = true;
+        if (request.AtHome)
+        {
+            otherConditionAdditionalOk = await SaveOtherConditionAdditionalAsync(claimId, request.OtherConditionAdditionalRecommendation, cancellationToken);
+        }
+
+        var ghpOnlyOk = true;
+        if (request.IsGhp)
+        {
+            var gastrointestinalGhpOk = await SaveGastrointestinalGhpAsync(claimId, request.GastrointestinalDiseases, cancellationToken);
+            var musculoskeletalGhpOk = await SaveMusculoskeletalGhpAsync(claimId, request.MusculoskeletalGhp, cancellationToken);
+            ghpOnlyOk = gastrointestinalGhpOk && musculoskeletalGhpOk;
+        }
 
         return bmiOk && rheumatoidArthritisOk && assessmentPlanOk && cancerDiagnosesOk && ckdOk && pressureSoresOk
-            && majorDepressionOk && congenitalDiseasesOk && pressureSoreListOk && cardiovascularDiseasesOk && eyesAndNeurologyOk;
+            && majorDepressionOk && congenitalDiseasesOk && pressureSoreListOk && cardiovascularDiseasesOk && eyesAndNeurologyOk
+            && imLabRefOk && malnutritionCriteriaOk && screeningSubstanceUseOk && socialDeterminantsOk && screeningResultOk
+            && gastrointestinalDiseasesOk && otherConditionAdditionalOk && ghpOnlyOk;
+    }
+
+    private async Task<bool> SaveImLabRefAsync(long claimId, ImLabRefSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy skips the SP call entirely (and never flags an error) when the section is absent.
+        if (section is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveImLabRef",
+                new
+                {
+                    ClaimID = claimId,
+                    Immunizations_NA = section.ImmunizationsNa,
+                    Immunizations_ParentRefuses = section.ImmunizationsParentRefuses,
+                    Immunizations_HepB1dose = section.ImmunizationsHepB1Dose,
+                    Immunizations_HebB2dose = section.ImmunizationsHebB2Dose,
+                    Immunizations_HebB3dose = section.ImmunizationsHebB3Dose,
+                    Immunizations_HepA1dose = section.ImmunizationsHepA1Dose,
+                    Immunizations_HebA2dose = section.ImmunizationsHebA2Dose,
+                    Immunizations_DTaP1dose = section.ImmunizationsDTaP1Dose,
+                    Immunizations_DTaP2dose = section.ImmunizationsDTaP2Dose,
+                    Immunizations_DTaP3dose = section.ImmunizationsDTaP3Dose,
+                    Immunizations_DTaP4dose = section.ImmunizationsDTaP4Dose,
+                    Immunizations_DTaP5dose = section.ImmunizationsDTaP5Dose,
+                    Immunizations_Hib1dose = section.ImmunizationsHib1Dose,
+                    Immunizations_Hib2dose = section.ImmunizationsHib2Dose,
+                    Immunizations_Hib3dose = section.ImmunizationsHib3Dose,
+                    Immunizations_Hib4dose = section.ImmunizationsHib4Dose,
+                    Immunizations_PCV13_1dose = section.ImmunizationsPcv13_1Dose,
+                    Immunizations_PCV13_2dose = section.ImmunizationsPcv13_2Dose,
+                    Immunizations_PCV13_3dose = section.ImmunizationsPcv13_3Dose,
+                    Immunizations_PCV13_4dose = section.ImmunizationsPcv13_4Dose,
+                    Immunizations_IPV1dose = section.ImmunizationsIpv1Dose,
+                    Immunizations_IPV2dose = section.ImmunizationsIpv2Dose,
+                    Immunizations_IPV3dose = section.ImmunizationsIpv3Dose,
+                    Immunizations_IPV4dose = section.ImmunizationsIpv4Dose,
+                    Immunizations_MMR1dose = section.ImmunizationsMmr1Dose,
+                    Immunizations_MMR2dose = section.ImmunizationsMmr2Dose,
+                    Immunizations_Varicella1dose = section.ImmunizationsVaricella1Dose,
+                    Immunizations_Varicella2dose = section.ImmunizationsVaricella2Dose,
+                    Immunizations_Tdap = section.ImmunizationsTdap,
+                    Immunizations_Rotavirus1dose = section.ImmunizationsRotavirus1Dose,
+                    Immunizations_Rotavirus2dose = section.ImmunizationsRotavirus2Dose,
+                    Immunizations_Influenza = section.ImmunizationsInfluenza,
+                    Immunizations_MenningococcalMCV = section.ImmunizationsMenningococcalMcv,
+                    Immunizations_HPV1dose = section.ImmunizationsHpv1Dose,
+                    Immunizations_HPV2dose = section.ImmunizationsHpv2Dose,
+                    Immunizations_HPV3dose = section.ImmunizationsHpv3Dose,
+                    Immunizations_Others = section.ImmunizationsOthers,
+                    Lab_NA = section.LabNa,
+                    Lab_HgbHct = section.LabHgbHct,
+                    Lab_TB = section.LabTb,
+                    Lab_UA = section.LabUa,
+                    Lab_LipidProfile = section.LabLipidProfile,
+                    Lab_BloodLeadTest = section.LabBloodLeadTest,
+                    Lab_VIH = section.LabVih,
+                    Lab_NAAT = section.LabNaat,
+                    Lab_VDRL = section.LabVdrl,
+                    Lab_Other = section.LabOther,
+                    section.VisionText,
+                    section.HearingText,
+                    Referrals_NA = section.ReferralsNa,
+                    Referrals_WIC = section.ReferralsWic,
+                    Referrals_PhysicalTherapy = section.ReferralsPhysicalTherapy,
+                    Referrals_OccupationTherapy = section.ReferralsOccupationTherapy,
+                    Referrals_SpeechTherapy = section.ReferralsSpeechTherapy,
+                    Referrals_Audiology = section.ReferralsAudiology,
+                    Referrals_Dental = section.ReferralsDental,
+                    Referrals_BehavioralHealth = section.ReferralsBehavioralHealth,
+                    Referrals_EarlyIntervention = section.ReferralsEarlyIntervention,
+                    Referrals_MentalHealthSpecialist = section.ReferralsMentalHealthSpecialist,
+                    Referrals_Nutritionist = section.ReferralsNutritionist,
+                    Referrals_Optometrist = section.ReferralsOptometrist,
+                    Referrals_Ophthalmology = section.ReferralsOphthalmology,
+                    Referrals_OtherSpecialtyText = section.ReferralsOtherSpecialtyText,
+                    Immuno_Others_Checkbox = section.ImmunoOthersCheckbox,
+                    Labs_Others_Checkbox = section.LabsOthersCheckbox,
+                    Referals_Others_Checkbox = section.ReferalsOthersCheckbox,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save immunizations/labs/referrals for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveOtherConditionAdditionalAsync(long claimId, string? additionalRecommendation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveOtherConditionAdditional",
+                new { ClaimID = claimId, OtherCurrentConditionAdditional = additionalRecommendation },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save other condition additional recommendation for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SavePulmonaryDiseasesAsync(long claimId, PulmonaryDiseasesSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSavePulmonaryDiseases",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    section?.Asthma,
+                    section?.AsthmaComments,
+                    section?.AsthmaDescription,
+                    section?.AcuteBronchitis,
+                    section?.AcuteBronchitisComments,
+                    section?.ChronicBronchitis,
+                    section?.ChronicBronchitisComments,
+                    COPD = section?.Copd,
+                    COPDComments = section?.CopdComments,
+                    section?.PulmonaryFibrosis,
+                    section?.PulmonaryFibrosisComments,
+                    section?.AcuteLaryngopharyngitis,
+                    section?.AcuteLaryngopharyngitisComments,
+                    section?.AcuteNasopharyngitis,
+                    section?.AcuteNasopharyngitisComments,
+                    section?.UpperRespiratoryTractInfection,
+                    section?.UpperRespiratoryTractInfectionComments,
+                    PulmonaryDiseases_OtherCondition_Checkbox = section?.OtherConditionCheckbox,
+                    PulmonaryDiseases_OtherCondition = section?.OtherCondition,
+                    PulmonaryDiseases_OtherConditionTreatment = section?.OtherConditionTreatment,
+                    section?.LungTransplant,
+                    section?.LungTransplantTreatmentPlan,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save pulmonary diseases for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveGastrointestinalDiseasesAsync(long claimId, GastrointestinalDiseasesSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveGastrointestinal",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    NASH = section?.NonalcoholicSteatohepatitis,
+                    section?.MetabolicSyndrome,
+                    section?.Hyperkalemia,
+                    section?.Hypokalemia,
+                    TreatmentPlan = section?.GastrointestinalTreatmentPlan,
+                    section?.LiverTransplant,
+                    GERD = section?.Gerd,
+                    section?.ChronicHepatitis,
+                    section?.DiverticularDisease,
+                    section?.PepticUlcerDisease,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save gastrointestinal diseases for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy calls this same uspSaveGastrointestinal procedure a second time for GHP members, with
+    // only these 6 fields -- redundant with SaveGastrointestinalDiseasesAsync above, but that's
+    // what the legacy page save does, so it's preserved as-is.
+    private async Task<bool> SaveGastrointestinalGhpAsync(long claimId, GastrointestinalDiseasesSection? section, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveGastrointestinal",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    NASH = section?.NonalcoholicSteatohepatitis,
+                    section?.MetabolicSyndrome,
+                    section?.Hyperkalemia,
+                    section?.Hypokalemia,
+                    TreatmentPlan = section?.GastrointestinalTreatmentPlan,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save GHP gastrointestinal for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveMusculoskeletalGhpAsync(long claimId, MusculoskeletalGhpSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveMusculoskeletal",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    section?.Spondylosis,
+                    section?.CervicalDiscDisorder,
+                    section?.CervicothoracicRadiculopathy,
+                    section?.CervicalRegion,
+                    section?.CervicothoracicRegion,
+                    TreatmentPlan = section?.MusculoskeletalTreatmentPlan,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save GHP musculoskeletal for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveSocialDeterminants2020Async(long claimId, SocialDeterminants2020Section? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveClaims_SocialDeterminants",
+                new
+                {
+                    biClaimID = claimId,
+                    problems_living_alone = section?.ProblemsLivingAlone ?? false,
+                    illiteracy = section?.Illiteracy ?? false,
+                    homelessness = section?.Homelessness ?? false,
+                    inadequate_home = section?.InadequateHome ?? false,
+                    discord_with_nll = section?.DiscordWithNll ?? false,
+                    problems_residential_institution = section?.ProblemsResidentialInstitution ?? false,
+                    lack_of_food_and_water = section?.LackOfFoodAndWater ?? false,
+                    extreme_poverty = section?.ExtremePoverty ?? false,
+                    worried_about_losing_housing = section?.WorriedAboutLosingHousing ?? false,
+                    not_able_to_pay_rx = section?.NotAbleToPayRx ?? false,
+                    not_able_to_pay_utilities = section?.NotAbleToPayUtilities ?? false,
+                    not_able_to_pay_medical_care = section?.NotAbleToPayMedicalCare ?? false,
+                    not_able_to_pay_phone = section?.NotAbleToPayPhone ?? false,
+                    not_able_to_pay_transportation = section?.NotAbleToPayTransportation ?? false,
+                    not_able_to_pay_clothing = section?.NotAbleToPayClothing ?? false,
+                    problems_in_relationship = section?.ProblemsInRelationship ?? false,
+                    absence_family_member_military = section?.AbsenceFamilyMemberMilitary ?? false,
+                    disappearance_family_member = section?.DisappearanceFamilyMember ?? false,
+                    other_absence_family_member = section?.OtherAbsenceFamilyMember ?? false,
+                    disruption_separation = section?.DisruptionSeparation ?? false,
+                    dependent_at_home = section?.DependentAtHome ?? false,
+                    alcoholism_drug_addiction_family = section?.AlcoholismDrugAddictionFamily ?? false,
+                    innapropriate_diet = section?.InnapropriateDiet ?? false,
+                    other_reduced_mobility = section?.OtherReducedMobility ?? false,
+                    need_personal_care = section?.NeedPersonalCare ?? false,
+                    need_at_home = section?.NeedAtHome ?? false,
+                    need_continuous_supervision = section?.NeedContinuousSupervision ?? false,
+                    other_problems_provider_dependency = section?.OtherProblemsProviderDependency ?? false,
+                    unavailability_other_helping_agencies = section?.UnavailabilityOtherHelpingAgencies ?? false,
+                    need_assisstance_daily_activities = section?.NeedAssisstanceDailyActivities ?? false,
+                    bedridden_few_to_no_resources = section?.BedriddenFewToNoResources ?? false,
+                    partialy_depends_no_resource = section?.PartialyDependsNoResource ?? false,
+                    socialdeterminants_na = section?.Na ?? false,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save 2020 social determinants for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveSocialDeterminants2023Async(long claimId, SocialDeterminants2023Section? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveClaims_SocialDeterminants_2023",
+                new
+                {
+                    biClaimID = claimId,
+                    section?.IsAutosufficientInRequestForTransport,
+                    section?.HasSafeRoof,
+                    section?.HasSufficientFundsForFood,
+                    section?.FeelSafeInLivingPlace,
+                    socialdeterminants_na = section?.Na ?? false,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save 2023 social determinants for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveMalnutritionCriteriaAsync(long claimId, MalnutritionCriteriaSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveClaims_MalnutritionCriteria",
+                new
+                {
+                    biClaimID = claimId,
+                    involuntary_weight_loss = section?.InvoluntaryWeightLoss ?? false,
+                    involuntary_weight_loss10to5at6monthand20to10over6month = section?.InvoluntaryWeightLoss10To5At6MonthAnd20To10Over6Month ?? false,
+                    involuntary_weight_lossless5at6monthandless10over6month = section?.InvoluntaryWeightLossLess5At6MonthAndLess10Over6Month ?? false,
+                    involuntary_weight_lossmore10at6monthandmore20over6month = section?.InvoluntaryWeightLossMore10At6MonthAndMore20Over6Month ?? false,
+                    Low_bmi = section?.LowBmi ?? false,
+                    low_bmiless18 = section?.LowBmiLess18 ?? false,
+                    low_bmiless20 = section?.LowBmiLess20 ?? false,
+                    reduced_muscle = section?.ReducedMuscle ?? false,
+                    reduced_muscle_severly = section?.ReducedMuscleSeverly ?? false,
+                    reduced_muscle_mild = section?.ReducedMuscleMild ?? false,
+                    reduced_food_intake = section?.ReducedFoodIntake ?? false,
+                    disease_burden = section?.DiseaseBurden ?? false,
+                    other_criteria = section?.OtherCriteria ?? false,
+                    other_criteria_description = section?.OtherCriteriaDescription ?? string.Empty,
+                    albumin = section?.Albumin ?? false,
+                    less2albumin = section?.Less2Albumin ?? false,
+                    less25albumin = section?.Less25Albumin ?? false,
+                    less35albumin = section?.Less35Albumin ?? false,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save malnutrition criteria for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy always deletes existing rows for this claim before re-inserting one row per list item.
+    private async Task<bool> SaveScreeningSubstanceUseAsync(long claimId, IReadOnlyList<ScreeningSubstanceUseItem>? items, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var deleteCommand = new CommandDefinition(
+                "uspDeleteClaims_ScreeningSubstanceUse",
+                new { biClaimID = claimId },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+            await connection.ExecuteAsync(deleteCommand);
+
+            if (items is not null)
+            {
+                foreach (var item in items)
+                {
+                    var insertCommand = new CommandDefinition(
+                        "uspSaveClaims_ScreeningSubstanceUse",
+                        new
+                        {
+                            biClaimID = claimId,
+                            criteria_id = item.CriteriaId ?? false,
+                            screening_substance_use_other = item.Other ?? string.Empty,
+                            screening_substance_use_q1 = item.Q1 ?? false,
+                            screening_substance_use_q2 = item.Q2 ?? false,
+                            screening_substance_use_q3 = item.Q3 ?? false,
+                            screening_substance_use_q4 = item.Q4 ?? false,
+                            screening_substance_use_q5 = item.Q5 ?? false,
+                            screening_substance_use_q6 = item.Q6 ?? false,
+                            screening_substance_use_q7 = item.Q7 ?? false,
+                            screening_substance_use_q8 = item.Q8 ?? false,
+                            screening_substance_use_q9 = item.Q9 ?? false,
+                            screening_substance_use_q10 = item.Q10 ?? false,
+                            screening_substance_use_q11 = item.Q11 ?? false,
+                            screening_substance_use_q12 = item.Q12 ?? false,
+                            screening_substance_use_q13 = item.Q13 ?? false,
+                            screening_substance_use_total = item.Total ?? false,
+                        },
+                        commandType: CommandType.StoredProcedure,
+                        cancellationToken: cancellationToken);
+                    await connection.ExecuteAsync(insertCommand);
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save screening substance use for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveScreeningResultAsync(
+        long claimId, string? screeningSubstanceUseResult, string? socialDeterminantsResult, string? malnutritionCriteriaResult, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveScreeningResult",
+                new
+                {
+                    ClaimID = claimId,
+                    ScreeningSubstanceUseListResult = screeningSubstanceUseResult ?? string.Empty,
+                    ScreeningMalnutritionCriteriaResult = malnutritionCriteriaResult ?? string.Empty,
+                    ScreeningSocialDeterminants2020Result = socialDeterminantsResult ?? string.Empty,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save screening result for claim {ClaimId}", claimId);
+            return false;
+        }
     }
 
     private async Task<bool> SaveBmiAssociatedDiagnosesAsync(long claimId, BmiAssociatedDiagnosesSection? section, CancellationToken cancellationToken)

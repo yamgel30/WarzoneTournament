@@ -150,11 +150,15 @@ service does. It breaks down into two very different shapes of work:
 
   **Page 3 is now fully ported.**
 
-  Ported (partial): **Page 4** (`PUT /api/aha-claims/{claimId}/pages/4`) —
-  11 of ~20 sections: BMI Associated Diagnoses, Rheumatoid Arthritis,
-  Assessment Plan of Treatment, Cancer Diagnoses, CKD, Pressure Sores,
-  Major Depression, Congenital Diseases, Pressure Sore List, Cardiovascular
-  Diseases, Eyes and Neurology.
+  **Page 4 is now fully ported** except the one blocked section (`PUT
+  /api/aha-claims/{claimId}/pages/4`) — BMI Associated Diagnoses,
+  Rheumatoid Arthritis, Assessment Plan of Treatment, Cancer Diagnoses,
+  CKD, Pressure Sores, Major Depression, Congenital Diseases, Pressure
+  Sore List, Cardiovascular Diseases, Eyes and Neurology, Im/Lab/Ref,
+  Other Condition Additional, Pulmonary Diseases, Gastrointestinal
+  Diseases (+ the GHP-only Gastrointestinal/Musculoskeletal pair),
+  Social Determinants (both years), Malnutrition Criteria, Screening
+  Substance Use, and Screening Result.
 
   `AssessmentPlanOfTreatment` has a real business rule preserved as-is:
   when `No` (no diabetes complications) is set, legacy blanks out the
@@ -197,13 +201,32 @@ service does. It breaks down into two very different shapes of work:
 
   `Diseases of the Skin` is **blocked**: same unresolvable table-valued-parameter
   gap as `MedicationList` and `OtherCondition` (`SqlParameter.TypeName`
-  never set in the VB source).
+  never set in the VB source). This is the only Page 4 section not ported.
 
-  Not started: the other ~9 Page 4 sections — Pulmonary Diseases, Im/Lab
-  Ref, Malnutrition Criteria, Screening Substance Use, Social Determinants
-  (+2023 variant), Screening Result, Gastrointestinal Diseases, Other
-  Condition Additional, and the GHP-only Gastrointestinal/Musculoskeletal
-  pair.
+  `GastrointestinalDiseasesSection` gets saved via `uspSaveGastrointestinal`
+  unconditionally, then — for GHP members — legacy calls the **same stored
+  procedure a second time** with only 6 of its 11 fields
+  (`NA`/`NASH`/`MetabolicSyndrome`/`Hyperkalemia`/`Hypokalemia`/`TreatmentPlan`).
+  That's not a mistake in this migration; it's what the legacy page save
+  actually does, so the redundant second call is preserved as-is rather
+  than "optimized away."
+
+  `SaveClaimsMalnutritionCriteria`/`SaveClaimsScreeningSubstanceUse`/etc.
+  are `Public` methods in the legacy adapter (unlike the `Private`
+  `Save*Section` pattern elsewhere) but still take a `dbo` connection
+  parameter and are only ever called from within the page-save flow — they
+  aren't separately SOAP-exposed, so they're treated as ordinary Page 4
+  sections here rather than standalone operations.
+
+  `uspSaveScreeningResult` is a small aggregation step at the end of the
+  page: it just persists 3 summary strings
+  (`ScreeningSubstanceUseListResult`, `ScreeningSocialDeterminants2020Result`,
+  `ScreeningMalnutritionCriteriaResult`). Legacy computes these from fields
+  that were never modeled here (only `.Value` reads scattered around the
+  UI layer, not sent to any of the ported stored procedures), so this
+  migration takes them as plain caller-supplied strings
+  (`SavePage4Request.ScreeningSubstanceUseResult` etc.) rather than trying
+  to derive them.
 
   **Blocked: Other Condition.** Same table-valued-parameter problem as
   Page 1's Medication List (`SqlParameter.TypeName` never set in the VB
@@ -234,22 +257,32 @@ nothing breaks mid-migration.
 
 ## Next
 
-Keep working through Page 4's remaining ~9 sections (see above for the
-list). Same recipe each time — read the section class(es) in
-`legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
-`legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
-endpoint under `Chopper.Services/AhaClaims` and `Chopper.Api/Controllers/AhaClaimsController.cs`.
-
-Also need:
-- The SQL Server table type name for `MedicationListSection` /
-  `AllergiesMedicationList` (see above) to finish Page 1.
-- The `AppShared` class source (at least `GetICDCodeType`,
-  `GetDefaultRejectCode`, `GetRejectCodeDescription`) plus the SQL table
-  type name for its own table-valued parameter, to unblock Page 4's Other
-  Condition section.
+**`SaveClaim` (all 4 pages) is now ported**, except 3 sections blocked on
+the same table-valued-parameter gap: Page 1's Medication List/Allergies
+Medication List, and Page 4's Other Condition and Diseases of the Skin.
+Unblocking those needs:
+- The SQL Server table type name(s) for those three `SqlDbType.Structured`
+  parameters (`MedList`, `dxTable`, `DiseasesSkinTable`) — the VB source
+  never sets `SqlParameter.TypeName`, so it's not recoverable from code
+  alone.
+- For Other Condition specifically, also the `AppShared` class source (at
+  least `GetICDCodeType`, `GetDefaultRejectCode`,
+  `GetRejectCodeDescription`).
 - The `Globals` class source (at least `ValidateDateMinMaxRange`,
   `LogError`, `ValidatePayerID`) if exact legacy behavior matters beyond
   what's already been reasonably approximated.
+
+Beyond that, this is genuinely open — there's no `AHADataAdapter.vb`
+methods left to mine for `SaveClaim`. Worth deciding together:
+- Whether/how to add read operations (the `Get*`/`Search*` methods implied
+  by the response classes in `AHAEDM.vb` — `GetAHAItemResponse`,
+  `GetProviderListResponse`, etc. — none of which have been looked at
+  yet, since the DataAdapter provided so far is save-only).
+- How the "3 different front-end forms sharing one database" reality
+  (raised in chat — some sections legitimately don't apply to every form
+  variant) should shape the new API's shape, once we're ready to think
+  that through.
+- The repository/EF question, still deliberately deferred.
 
 Also useful, if available: the `.asmx`/WSDL for the SOAP service itself, to
 confirm which `AHADataAdapter` methods are actually exposed as SOAP

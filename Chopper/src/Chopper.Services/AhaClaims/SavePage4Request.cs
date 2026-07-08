@@ -9,6 +9,9 @@ public sealed record SavePage4Request
 
     public bool IsGhp { get; init; }
 
+    // Also from the top-level form header -- gates OtherConditionAdditional.
+    public bool AtHome { get; init; }
+
     public BmiAssociatedDiagnosesSection? BmiAssociatedDiagnoses { get; init; }
 
     public RheumatoidArthritisSection? RheumatoidArthritis { get; init; }
@@ -32,4 +35,31 @@ public sealed record SavePage4Request
     public CardiovascularDiseasesSection? CardiovascularDiseases { get; init; }
 
     public EyesAndNeurologySection? EyesAndNeurology { get; init; }
+
+    public ImLabRefSection? ImLabRef { get; init; }
+
+    public string? OtherConditionAdditionalRecommendation { get; init; }
+
+    public PulmonaryDiseasesSection? PulmonaryDiseases { get; init; }
+
+    public GastrointestinalDiseasesSection? GastrointestinalDiseases { get; init; }
+
+    // GHP-only; not gated by IsGhp here -- SavePage4Async checks that itself.
+    public MusculoskeletalGhpSection? MusculoskeletalGhp { get; init; }
+
+    public SocialDeterminants2020Section? SocialDeterminants2020 { get; init; }
+
+    public SocialDeterminants2023Section? SocialDeterminants2023 { get; init; }
+
+    public MalnutritionCriteriaSection? MalnutritionCriteria { get; init; }
+
+    public IReadOnlyList<ScreeningSubstanceUseItem>? ScreeningSubstanceUse { get; init; }
+
+    // Caller-computed summary strings for uspSaveScreeningResult -- legacy derives these from
+    // fields not otherwise sent to any stored procedure, so they're taken as-is here.
+    public string? ScreeningSubstanceUseResult { get; init; }
+
+    public string? SocialDeterminantsResult { get; init; }
+
+    public string? MalnutritionCriteriaResult { get; init; }
 }
