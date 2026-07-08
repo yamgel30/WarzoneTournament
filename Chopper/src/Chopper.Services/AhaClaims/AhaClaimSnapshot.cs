@@ -53,4 +53,30 @@ public sealed record AhaClaimSnapshot
 
     public ImLabRefSection? ImLabRef { get; init; }
     public EyesAndNeurologySection? EyesAndNeurology { get; init; }
+
+    // List-type data, read from result-set tables other than Tables(0)'s single row. Legacy
+    // splits Tables(1) into two disjoint row sets by a DataTable.Select filter on which of
+    // Controlled/Remission/Active are null -- see AhaClaimReadService for the exact predicate.
+    public IReadOnlyList<CancerDiagnosisItem>? CancerDiagnosis { get; init; }
+    public IReadOnlyList<OtherConditionItem>? OtherCurrentConditions { get; init; }
+    public IReadOnlyList<PressureSoreListItem>? PressureSoresList { get; init; }
+    public IReadOnlyList<DiseasesOfTheSkinItem>? DiseasesOfTheSkin { get; init; }
+    public IReadOnlyList<ClaimConditions.DxHistorySelectionItem>? DxHistorySelectionList { get; init; }
+    public IReadOnlyList<ClaimConditions.SuspiciousConditionSelectionItem>? SuspiciousDxHxSelectionList { get; init; }
+    public MalnutritionCriteriaSection? MalnutritionCriteria { get; init; }
+    public IReadOnlyList<ScreeningSubstanceUseItem>? ScreeningSubstanceUseList { get; init; }
+
+    // Sourced from Tables(0), not from the ScreeningSubstanceUseList rows themselves.
+    public string? ScreeningSubstanceUseListResult { get; init; }
+
+    // Legacy sets this at the top of the aha object (not nested inside either
+    // SocialDeterminants2020 or SocialDeterminants2023), defaulting to false rather than null when
+    // the column itself is null.
+    public bool? SocialDeterminantsNa { get; init; }
+
+    // Exactly one of these two is populated, chosen the same way SaveClaim does: 2023Section for
+    // visits from 2023 onward (except a 2023-exactly + ClaimClass 4 carve-out that still uses the
+    // 2020 shape) -- see MapSocialDeterminants.
+    public SocialDeterminants2020Section? SocialDeterminants2020 { get; init; }
+    public SocialDeterminants2023Section? SocialDeterminants2023 { get; init; }
 }

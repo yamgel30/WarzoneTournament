@@ -513,14 +513,16 @@ Revisit once `AHAValidator2`'s source is available and/or the "how should
 the new API be shaped" question (3 front-end forms, one page-at-a-time API
 vs. one whole-form submission) has an answer.
 
-### Started: the read side of a claim (`GetAHA`, `IAhaClaimReadService`)
+### Ported: the read side of a claim (`GetAHA`, `IAhaClaimReadService`)
 
 `GetAHA` (2,850 lines) is bigger than the entirety of `SaveClaim` combined
 — it's one method built around a single stored procedure (`uspGetAHA2`)
-that returns an **11-table result set** (a `DataSet` in legacy), with every
-field mapped by column name into the same section tree `SaveClaim` writes.
-Being ported the same incremental way `SaveClaim` was, one section (or
-group of tables) at a time.
+that returns a **13-table result set** (`Tables(0)` through `Tables(12)`, a
+`DataSet` in legacy — undercounted as 11 early on, before the list-type
+tables past `Tables(8)` were read), with every field mapped by column name
+into the same section tree `SaveClaim` writes. Ported the same incremental
+way `SaveClaim` was, one section (or group of tables) at a time — now
+complete: every table `GetAHA` reads is covered by `GetClaimSnapshotAsync`.
 
 **Ported so far** — `GET /api/aha-claims/{claimId}/header` (form header
 only) and `GET /api/aha-claims/{claimId}` (`AhaClaimSnapshot`, everything
@@ -625,6 +627,62 @@ below plus the header):
   - `ImLabRefSection` gained 18 new nullable properties (9 `*Result`
     strings + 9 `*Ordered` booleans for the Lab checklist) that `GetAHA`
     reads but the ported `SaveClaim` Page 4 path doesn't currently send.
+- **Batch 3 (final): every list-type table, completing `GetAHA`.** Cancer
+  Diagnosis + Other Current Conditions (`Tables(1)`), Pressure Sores List
+  (`Tables(3)`), Diseases of the Skin (`Tables(4)`), Dx History Selection
+  (`Tables(6)`), Allergies Medication List (`Tables(7)`, now populating
+  `MedicationListSection.AllergiesMedicationList`), Suspicious Dx Hx
+  Selection (`Tables(8)`), Malnutrition Criteria (`Tables(10)`), Screening
+  Substance Use (`Tables(11)`), and Social Determinants (`Tables(12)`).
+  `AhaClaimSnapshot` now covers 100% of what `GetAHA` reads.
+  - **`Tables(1)` has no discriminator column** — legacy splits it into
+    Cancer Diagnosis vs. Other Current Conditions rows via a
+    `DataTable.Select` filter on which of `Controlled`/`Remission`/`Active`
+    are null (`Controlled` null + `Remission`/`Active` both set → cancer;
+    `Controlled` set + `Remission`/`Active` both null → other condition).
+    Reproduced with the same predicate against each row's raw values; rows
+    matching neither predicate are skipped, exactly as legacy's filtered
+    `DataRow()` arrays would omit them.
+  - **Diseases of the Skin and Malnutrition Criteria default their boolean
+    fields to `false` (not left unset) when the column is null** — an
+    explicit `Else` branch in legacy's field-by-field reads, unlike almost
+    everywhere else in `GetAHA` which just leaves the field unset. Modeled
+    with `?? false` (and `?? string.Empty` for the one string field that
+    gets the same treatment, `UlcerDueToOtherCauseText`/
+    `OtherCriteriaDescription`) rather than plain nulls.
+  - **`DxHistorySelectionItem` gained `Id`** (`Claims_AHADxHxSelectionID`)
+    — only meaningful on the read side, since the row doesn't exist yet at
+    save time. `ReasonForNo` defaults to `-1` when the column is null,
+    another explicit legacy default (`Dim reasonForNo As Short = -1`).
+  - **`DiseasesOfTheSkinItem` gained `UlcerDueToPvdWithInflamation`** — read
+    by `GetAHA` but not sent by the corresponding save path.
+  - **Two new `Result` string properties on `MalnutritionCriteriaSection`,
+    `SocialDeterminants2020Section`, and `SocialDeterminants2023Section`**
+    (`Malnutrition_Criteria_Result`, `Social_Determinants_Result`) — both
+    are display strings computed server-side and stored, sourced from
+    `Tables(0)` even though the rest of each section comes from a different
+    table (`Tables(10)`/`Tables(12)`).
+  - **`ScreeningSubstanceUseItem.CriteriaId`/`Total` are modeled as `bool?`**
+    (matching the already-verified `SaveClaim` DTO), even though `GetAHA`
+    reads both via `CInt`. Left as-is rather than guessing at a real
+    int/bool mismatch without the `uspGetAHA2` definition to check against
+    — `Convert.ToBoolean` accepts any integer without throwing either way.
+  - **Social Determinants picks its shape (2020 vs. 2023) the same way
+    `SaveClaim` does**: the 2020 shape for visits before 2023, plus a
+    carve-out for visits exactly in 2023 with `ClaimClassTag = 4`;
+    everything else 2023+ gets the newer shape. A top-level
+    `SocialDeterminantsNa` flag (from `Tables(0)`, not nested in either
+    by-year section) defaults to `false` when null, matching another
+    explicit legacy default.
+  - **`uspGetAHA2` actually returns 13 tables**, not the 11 originally
+    estimated before these batches — `Tables(11)` (Screening Substance Use)
+    and `Tables(12)` (Social Determinants) weren't accounted for until this
+    batch. `LoadAhaDataSetAsync` was never hardcoded to a table count (it
+    reads until `GridReader.IsConsumed`), so no code change was needed —
+    just this documentation correction.
+
+`GetAHA` is done. `GetMemberAHATemplate` (2,180 lines) and `GetAHAShort`
+are separate, still-unstarted methods.
 
 Two implementation notes that'll apply to every future batch of this port:
 
@@ -643,14 +701,6 @@ Two implementation notes that'll apply to every future batch of this port:
   the boxed dynamic row value rather than a strict typed access, same
   reasoning as the claim list/search stored procedures.
 
-Still to come: the list-type tables, read from the other 10 result-set
-tables rather than `Tables(0)`'s single row (Cancer Diagnosis + Other
-Current Conditions from `Tables(1)`, Pressure Sores List from `Tables(3)`,
-Diseases of the Skin from `Tables(4)`, Dx History Selection from
-`Tables(6)`, Allergies Medication List from `Tables(7)`, Malnutrition
-Criteria from `Tables(10)`), and Social Determinants near the very end of
-the method. `GetMemberAHATemplate` (2,180 lines) and `GetAHAShort` are
-separate, still-unstarted methods after this.
 
 ## Future scope: 2026/2027+ forms only, and the legacy MVC controllers
 
@@ -721,18 +771,17 @@ are available. What's still open:
 `AHADataAdapter.vb`/`SaveClaim` is done. The migration has now moved on to
 `AHAService1.vb` (see above) — claim list/search, provider/billing/
 eligibility/Dx-condition operations, a handful of small standalone lookups,
-and the first slice of `GetAHA` (the form header) are ported; next up,
-roughly in order of how implementable each is right now:
+and now all of `GetAHA` are ported; next up, roughly in order of how
+implementable each is right now:
 
-1. **Keep working through `GetAHA`** (see above) — Chief Complaint/Medical
-   Family Social History next, then the rest of Page 1-4's read side.
-   Large but well understood now that the header slice has proven out the
-   approach (one `uspGetAHA2` call, 11 result-set tables, reuse the
-   existing plain-value section shapes where the fields line up).
+1. **`GetMemberAHATemplate`** (2,180 lines) and **`GetAHAShort`** — the
+   remaining read-side methods, not yet scoped/read at all. Likely share
+   a lot of shape with `GetAHA` given the naming, but need a first read to
+   confirm before assuming anything.
 2. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
    `LoadCodUserAndNotes`, `LoadRejectedCodes`, `LoadQuestions`) — needs a
    closer read first, and `GetAddendumInfo` itself depends on `GetAHA`
-   (now in progress) plus report generation (still deferred).
+   (now done) plus report generation (still deferred).
 
 Confirmed not implementable yet, without more source:
 - **`SubmitAHA`/`UpdateAHA`/`PartialSaveAHA` orchestrators** — blocked on

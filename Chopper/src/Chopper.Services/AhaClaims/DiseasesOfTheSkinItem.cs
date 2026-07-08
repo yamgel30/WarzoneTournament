@@ -32,4 +32,7 @@ public sealed record DiseasesOfTheSkinItem
     public bool? UlcerDueToIdiopathicVenousHypertensionWithInflamation { get; init; }
     public bool? UlcerDueToOtherCause { get; init; }
     public string? UlcerDueToOtherCauseText { get; init; }
+
+    // Read by GetAHA but not currently sent by the Page 4 save path.
+    public bool? UlcerDueToPvdWithInflamation { get; init; }
 }

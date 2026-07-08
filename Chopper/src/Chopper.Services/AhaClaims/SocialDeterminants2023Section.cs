@@ -9,4 +9,8 @@ public sealed record SocialDeterminants2023Section
     public bool? HasSafeRoof { get; init; }
     public bool? HasSufficientFundsForFood { get; init; }
     public bool? FeelSafeInLivingPlace { get; init; }
+
+    // Read by GetAHA (sourced from Tables(0)'s Social_Determinants_Result) but not currently sent
+    // by the Page 4 save path.
+    public string? Result { get; init; }
 }

@@ -36,4 +36,8 @@ public sealed record SocialDeterminants2020Section
     public bool? NeedAssisstanceDailyActivities { get; init; }
     public bool? BedriddenFewToNoResources { get; init; }
     public bool? PartialyDependsNoResource { get; init; }
+
+    // Read by GetAHA (sourced from Tables(0)'s Social_Determinants_Result) but not currently sent
+    // by the Page 4 save path.
+    public string? Result { get; init; }
 }

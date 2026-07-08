@@ -20,4 +20,8 @@ public sealed record MalnutritionCriteriaSection
     public bool? Less2Albumin { get; init; }
     public bool? Less25Albumin { get; init; }
     public bool? Less35Albumin { get; init; }
+
+    // Read by GetAHA (sourced from Tables(0), not Tables(10) like the rest of this section) but
+    // not currently sent by the Page 4 save path.
+    public string? Result { get; init; }
 }

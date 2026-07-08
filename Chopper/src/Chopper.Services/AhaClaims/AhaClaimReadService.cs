@@ -1,5 +1,6 @@
 using System.Data;
 using Chopper.Services.Abstractions;
+using Chopper.Services.ClaimConditions;
 using Chopper.Services.Common;
 using Dapper;
 
@@ -36,6 +37,7 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         }
 
         var row = tables[0][0];
+        IDictionary<string, object> headerRow = row;
         var header = MapHeader(tables, claimId);
 
         // Legacy computes _isGHP from Globals.ValidatePayerID(aha) right after Screening Schedule
@@ -44,6 +46,9 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         // simpler PayerID = "660653763" formula confirmed elsewhere in this file is used here too.
         var isGhp2025 = header.PayerId == "660653763" && header.DateOfVisit is { Year: > 2024 };
 
+        var (cancerDiagnosis, otherCurrentConditions) = MapCancerDiagnosisAndOtherConditions(tables.Count > 1 ? tables[1] : []);
+        var (socialDeterminants2020, socialDeterminants2023) = MapSocialDeterminants(tables.Count > 12 ? tables[12] : [], headerRow, header);
+
         return new AhaClaimSnapshot
         {
             Header = header,
@@ -51,7 +56,7 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             MedicalFamilySocialHistory = MapMedicalFamilySocialHistory(row),
             AdvanceDirective = MapAdvanceDirective(row),
             ReviewOfSystem = MapReviewOfSystem(row),
-            MedicationList = MapMedicationList(row, tables.Count > 5 ? tables[5] : []),
+            MedicationList = MapMedicationList(row, tables.Count > 5 ? tables[5] : [], tables.Count > 7 ? tables[7] : []),
             MedicationReview = MapMedicationReview(row),
             CognitiveAssessment = MapCognitiveAssessment(row),
             PainScreening = MapPainScreening(row),
@@ -76,6 +81,18 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             MusculoskeletalGhp = MapMusculoskeletalGhp(row),
             ImLabRef = MapImLabRef(row),
             EyesAndNeurology = MapEyesAndNeurology(row),
+            CancerDiagnosis = cancerDiagnosis,
+            OtherCurrentConditions = otherCurrentConditions,
+            PressureSoresList = MapPressureSoresList(tables.Count > 3 ? tables[3] : []),
+            DiseasesOfTheSkin = MapDiseasesOfTheSkin(tables.Count > 4 ? tables[4] : []),
+            DxHistorySelectionList = MapDxHistorySelectionList(tables.Count > 6 ? tables[6] : [], claimId),
+            SuspiciousDxHxSelectionList = MapSuspiciousDxHxSelectionList(tables.Count > 8 ? tables[8] : [], claimId),
+            MalnutritionCriteria = MapMalnutritionCriteria(tables.Count > 10 ? tables[10] : [], row),
+            ScreeningSubstanceUseList = MapScreeningSubstanceUseList(tables.Count > 11 ? tables[11] : []),
+            ScreeningSubstanceUseListResult = GetString(row, "Screening_Substance_Result"),
+            SocialDeterminantsNa = GetBoolOrNull(row, "SocialDeterminants_NA") ?? false,
+            SocialDeterminants2020 = socialDeterminants2020,
+            SocialDeterminants2023 = socialDeterminants2023,
         };
     }
 
@@ -332,7 +349,7 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
     // Table 5 holds every medication row (current + adherence); AllergiesMedicationList comes from
     // a different table read in a later batch. isAdherence splits the row between the two lists,
     // exactly as legacy's For Each loop does.
-    private static MedicationListSection MapMedicationList(IDictionary<string, object> row, IReadOnlyList<dynamic> medicationRows)
+    private static MedicationListSection MapMedicationList(IDictionary<string, object> row, IReadOnlyList<dynamic> medicationRows, IReadOnlyList<dynamic> allergyRows)
     {
         var currentMedication = new List<MedicationItem>();
         var adherenceMedicationList = new List<MedicationItem>();
@@ -357,12 +374,26 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             }
         }
 
+        // Tables(7) -- a separate result set from the current/adherence medication rows above.
+        var allergiesMedicationList = allergyRows
+            .Select(allergyRow =>
+            {
+                IDictionary<string, object> allergyDict = allergyRow;
+                return new MedicationItem
+                {
+                    MedicationName = GetString(allergyDict, "AlergMedName") ?? string.Empty,
+                    IsHistoric = GetBoolOrNull(allergyDict, "isHistoric") ?? false,
+                };
+            })
+            .ToList();
+
         return new MedicationListSection
         {
             CurrentlyDoesNotUse = GetBoolOrNull(row, "PatientCurrentlyNoUse"),
             NotKnowAllergies = GetBoolOrNull(row, "NotKnowAllergies_MedList"),
             CurrentMedication = currentMedication,
             AdherenceMedicationList = adherenceMedicationList,
+            AllergiesMedicationList = allergiesMedicationList,
         };
     }
 
@@ -1508,8 +1539,293 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
         DementiaAlzheimerTreatmentPlan = GetString(row, "DementiaAlzheimerTreatmentPlan"),
     };
 
-    // uspGetAHA2 returns an 11-table result set (DataSet in legacy); read once and keep every
-    // table around so later batches can pull whichever ones they need without a second round trip.
+    // Tables(1) holds two disjoint sets of rows, distinguished by legacy via a DataTable.Select
+    // filter rather than a discriminator column: rows with Controlled null and Remission/Active
+    // both non-null are cancer diagnoses; rows with Controlled non-null and Remission/Active both
+    // null are other current conditions. Rows matching neither predicate are skipped, same as
+    // legacy (they simply don't appear in either filtered row set).
+    private static (List<CancerDiagnosisItem> CancerDiagnosis, List<OtherConditionItem> OtherCurrentConditions) MapCancerDiagnosisAndOtherConditions(IReadOnlyList<dynamic> rows)
+    {
+        var cancerDiagnosis = new List<CancerDiagnosisItem>();
+        var otherCurrentConditions = new List<OtherConditionItem>();
+
+        foreach (var dynRow in rows)
+        {
+            IDictionary<string, object> row = dynRow;
+            var controlled = GetRawValue(row, "Controlled");
+            var remission = GetRawValue(row, "Remission");
+            var active = GetRawValue(row, "Active");
+
+            if (controlled is null && remission is not null && active is not null)
+            {
+                cancerDiagnosis.Add(new CancerDiagnosisItem
+                {
+                    Primary = GetBoolOrNull(row, "Primary"),
+                    Secondary = GetBoolOrNull(row, "Secondary"),
+                    Active = GetBoolOrNull(row, "Active"),
+                    History = GetBoolOrNull(row, "History"),
+                    Remission = GetBoolOrNull(row, "Remission"),
+                    Diagnoses = GetString(row, "DxText"),
+                    Treatment = GetString(row, "DxReason"),
+                    CurrentlyInChemotherapy = GetBoolOrNull(row, "CurrentlyInChemotherapy"),
+                    CurrentlyInRadiotherapy = GetBoolOrNull(row, "CurrentlyInRadiotherapy"),
+                    CurrentlyInImmunotherapy = GetBoolOrNull(row, "CurrentlyInImmunotherapy"),
+                    CurrentlyRefusesTreatment = GetBoolOrNull(row, "CurrentlyRefusesTreatment"),
+                });
+            }
+            else if (controlled is not null && remission is null && active is null)
+            {
+                otherCurrentConditions.Add(new OtherConditionItem
+                {
+                    Controlled = GetBoolOrNull(row, "Controlled"),
+                    Diagnoses = GetString(row, "DxText"),
+                    Treatment = GetString(row, "DxReason"),
+                    DiagnosesCode = GetString(row, "dxCode"),
+                });
+            }
+        }
+
+        return (cancerDiagnosis, otherCurrentConditions);
+    }
+
+    private static List<PressureSoreListItem> MapPressureSoresList(IReadOnlyList<dynamic> rows) => rows
+        .Select(dynRow =>
+        {
+            IDictionary<string, object> row = dynRow;
+            return new PressureSoreListItem
+            {
+                ByVaricoseVainsInLegs = GetBoolOrNull(row, "ByVaricoseVainsInLegs"),
+                ByArteriosclerosisInExtremities = GetBoolOrNull(row, "ByArteriosclerosisInExtremities"),
+                ByDiabetic = GetBoolOrNull(row, "ByDiabetic"),
+                ByPressure = GetBoolOrNull(row, "ByPressure"),
+                ByPressureStage = GetIntOrNull(row, "ByPressureStage"),
+                AnatomicalSite = GetString(row, "AnatomicalSite"),
+                AnatomicalSiteOther = GetString(row, "AnatomicalSiteOther"),
+                ByOtherCondition = GetBoolOrNull(row, "ByOtherCondition"),
+                OtherConditionText = GetString(row, "OtherConditionText"),
+                Treatment = GetString(row, "Treatment"),
+            };
+        })
+        .ToList();
+
+    // Legacy explicitly defaults every boolean field here to False (and UlcerDueToOtherCauseText
+    // to empty string) when the column is null, rather than leaving the field unset the way the
+    // rest of GetAHA does -- reproduced with "?? false"/"?? string.Empty" rather than plain nulls.
+    private static List<DiseasesOfTheSkinItem> MapDiseasesOfTheSkin(IReadOnlyList<dynamic> rows) => rows
+        .Select(dynRow =>
+        {
+            IDictionary<string, object> row = dynRow;
+            return new DiseasesOfTheSkinItem
+            {
+                Dermatitis = GetBoolOrNull(row, "Dermatitis") ?? false,
+                DermatitisTreatment = GetString(row, "DermatitisTreatment"),
+                DermatitisTypeLocation = GetString(row, "DermatitisTypeLocation"),
+                Psoriasis = GetBoolOrNull(row, "Psoriasis") ?? false,
+                PsoriasisType = GetString(row, "PsoriasisType"),
+                PsoriasicArthritis = GetBoolOrNull(row, "PsoriasicArthritis") ?? false,
+                PsoriasicArthritisLocation = GetString(row, "PsoriasicArthritisLocation"),
+                PsoriasisTreatment = GetString(row, "PsoriasisTreatment"),
+                Ulcer = GetBoolOrNull(row, "Ulcer") ?? false,
+                UlcerLocationAndDepth = GetString(row, "UlcerLocationAndDepth"),
+                UlcerDepth = GetString(row, "UlcerDepth"),
+                UlcerLocation = GetString(row, "UlcerLocation"),
+                DueToArteriosclerosisInExtremities = GetBoolOrNull(row, "DueToArteriosclerosisInExtremities") ?? false,
+                DueToPvd = GetBoolOrNull(row, "DueToPVD") ?? false,
+                UlcerTreatment = GetString(row, "UlcerTreatment"),
+                PressureUlcer = GetBoolOrNull(row, "PressureUlcer") ?? false,
+                PressureUlcerStage = GetIntOrNull(row, "PressureUlcerStage"),
+                PressureUlcerNoStage = GetBoolOrNull(row, "PressureUlcerNoStage") ?? false,
+                PressureUlcerLocation = GetString(row, "PressureUlcerLocation"),
+                PressureUlcerTreatment = GetString(row, "PressureUlcerTreatment"),
+                PressureUlcerOtherCause = GetBoolOrNull(row, "PressureUlcerOtherCause") ?? false,
+                PressureUlcerOtherCauseText = GetString(row, "PressureUlcerOtherCauseText"),
+                UlcerDueToDiabetes = GetBoolOrNull(row, "UlcerDueToDiabetes") ?? false,
+                UlcerDueToVaricoseVeins = GetBoolOrNull(row, "UlcerDueToVaricoseVeins") ?? false,
+                UlcerDueToVaricoseVeinsWithInflamation = GetBoolOrNull(row, "UlcerDueToVaricoseVeinsWithInflamation") ?? false,
+                UlcerDueToIdiopathicVenousHypertension = GetBoolOrNull(row, "UlcerDueToIdiopathicVenousHypertension") ?? false,
+                UlcerDueToIdiopathicVenousHypertensionWithInflamation = GetBoolOrNull(row, "UlcerDueToIdiopathicVenousHypertensionWithInflamation") ?? false,
+                UlcerDueToOtherCause = GetBoolOrNull(row, "UlcerDueToOtherCause") ?? false,
+                UlcerDueToOtherCauseText = GetString(row, "UlcerDueToOtherCauseText") ?? string.Empty,
+                UlcerDueToPvdWithInflamation = GetBoolOrNull(row, "UlcerDueToPVDWithInflamation") ?? false,
+            };
+        })
+        .ToList();
+
+    // Legacy defaults ReasonForNo to -1 when the column is null, rather than leaving it unset.
+    private static List<DxHistorySelectionItem> MapDxHistorySelectionList(IReadOnlyList<dynamic> rows, long claimId) => rows
+        .Select(dynRow =>
+        {
+            IDictionary<string, object> row = dynRow;
+            return new DxHistorySelectionItem
+            {
+                Id = GetLongOrNull(row, "Claims_AHADxHxSelectionID"),
+                ClaimId = claimId,
+                DxCode = GetString(row, "DxCode"),
+                DxDescription = GetString(row, "DxDescription"),
+                ProviderName = GetString(row, "ProviderName"),
+                Source = GetString(row, "Source"),
+                SelectionIndex = GetIntOrNull(row, "SelectionIndex") ?? 0,
+                ReasonForNo = (short)(GetIntOrNull(row, "ReasonForNo") ?? -1),
+            };
+        })
+        .ToList();
+
+    private static List<SuspiciousConditionSelectionItem> MapSuspiciousDxHxSelectionList(IReadOnlyList<dynamic> rows, long claimId) => rows
+        .Select(dynRow =>
+        {
+            IDictionary<string, object> row = dynRow;
+            return new SuspiciousConditionSelectionItem
+            {
+                ClaimId = claimId,
+                Detail = GetString(row, "Detail"),
+                DxCode = GetString(row, "DxCode"),
+                Condition = GetString(row, "Condition"),
+                SelectionIndex = GetIntOrNull(row, "SelectionIndex") ?? 0,
+                Hcc = GetString(row, "HCC"),
+                Source = GetString(row, "Source"),
+            };
+        })
+        .ToList();
+
+    // Tables(10), a single row -- like Tables(0), but Result is sourced from Tables(0) instead
+    // (headerRow here). Legacy explicitly defaults every boolean field to False when the column is
+    // null, same quirk as DiseasesOfTheSkin above.
+    private static MalnutritionCriteriaSection? MapMalnutritionCriteria(IReadOnlyList<dynamic> malnutritionRows, IDictionary<string, object> headerRow)
+    {
+        if (malnutritionRows.Count == 0)
+        {
+            return null;
+        }
+
+        IDictionary<string, object> row = malnutritionRows[0];
+        return new MalnutritionCriteriaSection
+        {
+            InvoluntaryWeightLoss = GetBoolOrNull(row, "involuntary_weight_loss") ?? false,
+            InvoluntaryWeightLossMore10At6MonthAndMore20Over6Month = GetBoolOrNull(row, "involuntary_weight_lossmore10at6monthandmore20over6month") ?? false,
+            InvoluntaryWeightLoss10To5At6MonthAnd20To10Over6Month = GetBoolOrNull(row, "involuntary_weight_loss10to5at6monthand20to10over6month") ?? false,
+            InvoluntaryWeightLossLess5At6MonthAndLess10Over6Month = GetBoolOrNull(row, "involuntary_weight_lossless5at6monthandless10over6month") ?? false,
+            LowBmi = GetBoolOrNull(row, "Low_bmi") ?? false,
+            LowBmiLess18 = GetBoolOrNull(row, "low_bmiless18") ?? false,
+            LowBmiLess20 = GetBoolOrNull(row, "low_bmiless20") ?? false,
+            ReducedMuscle = GetBoolOrNull(row, "reduced_muscle") ?? false,
+            ReducedMuscleSeverly = GetBoolOrNull(row, "reduced_muscle_severly") ?? false,
+            ReducedMuscleMild = GetBoolOrNull(row, "reduced_muscle_mild") ?? false,
+            ReducedFoodIntake = GetBoolOrNull(row, "reduced_food_intake") ?? false,
+            DiseaseBurden = GetBoolOrNull(row, "disease_burden") ?? false,
+            OtherCriteria = GetBoolOrNull(row, "other_criteria") ?? false,
+            OtherCriteriaDescription = GetString(row, "other_criteria_description") ?? string.Empty,
+            Albumin = GetBoolOrNull(row, "albumin") ?? false,
+            Less2Albumin = GetBoolOrNull(row, "less2albumin") ?? false,
+            Less25Albumin = GetBoolOrNull(row, "less25albumin") ?? false,
+            Less35Albumin = GetBoolOrNull(row, "less35albumin") ?? false,
+            Result = GetString(headerRow, "Malnutrition_Criteria_Result"),
+        };
+    }
+
+    // CriteriaId and Total are modeled as bool? (matching the already-verified Save-side DTO), even
+    // though legacy reads both via CInt here -- either the underlying columns are genuinely bit
+    // columns and legacy's CInt is just redundant, or there's a real int/bool mismatch that
+    // couldn't be confirmed without the uspGetAHA2 definition. Convert.ToBoolean accepts any
+    // integer (0 = false, nonzero = true) so this doesn't throw either way.
+    private static List<ScreeningSubstanceUseItem> MapScreeningSubstanceUseList(IReadOnlyList<dynamic> rows) => rows
+        .Select(dynRow =>
+        {
+            IDictionary<string, object> row = dynRow;
+            return new ScreeningSubstanceUseItem
+            {
+                CriteriaId = GetBoolOrNull(row, "criteria_id"),
+                Other = GetString(row, "screening_substance_use_other"),
+                Q1 = GetBoolOrNull(row, "screening_substance_use_q1"),
+                Q2 = GetBoolOrNull(row, "screening_substance_use_q2"),
+                Q3 = GetBoolOrNull(row, "screening_substance_use_q3"),
+                Q4 = GetBoolOrNull(row, "screening_substance_use_q4"),
+                Q5 = GetBoolOrNull(row, "screening_substance_use_q5"),
+                Q6 = GetBoolOrNull(row, "screening_substance_use_q6"),
+                Q7 = GetBoolOrNull(row, "screening_substance_use_q7"),
+                Q8 = GetBoolOrNull(row, "screening_substance_use_q8"),
+                Q9 = GetBoolOrNull(row, "screening_substance_use_q9"),
+                Q10 = GetBoolOrNull(row, "screening_substance_use_q10"),
+                Q11 = GetBoolOrNull(row, "screening_substance_use_q11"),
+                Q12 = GetBoolOrNull(row, "screening_substance_use_q12"),
+                Q13 = GetBoolOrNull(row, "screening_substance_use_q13"),
+                Total = GetBoolOrNull(row, "screening_substance_use_total"),
+            };
+        })
+        .ToList();
+
+    // Tables(12), a single row. Legacy picks the 2020 shape for visits before 2023, and also for
+    // visits exactly in 2023 with ClaimClassTag = 4 (a carve-out) -- everything else 2023+ gets the
+    // newer shape. Both Result fields are sourced from Tables(0), not Tables(12). If DateOfVisit is
+    // somehow null, legacy would fail dereferencing it (Value.Value on a null Nullable) -- falls
+    // through to the 2023 shape here instead, since that's the newer/current default.
+    private static (SocialDeterminants2020Section? SocialDeterminants2020, SocialDeterminants2023Section? SocialDeterminants2023) MapSocialDeterminants(
+        IReadOnlyList<dynamic> socialDeterminantsRows, IDictionary<string, object> headerRow, AhaFormHeader header)
+    {
+        if (socialDeterminantsRows.Count == 0)
+        {
+            return (null, null);
+        }
+
+        IDictionary<string, object> row = socialDeterminantsRows[0];
+        var result = GetString(headerRow, "Social_Determinants_Result");
+        var use2020Shape = header.DateOfVisit is { Year: < 2023 } || (header.DateOfVisit is { Year: 2023 } && header.ClaimClassTag == 4);
+
+        if (use2020Shape)
+        {
+            return (new SocialDeterminants2020Section
+            {
+                ProblemsLivingAlone = GetBoolOrNull(row, "problems_living_alone"),
+                Illiteracy = GetBoolOrNull(row, "illiteracy"),
+                Homelessness = GetBoolOrNull(row, "homelessness"),
+                InadequateHome = GetBoolOrNull(row, "inadequate_home"),
+                DiscordWithNll = GetBoolOrNull(row, "discord_with_nll"),
+                ProblemsResidentialInstitution = GetBoolOrNull(row, "problems_residential_institution"),
+                LackOfFoodAndWater = GetBoolOrNull(row, "lack_of_food_and_water"),
+                ExtremePoverty = GetBoolOrNull(row, "extreme_poverty"),
+                WorriedAboutLosingHousing = GetBoolOrNull(row, "worried_about_losing_housing"),
+                NotAbleToPayRx = GetBoolOrNull(row, "not_able_to_pay_rx"),
+                NotAbleToPayUtilities = GetBoolOrNull(row, "not_able_to_pay_utilities"),
+                NotAbleToPayMedicalCare = GetBoolOrNull(row, "not_able_to_pay_medical_care"),
+                NotAbleToPayPhone = GetBoolOrNull(row, "not_able_to_pay_phone"),
+                NotAbleToPayTransportation = GetBoolOrNull(row, "not_able_to_pay_transportation"),
+                NotAbleToPayClothing = GetBoolOrNull(row, "not_able_to_pay_clothing"),
+                ProblemsInRelationship = GetBoolOrNull(row, "problems_in_relationship"),
+                AbsenceFamilyMemberMilitary = GetBoolOrNull(row, "absence_family_member_military"),
+                OtherAbsenceFamilyMember = GetBoolOrNull(row, "other_absence_family_member"),
+                DisappearanceFamilyMember = GetBoolOrNull(row, "disappearance_family_member"),
+                DisruptionSeparation = GetBoolOrNull(row, "disruption_separation"),
+                DependentAtHome = GetBoolOrNull(row, "dependent_at_home"),
+                AlcoholismDrugAddictionFamily = GetBoolOrNull(row, "alcoholism_drug_addiction_family"),
+                InnapropriateDiet = GetBoolOrNull(row, "innapropriate_diet"),
+                OtherReducedMobility = GetBoolOrNull(row, "other_reduced_mobility"),
+                NeedPersonalCare = GetBoolOrNull(row, "need_personal_care"),
+                NeedAtHome = GetBoolOrNull(row, "need_at_home"),
+                NeedContinuousSupervision = GetBoolOrNull(row, "need_continuous_supervision"),
+                OtherProblemsProviderDependency = GetBoolOrNull(row, "other_problems_provider_dependency"),
+                UnavailabilityOtherHelpingAgencies = GetBoolOrNull(row, "unavailability_other_helping_agencies"),
+                NeedAssisstanceDailyActivities = GetBoolOrNull(row, "need_assisstance_daily_activities"),
+                BedriddenFewToNoResources = GetBoolOrNull(row, "bedridden_few_to_no_resources"),
+                PartialyDependsNoResource = GetBoolOrNull(row, "partialy_depends_no_resource"),
+                Result = result,
+            }, null);
+        }
+
+        return (null, new SocialDeterminants2023Section
+        {
+            IsAutosufficientInRequestForTransport = GetBoolOrNull(row, "IsAutosufficientInRequestForTransport"),
+            HasSafeRoof = GetBoolOrNull(row, "HasSafeRoof"),
+            HasSufficientFundsForFood = GetBoolOrNull(row, "HasSufficientFundsForFood"),
+            FeelSafeInLivingPlace = GetBoolOrNull(row, "FeelSafeInLivingPlace"),
+            Result = result,
+        });
+    }
+
+    // uspGetAHA2 actually returns a 13-table result set (Tables(0) through Tables(12)) -- more than
+    // the 11 originally documented before the list-type tables (Cancer Diagnosis, Pressure Sores
+    // List, Diseases of the Skin, Dx History Selection, Allergies, Suspicious Dx Hx Selection,
+    // Malnutrition Criteria, Screening Substance Use, Social Determinants) were read; read once and
+    // keep every table around so later batches can pull whichever ones they need without a second
+    // round trip.
     private static async Task<IReadOnlyList<IReadOnlyList<dynamic>>> LoadAhaDataSetAsync(IDbConnection connection, long claimId, CancellationToken cancellationToken)
     {
         var command = new CommandDefinition(

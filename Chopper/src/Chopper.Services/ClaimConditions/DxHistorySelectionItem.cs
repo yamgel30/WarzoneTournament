@@ -2,6 +2,10 @@ namespace Chopper.Services.ClaimConditions;
 
 public sealed record DxHistorySelectionItem
 {
+    // Only populated by the GetAHA read side (Claims_AHADxHxSelectionID) -- the save-side TVP has
+    // no equivalent column, since the row doesn't exist yet at save time.
+    public long? Id { get; init; }
+
     public long ClaimId { get; init; }
     public string? DxCode { get; init; }
     public string? DxDescription { get; init; }
