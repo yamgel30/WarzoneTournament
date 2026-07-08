@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Chopper.Api/Chopper.Api.csproj" />
+    <Project Path="src/Chopper.Services/Chopper.Services.csproj" />
+  </Folder>
+</Solution>

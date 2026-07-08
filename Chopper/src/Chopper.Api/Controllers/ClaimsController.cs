@@ -1,0 +1,78 @@
+using Chopper.Services.Abstractions;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Chopper.Api.Controllers;
+
+[ApiController]
+[Route("api/claims")]
+public sealed class ClaimsController(IClaimsVerificationService claimsVerificationService) : ControllerBase
+{
+    [HttpGet("{claimId:long}/concurrency")]
+    public async Task<IActionResult> ValidateConcurrency(long claimId, [FromQuery] long concurrencyId, CancellationToken cancellationToken)
+    {
+        var result = await claimsVerificationService.ValidateConcurrencyAsync(claimId, concurrencyId, cancellationToken);
+        return Ok(new { result });
+    }
+
+    [HttpGet("tha-verification")]
+    public async Task<IActionResult> VerifyMemberHasTha(
+        [FromQuery] string memberId,
+        [FromQuery] short claimClass,
+        [FromQuery] long claimId,
+        [FromQuery] bool atHome,
+        CancellationToken cancellationToken)
+    {
+        var exists = await claimsVerificationService.MemberHasThaForYearAsync(memberId, claimClass, claimId, atHome, cancellationToken);
+        return Ok(new { exists });
+    }
+
+    [HttpGet("form-exists")]
+    public async Task<IActionResult> VerifyFormExists(
+        [FromQuery] string memberId,
+        [FromQuery] DateTime dateOfService,
+        [FromQuery] short claimClass,
+        [FromQuery] long? claimId,
+        CancellationToken cancellationToken)
+    {
+        var exists = await claimsVerificationService.FormExistsForDateOfServiceAsync(memberId, dateOfService, claimClass, claimId, cancellationToken);
+        return Ok(new { exists });
+    }
+
+    [HttpGet("aha-already-exists")]
+    public async Task<IActionResult> MemberAlreadyHasAha(
+        [FromQuery] string memberId,
+        [FromQuery] bool isEdit,
+        [FromQuery] bool isResubmit,
+        [FromQuery] int ahaYear,
+        [FromQuery] bool atHome,
+        CancellationToken cancellationToken)
+    {
+        var alreadyHasAha = await claimsVerificationService.MemberAlreadyHasAhaAsync(memberId, isEdit, isResubmit, ahaYear, atHome, cancellationToken);
+        return Ok(new { alreadyHasAha });
+    }
+
+    [HttpGet("aha-verification")]
+    public async Task<IActionResult> VerifyMemberHasAha(
+        [FromQuery] string memberId,
+        [FromQuery] int year,
+        [FromQuery] string renderingNpi,
+        [FromQuery] int? claimClassTag,
+        CancellationToken cancellationToken)
+    {
+        var exists = await claimsVerificationService.MemberHasAhaForYearAsync(memberId, year, renderingNpi, claimClassTag ?? 1, cancellationToken);
+        return Ok(new { exists });
+    }
+
+    [HttpGet("aha-verification-v2")]
+    public async Task<IActionResult> VerifyMemberHasAhaV2(
+        [FromQuery] string memberId,
+        [FromQuery] int year,
+        [FromQuery] string renderingNpi,
+        [FromQuery] bool atHome,
+        [FromQuery] int? claimClassTag,
+        CancellationToken cancellationToken)
+    {
+        var exists = await claimsVerificationService.MemberHasAhaForYearV2Async(memberId, year, renderingNpi, atHome, claimClassTag ?? 1, cancellationToken);
+        return Ok(new { exists });
+    }
+}
