@@ -1101,8 +1101,14 @@ internal sealed class AhaClaimService(
         var cancerDiagnosesOk = await SaveCancerDiagnosesAsync(claimId, request.CancerDiagnoses, request.CancerDiagnosisNa, cancellationToken);
         var ckdOk = await SaveCkdAsync(claimId, request.Ckd, cancellationToken);
         var pressureSoresOk = await SavePressureSoresAsync(claimId, request.PressureSores, cancellationToken);
+        var majorDepressionOk = await SaveMajorDepressionAsync(claimId, request.MajorDepression, cancellationToken);
+        var congenitalDiseasesOk = await SaveCongenitalDiseasesAsync(claimId, request.CongenitalDiseases, cancellationToken);
+        var pressureSoreListOk = await SavePressureSoreListAsync(claimId, request.PressureSoreList, cancellationToken);
+        var cardiovascularDiseasesOk = await SaveCardiovascularDiseasesAsync(claimId, request.CardiovascularDiseases, cancellationToken);
+        var eyesAndNeurologyOk = await SaveEyesAndNeurologyAsync(claimId, request.EyesAndNeurology, request.DateOfVisit, request.IsGhp, cancellationToken);
 
-        return bmiOk && rheumatoidArthritisOk && assessmentPlanOk && cancerDiagnosesOk && ckdOk && pressureSoresOk;
+        return bmiOk && rheumatoidArthritisOk && assessmentPlanOk && cancerDiagnosesOk && ckdOk && pressureSoresOk
+            && majorDepressionOk && congenitalDiseasesOk && pressureSoreListOk && cardiovascularDiseasesOk && eyesAndNeurologyOk;
     }
 
     private async Task<bool> SaveBmiAssociatedDiagnosesAsync(long claimId, BmiAssociatedDiagnosesSection? section, CancellationToken cancellationToken)
@@ -1435,6 +1441,340 @@ internal sealed class AhaClaimService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to save pressure sores for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveMajorDepressionAsync(long claimId, MajorDepressionSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var phq9 = section?.Phq9;
+            var command = new CommandDefinition(
+                "uspSaveMayorDepression",
+                new
+                {
+                    ClaimID = claimId,
+                    NA = section?.Na ?? false,
+                    section?.IsMajorDepression,
+                    section?.InRemission,
+                    section?.Recurrent,
+                    section?.MildSeverity,
+                    section?.ModerateSeverity,
+                    section?.SevereSeverity,
+                    MentalHealth_SeverWithoutPsychoticSymptoms = section?.SeverWithoutPsychoticSymptoms,
+                    section?.TreatmentPlan,
+                    section?.SingleEpisode,
+                    section?.PsychoticSymptoms,
+                    section?.BipolarDisorder,
+                    section?.BipolarDisorderTypeAndSeverity,
+                    section?.BipolarDisorderTreatmentPlan,
+                    section?.SchizophreniaType,
+                    section?.Schizophrenia,
+                    section?.SchizophreniaTreatmentPlan,
+                    section?.MoodDisorder,
+                    section?.MoodDisorderComments,
+                    PHQ9DoneDate = ClampToSqlDateRange(section?.Phq9DoneDate),
+                    PHQ9ScoreResult = section?.Phq9ScoreResult,
+                    section?.Dysthymia,
+                    section?.DysthymiaComments,
+                    UseOfSubtancesTreatment = section?.UseOfSubtancesTreatmentPlan,
+                    PHQ9ReasonNotDoneID = section?.Phq9ReasonNotDoneId,
+                    PHQ9ReasonNotDoneOther = section?.Phq9ReasonNotDoneOther,
+                    MentalHealth_SubstanceAbuseFreeText = section?.SubstanceAbuseFreeText,
+                    MentalHealth_ScreeningSubstanceUseDatePerformed = ClampToSqlDateRange(section?.ScreeningSubstanceUseDatePerformed),
+                    MentalHealth_SubstanceAbuseCheckBox = section?.SubstanceAbuseCheckBox,
+                    section?.GeneralizedAnxietyDisorder,
+                    section?.OtherAnxiety,
+                    section?.OtherAnxietyText,
+                    section?.GeneralizedAnxietyDisorderComments,
+                    PHQ9_Q1 = phq9?.Q1,
+                    PHQ9_Q2 = phq9?.Q2,
+                    PHQ9_Q3 = phq9?.Q3,
+                    PHQ9_Q4 = phq9?.Q4,
+                    PHQ9_Q5 = phq9?.Q5,
+                    PHQ9_Q6 = phq9?.Q6,
+                    PHQ9_Q7 = phq9?.Q7,
+                    PHQ9_Q8 = phq9?.Q8,
+                    PHQ9_Q9 = phq9?.Q9,
+                    PHQ9_TotalCol1 = phq9?.TotalCol1,
+                    PHQ9_TotalCol2 = phq9?.TotalCol2,
+                    PHQ9_TotalCol3 = phq9?.TotalCol3,
+                    PHQ9_NotDifficultAtAll = phq9?.NotDifficultAtAll,
+                    PHQ9_SomewhatDifficult = phq9?.SomewhatDifficult,
+                    PHQ9_VeryDifficult = phq9?.VeryDifficult,
+                    PHQ9_ExtremeDifficult = phq9?.ExtremelyDifficult,
+                    PHQ9_DepressedPastYear = phq9?.DepressedPastYear,
+                    PHQ9_SuicidePastMonth = phq9?.SuicidePastMonth,
+                    PHQ9_TriedSuicide = phq9?.TriedSuicide,
+                    ADHD = section?.Adhd,
+                    ADHDComments = section?.AdhdComments,
+                    section?.Autism,
+                    section?.AutismComments,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save major depression for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveCongenitalDiseasesAsync(long claimId, CongenitalDiseasesSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveCongenitalDiseases",
+                new
+                {
+                    ClaimID = claimId,
+                    CongenitalDiseases_NA = section?.Na ?? false,
+                    CongenitalDiseases_SpinaBifida = section?.SpinaBifida,
+                    CongenitalDiseases_SpinaBifidaComments = section?.SpinaBifidaComments,
+                    CongenitalDiseases_Hydrocephalus = section?.Hydrocephalus,
+                    CongenitalDiseases_HydrocephalusComments = section?.HydrocephalusComments,
+                    CongenitalDiseases_ChiariMalformation = section?.ChiariMalformation,
+                    CongenitalDiseases_ChiariMalformationComments = section?.ChiariMalformationComments,
+                    CongenitalDiseases_Hemophilia = section?.Hemophilia,
+                    CongenitalDiseases_HemophiliaComments = section?.HemophiliaComments,
+                    CongenitalDiseases_Cranofacial = section?.Cranofacial,
+                    CongenitalDiseases_CranofacialComments = section?.CranofacialComments,
+                    CongenitalDiseases_DistrofiaMuscular = section?.DistrofiaMuscular,
+                    CongenitalDiseases_DistrofiaMuscularComments = section?.DistrofiaMuscularComments,
+                    CongenitalDiseases_CerebralPalsy = section?.CerebralPalsy,
+                    CongenitalDiseases_CerebralPalsyText = section?.CerebralPalsyText,
+                    CongenitalDiseases_CerebralPalsyComments = section?.CerebralPalsyComments,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save congenital diseases for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy always deletes existing rows in Claims_PressureSores for this claim (raw SQL text)
+    // before re-inserting one row per list item via a stored procedure.
+    private async Task<bool> SavePressureSoreListAsync(long claimId, IReadOnlyList<PressureSoreListItem>? items, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            var deleteCommand = new CommandDefinition(
+                "DELETE FROM Claims_PressureSores WHERE biClaimID = @ClaimID",
+                new { ClaimID = claimId },
+                commandType: CommandType.Text,
+                cancellationToken: cancellationToken);
+            await connection.ExecuteAsync(deleteCommand);
+
+            if (items is not null)
+            {
+                var index = 0;
+                foreach (var item in items)
+                {
+                    index++;
+                    var insertCommand = new CommandDefinition(
+                        "uspClaims_PressureSores_Save",
+                        new
+                        {
+                            biClaimID = claimId,
+                            nIndex = index,
+                            ByVaricoseVainsInLegs = item.ByVaricoseVainsInLegs ?? false,
+                            ByArteriosclerosisInExtremities = item.ByArteriosclerosisInExtremities ?? false,
+                            ByDiabetic = item.ByDiabetic ?? false,
+                            ByPressure = item.ByPressure ?? false,
+                            ByPressureStage = item.ByPressureStage ?? -1,
+                            AnatomicalSite = item.AnatomicalSite ?? string.Empty,
+                            AnatomicalSiteOther = item.AnatomicalSiteOther ?? string.Empty,
+                            ByOtherCondition = item.ByOtherCondition ?? false,
+                            OtherConditionText = item.OtherConditionText ?? string.Empty,
+                            Treatment = item.Treatment ?? string.Empty,
+                        },
+                        commandType: CommandType.StoredProcedure,
+                        cancellationToken: cancellationToken);
+                    await connection.ExecuteAsync(insertCommand);
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save pressure sore list for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveCardiovascularDiseasesAsync(long claimId, CardiovascularDiseasesSection? section, CancellationToken cancellationToken)
+    {
+        // Legacy always calls the SP, defaulting to an empty section when none is provided.
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            var command = new CommandDefinition(
+                "uspSaveCardiovascularDiseases",
+                new
+                {
+                    ClaimID = claimId,
+                    CardiovascularDiseasesNA = section?.Na ?? false,
+                    section?.ArterialHypertension,
+                    section?.PulmonaryHypertension,
+                    section?.PulmonaryHypertensionType,
+                    section?.HeartFailure,
+                    section?.Congestive,
+                    section?.Diastolic,
+                    section?.Systolic,
+                    section?.Chronic,
+                    PVD = section?.Pvd,
+                    section?.AtrilaFibrillation,
+                    section?.AtrilFibrillationType,
+                    section?.Arteriosclerosis,
+                    section?.Aorta,
+                    section?.Crowns,
+                    section?.RenalArtery,
+                    section?.ArteriosclerosisExtremities,
+                    LegLT = section?.LegLt,
+                    LegRT = section?.LegRt,
+                    ArmLT = section?.ArmLt,
+                    ArmRT = section?.ArmRt,
+                    section?.IntermittentClaudication,
+                    section?.RestPain,
+                    section?.OtherComplications,
+                    section?.OtherComplicationsText,
+                    section?.HypertensionTreatmentPlan,
+                    PVDTreatmentPlan = section?.PvdTreatmentPlan,
+                    section?.ArteriosclerosisTreatmentPlan,
+                    section?.AnginaPectoris,
+                    SSS = section?.Sss,
+                    SVT = section?.Svt,
+                    section?.Pacemaker,
+                    CAD = section?.Cad,
+                    section?.Cardiomiopatia,
+                    section?.MyocardialInfarction,
+                    section?.Cardiomegaly,
+                    section?.AtrioventricularBlock,
+                    section?.AtrioventricularBlockDegree,
+                    section?.VaricoseVeinsOfLowerExtremityWithPain,
+                    section?.ConductionDisorder,
+                    section?.MyocardialInfarctionTreatmentPlan,
+                    section?.OldMyocardialInfarction,
+                    section?.Hyperlipidemia,
+                    section?.HyperlipidemiaText,
+                    section?.HeartTransplant,
+                },
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save cardiovascular diseases for claim {ClaimId}", claimId);
+            return false;
+        }
+    }
+
+    // Legacy branches on the visit year and, for 2023+, on whether the member is GHP: pre-2023
+    // always saves via uspSaveEyeAndNeurology; 2023+ saves via uspSaveEyeAndNeurology2023 but only
+    // when the member is NOT GHP -- a GHP member seen in 2023+ gets no Eye and Neurology save at
+    // all.
+    private async Task<bool> SaveEyesAndNeurologyAsync(long claimId, EyesAndNeurologySection? section, DateTime dateOfVisit, bool isGhp, CancellationToken cancellationToken)
+    {
+        if (dateOfVisit.Year >= 2023 && isGhp)
+        {
+            return true;
+        }
+
+        var procedureName = dateOfVisit.Year >= 2023 ? "uspSaveEyeAndNeurology2023" : "uspSaveEyeAndNeurology";
+
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+
+            // DynamicParameters here (rather than an anonymous object) because DementiaSeverity
+            // must be omitted entirely for the pre-2023 procedure -- it doesn't declare that
+            // parameter, so sending it (even as NULL) would fail.
+            var parameters = new DynamicParameters(new
+            {
+                ClaimID = claimId,
+                EyesAndNeurologyNA = section?.Na ?? false,
+                section?.Retinopathy,
+                ProliferativeEyeRT = section?.ProliferativeEyeRt,
+                ProliferativeEyeLT = section?.ProliferativeEyeLt,
+                section?.Proliferative,
+                section?.MacularEdema,
+                MacularEdemaEyeRT = section?.MacularEdemaEyeRt,
+                MacularEdemaEyeLT = section?.MacularEdemaEyeLt,
+                section?.OtherComplicationRetinopathy,
+                section?.Glaucoma,
+                GlaucomaEyeRT = section?.GlaucomaEyeRt,
+                GlaucomaEyeLT = section?.GlaucomaEyeLt,
+                section?.GlaucomaType,
+                section?.Cataract,
+                CataractRT = section?.CataractRt,
+                CataractLT = section?.CataractLt,
+                section?.CataractType,
+                section?.Epilepsy,
+                section?.EpilepsyType,
+                section?.Seizures,
+                section?.SeizuresCause,
+                section?.Polyneuropathy,
+                section?.PolyneuropathyDueTo,
+                section?.Neuropathy,
+                section?.AutonomicNeuropathy,
+                section?.Mononeuritis,
+                section?.Neuralgia,
+                section?.PolyneuropathyOtherSpecification,
+                section?.RetinopathyTreatmentPlan,
+                section?.GlaucomaTreatmentPlan,
+                section?.CataractTreatmentPlan,
+                section?.EpilepsyTreatmentPlan,
+                section?.PolyneuropathyTreatmentPlan,
+                section?.PolyneuropathyDueToCkb,
+                RetinopathyEyeRT = section?.RetinopathyEyeRt,
+                RetinopathyEyeLT = section?.RetinopathyEyeLt,
+                section?.AlzheimerDisease,
+                section?.Dementia,
+                section?.RetinopathySeverity,
+                section?.ProliferativeSeverity,
+                section?.ProliferativeTreatmentPlan,
+                section?.DementiaAlzheimerTreatmentPlan,
+            });
+
+            if (dateOfVisit.Year >= 2023)
+            {
+                parameters.Add("DementiaSeverity", section?.DementiaSeverity);
+            }
+
+            var command = new CommandDefinition(
+                procedureName,
+                parameters,
+                commandType: CommandType.StoredProcedure,
+                cancellationToken: cancellationToken);
+
+            await connection.ExecuteAsync(command);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save eyes and neurology for claim {ClaimId}", claimId);
             return false;
         }
     }

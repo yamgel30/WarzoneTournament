@@ -151,8 +151,10 @@ service does. It breaks down into two very different shapes of work:
   **Page 3 is now fully ported.**
 
   Ported (partial): **Page 4** (`PUT /api/aha-claims/{claimId}/pages/4`) —
-  6 of ~20 sections: BMI Associated Diagnoses, Rheumatoid Arthritis,
-  Assessment Plan of Treatment, Cancer Diagnoses, CKD, Pressure Sores.
+  11 of ~20 sections: BMI Associated Diagnoses, Rheumatoid Arthritis,
+  Assessment Plan of Treatment, Cancer Diagnoses, CKD, Pressure Sores,
+  Major Depression, Congenital Diseases, Pressure Sore List, Cardiovascular
+  Diseases, Eyes and Neurology.
 
   `AssessmentPlanOfTreatment` has a real business rule preserved as-is:
   when `No` (no diabetes complications) is set, legacy blanks out the
@@ -181,12 +183,26 @@ service does. It breaks down into two very different shapes of work:
   load-bearing (SPs default these columns and never actually receive a
   value today), sending real data changes what gets persisted.
 
-  Not started: the other ~14 Page 4 sections — Congenital Diseases,
-  Pressure Sores List, Diseases of the Skin, Other Condition (blocked —
-  see below), Cardiovascular Diseases, Pulmonary Diseases, Im/Lab Ref,
-  Malnutrition Criteria, Screening Substance Use, Eye and Neurology
-  (+2023 variant), Social Determinants (+2023 variant), Screening Result,
-  Gastrointestinal Diseases, and the GHP-only Gastrointestinal/Musculoskeletal
+  `EyesAndNeurology` shares one stored procedure pair the same way Screening
+  Schedule does (see Page 3): `uspSaveEyeAndNeurology` (pre-2023) and
+  `uspSaveEyeAndNeurology2023` take almost identical parameters, so both
+  reuse `EyesAndNeurologySection` — `DementiaSeverity` is 2023+-only and is
+  the one field that has to be *omitted entirely* (not just sent as
+  `NULL`) for a pre-2023 save, since that older procedure doesn't declare
+  the parameter at all. There's also a real GHP rule here: for visits from
+  2023 onward, legacy skips Eyes and Neurology entirely for GHP members
+  (no save at all, not even a blank one) — only non-GHP 2023+ visits call
+  `uspSaveEyeAndNeurology2023`. Pre-2023 visits always save regardless of
+  GHP.
+
+  `Diseases of the Skin` is **blocked**: same unresolvable table-valued-parameter
+  gap as `MedicationList` and `OtherCondition` (`SqlParameter.TypeName`
+  never set in the VB source).
+
+  Not started: the other ~9 Page 4 sections — Pulmonary Diseases, Im/Lab
+  Ref, Malnutrition Criteria, Screening Substance Use, Social Determinants
+  (+2023 variant), Screening Result, Gastrointestinal Diseases, Other
+  Condition Additional, and the GHP-only Gastrointestinal/Musculoskeletal
   pair.
 
   **Blocked: Other Condition.** Same table-valued-parameter problem as
@@ -218,7 +234,7 @@ nothing breaks mid-migration.
 
 ## Next
 
-Keep working through Page 4's remaining ~14 sections (see above for the
+Keep working through Page 4's remaining ~9 sections (see above for the
 list). Same recipe each time — read the section class(es) in
 `legacy/AHAEDM.vb`, read the matching `Save*Section` method(s) in
 `legacy/AHADataAdapter.vb`, add a plain-value DTO + service method +
