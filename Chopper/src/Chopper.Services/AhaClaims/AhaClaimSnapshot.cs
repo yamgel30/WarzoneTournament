@@ -41,4 +41,16 @@ public sealed record AhaClaimSnapshot
     public MyocardialInfarctionSection? MyocardialInfarction { get; init; }
     public OtherCurrentConditionsAdditionalSection? OtherCurrentConditionsAdditional { get; init; }
     public MajorDepressionSection? MajorDepression { get; init; }
+    public CardiovascularDiseasesSection? CardiovascularDiseases { get; init; }
+    public PulmonaryDiseasesSection? PulmonaryDiseases { get; init; }
+
+    // Legacy also populates an older aha.Gastrointestinal / aha.Musculoskeletal object pair from
+    // this same row, using a strict subset of the columns GastrointestinalDiseasesSection /
+    // MusculoskeletalGhpSection already cover -- not duplicated here, since it carries no data the
+    // newer sections don't already expose.
+    public GastrointestinalDiseasesSection? GastrointestinalDiseases { get; init; }
+    public MusculoskeletalGhpSection? MusculoskeletalGhp { get; init; }
+
+    public ImLabRefSection? ImLabRef { get; init; }
+    public EyesAndNeurologySection? EyesAndNeurology { get; init; }
 }

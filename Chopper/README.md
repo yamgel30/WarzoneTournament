@@ -608,6 +608,23 @@ below plus the header):
     computed sum, not replicated for the same reason as the Screening
     Schedule summary strings — the three totals are already exposed
     individually.
+- **Page 4, batch 2 (completes every single-row field of `GetAHA`)**:
+  Cardiovascular Diseases, Pulmonary Diseases, Gastrointestinal Diseases,
+  Musculoskeletal (GHP), Im/Lab/Ref, Eyes and Neurology. This closes out
+  `Tables(0)`'s single row entirely — everything left in `GetAHA` from here
+  on reads from the other 10 result-set tables (list-type data: Cancer
+  Diagnosis, Other Current Conditions, Pressure Sores List, Diseases of the
+  Skin, Dx History Selection, Allergies, Malnutrition Criteria, Social
+  Determinants).
+  - Legacy actually populates **two** near-duplicate object pairs from the
+    same columns: an older `aha.Gastrointestinal`/`aha.Musculoskeletal`
+    pair, and the newer `aha.GastrointestinalDiseases`/
+    `aha.MusculoskeletalGhp` — the latter is a strict superset of the
+    former's columns. Only the newer/superset pair is mapped here; the
+    older pair would carry no data the newer one doesn't already expose.
+  - `ImLabRefSection` gained 18 new nullable properties (9 `*Result`
+    strings + 9 `*Ordered` booleans for the Lab checklist) that `GetAHA`
+    reads but the ported `SaveClaim` Page 4 path doesn't currently send.
 
 Two implementation notes that'll apply to every future batch of this port:
 
@@ -626,17 +643,14 @@ Two implementation notes that'll apply to every future batch of this port:
   the boxed dynamic row value rather than a strict typed access, same
   reasoning as the claim list/search stored procedures.
 
-Still to come, roughly in the order legacy reads them: the rest of Page 4
-(Cardiovascular Diseases, Pulmonary Diseases, Gastrointestinal,
-Musculoskeletal, Gastrointestinal Diseases, Im/Lab/Ref, Eyes and
-Neurology), then the list-type tables read from separate result-set
-tables (Cancer Diagnosis + Other Current Conditions from `Tables(1)`,
-Pressure Sores List from `Tables(3)`, Diseases of the Skin from
-`Tables(4)`, Dx History Selection from `Tables(6)`, Allergies Medication
-List from `Tables(7)`, Malnutrition Criteria from `Tables(10)`), and
-Social Determinants near the very end of the method. `GetMemberAHATemplate`
-(2,180 lines) and `GetAHAShort` are separate, still-unstarted methods
-after this.
+Still to come: the list-type tables, read from the other 10 result-set
+tables rather than `Tables(0)`'s single row (Cancer Diagnosis + Other
+Current Conditions from `Tables(1)`, Pressure Sores List from `Tables(3)`,
+Diseases of the Skin from `Tables(4)`, Dx History Selection from
+`Tables(6)`, Allergies Medication List from `Tables(7)`, Malnutrition
+Criteria from `Tables(10)`), and Social Determinants near the very end of
+the method. `GetMemberAHATemplate` (2,180 lines) and `GetAHAShort` are
+separate, still-unstarted methods after this.
 
 ## Migration approach (strangler fig)
 

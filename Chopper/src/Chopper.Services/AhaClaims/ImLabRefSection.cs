@@ -51,6 +51,26 @@ public sealed record ImLabRefSection
     public bool? LabVdrl { get; init; }
     public string? LabOther { get; init; }
 
+    // Read by GetAHA but not currently sent by the Page 4 save path.
+    public string? LabHgbHctResult { get; init; }
+    public string? LabTbResult { get; init; }
+    public string? LabUaResult { get; init; }
+    public string? LabLipidProfileResult { get; init; }
+    public string? LabBloodLeadTestResult { get; init; }
+    public string? LabVihResult { get; init; }
+    public string? LabNaatResult { get; init; }
+    public string? LabVdrlResult { get; init; }
+    public string? LabOtherResult { get; init; }
+    public bool? LabHgbHctOrdered { get; init; }
+    public bool? LabTbOrdered { get; init; }
+    public bool? LabUaOrdered { get; init; }
+    public bool? LabLipidProfileOrdered { get; init; }
+    public bool? LabBloodLeadTestOrdered { get; init; }
+    public bool? LabVihOrdered { get; init; }
+    public bool? LabNaatOrdered { get; init; }
+    public bool? LabVdrlOrdered { get; init; }
+    public bool? LabOtherOrdered { get; init; }
+
     public string? VisionText { get; init; }
     public string? HearingText { get; init; }
 
