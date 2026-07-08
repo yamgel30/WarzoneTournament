@@ -285,6 +285,101 @@ sent as `int?` to both `uspSaveEyeAndNeurology` (pre-2023, declares
 calls too, relying on SQL Server's implicit int-to-varchar conversion for
 the pre-2023 case. Matches legacy exactly; left as-is.
 
+## AHAService1 / IAHAService12
+
+`legacy/AHAService1.vb` (`Implements IAHAService12`, `legacy/IAHAService1.vb`) is
+the actual WCF SOAP service class — the layer that sits *above*
+`AHADataAdapter`. Confirmed `SubmitAHA`, `UpdateAHA`, `PartialSaveAHA`,
+`AIPartialSaveAHA`, and every `Resubmit*` variant call
+`AHADataAdapter.SaveClaim` directly, which is exactly what's already ported
+as `SavePage1`-`4`. Several already-ported standalone operations
+(`LogAckowledgement`, `CreateSession`, `ValidateConcurrencyID`,
+`VerifyMemberHasTHAForYear`, `AHAVerifySubProjectIsActive`,
+`VerifyIfFormExistsForDOS`, `SaveInfo`/`SaveAudio`) turned out to be one-line
+`AHADataAdapter` wrappers here too, confirming those are already fully
+covered.
+
+At 23,833 lines, the rest of the file breaks down very unevenly:
+
+- Session/login/SSO (`Login`, `SingleSignOn`) — depends on external
+  `AUS.Library`/`AUSAuthentication` assemblies not provided; not portable yet.
+- List/search operations (`GetAHAListPending`, `...Rejected`,
+  `...Submitted`, `...InProgress`, `...InProgress2021`,
+  `...PendingSpecialCover`) — read-only, no external dependencies. **Ported,
+  see below.**
+- The full read side of a claim (`GetAHA`, ~2,850 lines; `GetMemberAHATemplate`,
+  ~2,180 lines; `GetAHAShort`) — the mirror image of the already-ported
+  `SaveClaim`, but for reads. Large but not blocked; not yet started.
+- Submit/Update/PartialSave orchestrators — already known to call
+  `AHADataAdapter.SaveClaim`; the session/business-rule validation wrapped
+  around that call isn't ported yet.
+- **Report generation (~9,000 lines, ~40% of the file)** —
+  `GetAHAReport2016` through `GetAHAReport2026` (one pair of methods per
+  year, Long + Short form), `GetAddendumFormReport`,
+  `GetMemberSuspiciousConditionReport`, `GetProviderStatusLetterCSV`,
+  `GetDxAndSuspisiousForm`, `GetMemberEmptyForm`,
+  `GetMemberClinicalDataForm` — all built on
+  `Microsoft.Reporting.WebForms.LocalReport` (RDLC), which needs the actual
+  `.rdlc` report definitions (not provided) and isn't natively supported in
+  .NET Core the way it was in .NET Framework. A fundamentally different
+  problem from everything else in this migration; deliberately deferred.
+- Addendum handling, provider/billing/eligibility lookups, Dx/condition
+  operations — moderate size, no obvious blockers, not yet started.
+- `GetPRAIReport` depends on an external `AUS.MMM.PRAI.Library` assembly;
+  not portable without it.
+
+### Ported: claim list/search (`POST /api/claim-search/*`)
+
+`GetAHAListPending`, `GetAHAListPendingSpecialCover`, `GetAHAListRejected`,
+`GetAHAListSubmitted`, `GetAHAListInProgress`, and `GetAHAListInProgress2021`
+are ported as `ClaimSearchService`, one endpoint each under
+`POST /api/claim-search/{pending,pending-special-cover,rejected,submitted,in-progress,in-progress-2021}`.
+POST (not GET) because the search criteria includes lists (rendering/billing
+NPIs) that don't fit cleanly in query strings.
+
+A few real, deliberate behavior differences between these six endpoints are
+preserved rather than unified:
+
+- **Year/claim-class defaulting differs per endpoint.** `GetPending` and
+  `GetSubmitted` only default `AHAYear` when the caller sends `0`, then
+  derive `ClaimClass` from `AHAYear` via `SELECT ClaimClass FROM AHAYears
+  WHERE AHAYear = @Year` (ported as a plain parameterized query, not a
+  stored procedure, matching legacy). `GetPendingSpecialCover` and
+  `GetRejected` **always** override both `AHAYear` and `ClaimClass` to the
+  app-wide current-year constants, ignoring whatever the caller sent.
+  `GetInProgress`/`GetInProgress2021` never touch `ClaimClass` at all — it
+  passes straight from the caller to the stored procedure.
+- `GetRejected` also always sends `MaxDayToResubmit` from the same kind of
+  app-wide constant.
+- `GetSubmitted` derives `StatusText`/`StatusTextToolTip`/`CanEdit`/
+  `CanViewRejectNotes` from `StatusCode`, `RejectTypeID`, and
+  `PaymentStatus` with real branching logic (e.g. status `"3"` +
+  `RejectTypeID = 2` → "Administrative Denied"; status `"4"` +
+  `PaymentStatus = "PAID"` → a formatted tooltip with check number/amount/
+  date). Ported verbatim in `ClaimSearchService.MapSubmittedItem`.
+
+Two things ported as reasonable-but-unconfirmed placeholders, worth
+verifying once possible:
+
+- **`AppShared.AHAVersion`/`AHAClaimClass`/`MaxDayToResubmit`** — app-wide
+  constants from the unavailable `AppShared` class. Modeled as
+  `AhaSearchOptions` (`AhaSearch:DefaultYear`/`DefaultClaimClass`/
+  `MaxDayToResubmit` in configuration) rather than guessed values — set the
+  real numbers there once known.
+- **The `RenderingNPIs`/`BillingNPIs` table-valued parameter type name** is
+  sent as `"Providers"`. The VB source doesn't set `SqlParameter.TypeName`
+  here either (same gap as the three Page 1/4 sections that were blocked
+  earlier), but `Providers` is the only user-defined table type in the
+  `TVP.csv` data with a single `NPI varchar(10)` column, which is exactly
+  the shape these inline `DataTable`s build (`.Columns.Add("NPI")`) — a
+  strong inference, not a confirmed one, since `uspAHA_GetPending` and
+  friends weren't part of the stored procedure definitions provided so far.
+- Column types coming back from these list stored procedures also aren't
+  confirmed (same reason). Row-mapping uses `Convert.ToXxx` on the boxed
+  `DbDataReader` value instead of a strict typed `reader.GetXxx` call, to
+  mirror VB's forgiving `CLng`/`CBool`/`CDate` conversions rather than risk
+  an `InvalidCastException` on a type guess that turns out wrong.
+
 ## Migration approach (strangler fig)
 
 Migrate operation by operation instead of a big-bang rewrite:
@@ -324,23 +419,44 @@ are available. What's still open:
   (`@Foo BIT = 0`) where an explicit `NULL` would override that default
   differently than an omitted parameter would.
 
-Beyond that, this is genuinely open — there's no `AHADataAdapter.vb`
-methods left to mine for `SaveClaim`. Worth deciding together:
-- Whether/how to add read operations (the `Get*`/`Search*` methods implied
-  by the response classes in `AHAEDM.vb` — `GetAHAItemResponse`,
-  `GetProviderListResponse`, etc. — none of which have been looked at
-  yet, since the DataAdapter provided so far is save-only).
+`AHADataAdapter.vb`/`SaveClaim` is done. The migration has now moved on to
+`AHAService1.vb` (see above) — claim list/search is ported; next up, roughly
+in order of how implementable each is right now:
+
+1. **Provider/billing/eligibility lookups and Dx/condition operations** —
+   moderate size, no external dependencies spotted yet, similar shape to
+   what's already ported. Good next candidates.
+2. **Addendum handling** (`SaveAddendumProvider`, `GetAddendumInfo`,
+   `LoadCodUserAndNotes`, `LoadRejectedCodes`, `LoadQuestions`) — needs a
+   closer read first.
+3. **The full read side of a claim** (`GetAHA`, `GetMemberAHATemplate`,
+   `GetAHAShort`) — not blocked, just large (~5,000 lines combined);
+   probably its own multi-batch effort the same way `SaveClaim` was.
+4. **Submit/Update/PartialSave orchestrators** — the session/business-rule
+   layer wrapped around the already-ported `SaveClaim` call.
+
+Confirmed not implementable yet, without more source:
+- **Login/SingleSignOn** — needs the external `AUS.Library`/
+  `AUSAuthentication` assemblies.
+- **`GetPRAIReport`** — needs the external `AUS.MMM.PRAI.Library` assembly.
+- **All `GetAHAReport*`/report-generation methods (~40% of the file)** —
+  needs the actual `.rdlc` report definitions, and RDLC itself
+  (`Microsoft.Reporting.WebForms.LocalReport`) isn't natively usable in
+  .NET Core the way it was in .NET Framework. Worth a dedicated
+  conversation about the replacement approach (a different PDF library?
+  keep report generation on the legacy service longer?) rather than solving
+  it inline.
+
+Two longer-standing open questions, still deliberately deferred:
 - How the "3 different front-end forms sharing one database" reality
   (raised in chat — some sections legitimately don't apply to every form
-  variant) should shape the new API's shape, once we're ready to think
-  that through.
-- The repository/EF question, still deliberately deferred.
+  variant) should shape the new API's shape.
+- The repository/EF question.
 
 Also useful, if available: the `.asmx`/WSDL for the SOAP service itself, to
-confirm which `AHADataAdapter` methods are actually exposed as SOAP
-operations (this migration currently assumes each `Public` method on the
-adapter corresponds to one operation, since the SOAP layer itself hasn't
-been provided yet).
+confirm which `AHAService1` methods are actually exposed as SOAP
+operations (`IAHAService12` answers this now, since it was provided
+alongside `AHAService1.vb`).
 
 ## Running locally
 
