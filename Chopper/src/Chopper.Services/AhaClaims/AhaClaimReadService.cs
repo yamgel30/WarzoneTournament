@@ -22,6 +22,38 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             return null;
         }
 
+        return MapHeader(tables, claimId);
+    }
+
+    public async Task<AhaClaimSnapshot?> GetClaimSnapshotAsync(long claimId, CancellationToken cancellationToken = default)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        var tables = await LoadAhaDataSetAsync(connection, claimId, cancellationToken);
+
+        if (tables.Count == 0 || tables[0].Count == 0)
+        {
+            return null;
+        }
+
+        var row = tables[0][0];
+
+        return new AhaClaimSnapshot
+        {
+            Header = MapHeader(tables, claimId),
+            ChiefComplaintPatientMedicalHistory = MapChiefComplaint(row),
+            MedicalFamilySocialHistory = MapMedicalFamilySocialHistory(row),
+            AdvanceDirective = MapAdvanceDirective(row),
+            ReviewOfSystem = MapReviewOfSystem(row),
+            MedicationList = MapMedicationList(row, tables.Count > 5 ? tables[5] : []),
+            MedicationReview = MapMedicationReview(row),
+            CognitiveAssessment = MapCognitiveAssessment(row),
+            PainScreening = MapPainScreening(row),
+            ActivitiesOfDailyLiving = MapActivitiesOfDailyLiving(row),
+        };
+    }
+
+    private static AhaFormHeader MapHeader(IReadOnlyList<IReadOnlyList<dynamic>> tables, long claimId)
+    {
         var row = tables[0][0];
 
         // Table 2, row 0, column sPayerID -- a different result set than the rest of the
@@ -85,6 +117,301 @@ internal sealed class AhaClaimReadService(ISqlConnectionFactory connectionFactor
             GenderIdentityAdditionalGender = GetString(row, "Member_Gender_Identity_AdditionalGender"),
         };
     }
+
+    private static ChiefComplaintPatientMedicalHistorySection MapChiefComplaint(IDictionary<string, object> row) => new()
+    {
+        HistoryOfPresentIllness = GetString(row, "p1_sHistoryPresentIllness"),
+        RecentHospitalization = GetBoolOrNull(row, "p1_bHasRecentHospitalization"),
+        RecentHospitalizationDate = GetDateOrNull(row, "p1_dHospitalizationDate"),
+        RecentSurgery = GetBoolOrNull(row, "p1_bHasRecentSurgery"),
+        RecentSurgeryDate = GetDateOrNull(row, "p1_dRecentSurgery"),
+        AllergiesNotes = GetString(row, "p1_sHasAllergiesNote"),
+        NoAllergies = GetBoolOrNull(row, "p1_bHasAllergies"),
+        TotalColectomy = GetBoolOrNull(row, "MedFamSocialHist_TotalColectomy"),
+        TotalColectomyDate = GetString(row, "MedFamSocialHist_TotalColectomyDate"),
+        BilateralMastectomy = GetBoolOrNull(row, "MedFamSocialHist_BilateralMastectomy"),
+        BilateralMastectomyDate = GetString(row, "MedFamSocialHist_BilateralMastectomyDate"),
+        UnilateralMastectomyLeft = GetBoolOrNull(row, "UnilateralMastectomyLeft"),
+        UnilateralMastectomyLeftDate = GetString(row, "UnilateralMastectomyLeftDate"),
+        UnilateralMastectomyRight = GetBoolOrNull(row, "UnilateralMastectomyRight"),
+        UnilateralMastectomyRightDate = GetString(row, "UnilateralMastectomyRightDate"),
+        OtherSurgery = GetString(row, "MedFamSocialHist_OtherSurgery"),
+        OtherSurgeryDate = GetString(row, "MedFamSocialHist_OtherSurgeryDate"),
+        NoSurgery = GetBoolOrNull(row, "MedFamSocialHist_NoSurgery"),
+        HistoryPresentIllnessSelectedText = GetString(row, "HistoryPresentIllnessSelectedText"),
+        ChoseDrinkingAlcohol = GetBoolOrNull(row, "ChoseDrinkingAlcohol"),
+        ChoseOtherStd = GetBoolOrNull(row, "ChoseOtherSTD"),
+        ChoseQuittingTabacco = GetBoolOrNull(row, "ChoseQuittingTabacco"),
+        ChoseRiskofHiv = GetBoolOrNull(row, "ChoseRiskofHIV"),
+        ChoseUseIllicitDrugs = GetBoolOrNull(row, "ChoseUseIllicitDrugs"),
+    };
+
+    private static MedicalFamilySocialHistorySection MapMedicalFamilySocialHistory(IDictionary<string, object> row) => new()
+    {
+        Na = GetBoolOrNull(row, "MedFamSocialHist_NA"),
+        DmPatient = GetBoolOrNull(row, "p1_bFamHistDmPatient"),
+        DmMother = GetBoolOrNull(row, "p1_bFamHistDmMother"),
+        DmFather = GetBoolOrNull(row, "p1_bFamHistDmFather"),
+        DmSiblings = GetBoolOrNull(row, "p1_bFamHistDmSiblings"),
+        CvdPatient = GetBoolOrNull(row, "p1_bFamHistCVDPatient"),
+        CvdMother = GetBoolOrNull(row, "p1_bFamHistCVDMother"),
+        CvdFather = GetBoolOrNull(row, "p1_bFamHistCVDFather"),
+        CvdSiblings = GetBoolOrNull(row, "p1_bFamHistCVDSiblings"),
+        CholesterolPatient = GetBoolOrNull(row, "p1_bFamHistCholPatient"),
+        CholesterolMother = GetBoolOrNull(row, "p1_bFamHistCholMother"),
+        CholesterolFather = GetBoolOrNull(row, "p1_bFamHistCholFather"),
+        CholesterolSiblings = GetBoolOrNull(row, "p1_bFamHistCholSiblings"),
+        CancerPatient = GetBoolOrNull(row, "p1_bFamHistCancerPatient"),
+        CancerMother = GetBoolOrNull(row, "p1_bFamHistCancerMother"),
+        CancerFather = GetBoolOrNull(row, "p1_bFamHistCancerFather"),
+        CancerSiblings = GetBoolOrNull(row, "p1_bFamHistCancerSiblings"),
+        AlzheimerPatient = GetBoolOrNull(row, "p1_bFamHistAlzheimerPatient"),
+        AlzheimerMother = GetBoolOrNull(row, "p1_bFamHistAlzheimerMother"),
+        AlzheimerFather = GetBoolOrNull(row, "p1_bFamHistAlzheimerFather"),
+        AlzheimerSiblings = GetBoolOrNull(row, "p1_bFamHistAlzheimerSiblings"),
+        PatientNa = GetBoolOrNull(row, "MedFamSocialHist_PatientNA"),
+        MotherNa = GetBoolOrNull(row, "MedFamSocialHist_MotherNA"),
+        FatherNa = GetBoolOrNull(row, "MedFamSocialHist_FatherNA"),
+        SiblingsNa = GetBoolOrNull(row, "MedFamSocialHist_BrotherNA"),
+        OtherConditionText = GetString(row, "p1_sFamHistOtherCondition"),
+        OtherPatient = GetBoolOrNull(row, "p1_bFamHistOtherPatient"),
+        OtherMother = GetBoolOrNull(row, "p1_bFamHistOtherMother"),
+        OtherFather = GetBoolOrNull(row, "p1_bFamHistOtherFather"),
+        OtherSiblings = GetBoolOrNull(row, "p1_bFamHistOtherSiblings"),
+        VihPatient = GetBoolOrNull(row, "FamHistVIHPatient"),
+        VihMother = GetBoolOrNull(row, "FamHistVIHMother"),
+        VihFather = GetBoolOrNull(row, "FamHistVIHFather"),
+        VihSiblings = GetBoolOrNull(row, "FamHistVIHSiblings"),
+        HistoryAlcoholism = GetBoolOrNull(row, "MedFamSocialHist_HistoryAlcoholism"),
+        HistoryDrugDependence = GetBoolOrNull(row, "MedFamSocialHist_HistoryDrugDependence"),
+        HistoryCaffeineDependence = GetBoolOrNull(row, "HistoryCaffeineDependence"),
+        RiskForStd = GetBoolOrNull(row, "p1_bHabitsHasRiskForStd"),
+        RiskForHiv = GetBoolOrNull(row, "p1_bHabitsHasRiskForHiv"),
+        CounselTabaccoUse = GetBoolOrNull(row, "p1_bHabitsHasCounselTabaccoUse"),
+        CounselIllicitDrugUse = GetBoolOrNull(row, "p1_bHabitsHasCounselIllicitDrugUse"),
+        CounselAlcoholUse = GetBoolOrNull(row, "p1_bHabitsHasCounselAlcoholMisUse"),
+        Nicotine = GetBoolOrNull(row, "Nicotine"),
+        Opiates = GetBoolOrNull(row, "Opiates"),
+        Cannabis = GetBoolOrNull(row, "Cannabis"),
+        Sedatives = GetBoolOrNull(row, "Sedatives"),
+        Hypnotics = GetBoolOrNull(row, "Hypnotics"),
+        Anxiolytics = GetBoolOrNull(row, "Anxiolytics"),
+        OtherDrugs = GetBoolOrNull(row, "OtherDrugs"),
+        OtherDrugsText = GetString(row, "OtherDrugsText"),
+        HistoryOfMotherPregnancy = GetString(row, "HistoryOfMotherPregnancy"),
+        FisicalActivityScreening = GetString(row, "FisicalActivityScreening"),
+        FisicalActivityScreeningNa = GetBoolOrNull(row, "FisicalActivityScreening_NA"),
+        FisicalActivityScreeningDailyActivityRecommended = GetBoolOrNull(row, "FisicalActivityScreening_DailyActivityRecommended"),
+        NutricionalScreeningNa = GetBoolOrNull(row, "NutricionalScreening_NA"),
+        NutricionalScreeningAdequateIntake = GetBoolOrNull(row, "NutricionalScreening_AdequateIntake"),
+        NutricionalScreeningBalancedNutriciousDiet = GetBoolOrNull(row, "NutricionalScreening_BalancedNutritiousDiet"),
+        NutricionalScreeningBreastmilk = GetBoolOrNull(row, "NutricionalScreening_Breastmilk"),
+        NutricionalScreeningCereal = GetBoolOrNull(row, "NutricionalScreening_Cereal"),
+        NutricionalScreeningCowMilk = GetBoolOrNull(row, "NutricionalScreening_CowMilk"),
+        NutricionalScreeningFeedsItself = GetBoolOrNull(row, "NutricionalScreening_FeedsItself"),
+        NutricionalScreeningFormula = GetBoolOrNull(row, "NutricionalScreening_Formula"),
+        NutricionalScreeningJunkFood = GetBoolOrNull(row, "NutricionalScreening_JunkFood"),
+        NutricionalScreeningOther = GetString(row, "NutricionalScreening_Others"),
+        NutricionalScreeningOverweight = GetBoolOrNull(row, "NutricionalScreening_Overweight"),
+        NutricionalScreeningSodaJuices = GetBoolOrNull(row, "NutricionalScreening_SodaJuices"),
+        NutricionalScreeningSolidFoot = GetBoolOrNull(row, "NutricionalScreening_SolidFoot"),
+        NutricionalScreeningSupplementVitamins = GetBoolOrNull(row, "NutricionalScreening_SupplementVitamins"),
+        NutricionalScreeningUnderWeight = GetBoolOrNull(row, "NutricionalScreening_UnderWeight"),
+        NutricionalScreeningFoodAllergies = GetBoolOrNull(row, "NutricionalScreening_FoodAllergies"),
+        NutricionalScreeningSpecialDiets = GetBoolOrNull(row, "NutricionalScreening_SpecialDiets"),
+        NutricionalScreeningOthersCheckbox = GetBoolOrNull(row, "NutricionalScreening_Others_Checkbox"),
+        DevelopmentHealthNa = GetBoolOrNull(row, "DevelopmentHealth_NA"),
+        DevelopmentScreeningCommunicationArea = GetBoolOrNull(row, "DevelopmentScreening_CommunicationArea"),
+        DevelopmentScreeningFineMotorSkillArea = GetBoolOrNull(row, "DevelopmentScreening_FineMotorSkillArea"),
+        DevelopmentScreeningGrossMotorSkillsArea = GetBoolOrNull(row, "DevelopmentScreening_GrossMotorSkillsArea"),
+        DevelopmentScreeningSocialIndividualSkillsArea = GetBoolOrNull(row, "DevelopmentScreening_SocialIndividualSkillsArea"),
+        DevelopmentScreeningProblemResolutionSkillArea = GetBoolOrNull(row, "DevelopmentScreening_ProblemResolutionSkillArea"),
+        DevelopmentScreeningBehavioralHealthArea = GetBoolOrNull(row, "DevelopmentScreening_BehavioralHealthArea"),
+        BehavioralHealthNa = GetBoolOrNull(row, "BehavioralHealth_NA"),
+        BehavioralHealthPhysicalMentalSelfRegulation = GetBoolOrNull(row, "BehavioralHealth_PhysicalMentalSelftRegulation"),
+        BehavioralHealthHabilityToFollowsInstructionsRules = GetBoolOrNull(row, "BehavioralHealth_HabilityToFollowsInstructionsRules"),
+        BehavioralHealthSocialCommunication = GetBoolOrNull(row, "BehavioralHealth_SocialCommunication"),
+        BehavioralHealthAdaptativeFunctioning = GetBoolOrNull(row, "BehavioralHealth_AdaptativeFunctioning"),
+        BehavioralHealthAutonomy = GetBoolOrNull(row, "BehavioralHealth_Autonomy"),
+        BehavioralHealthCapacityToBeAffectiveEmpathic = GetBoolOrNull(row, "BehavioralHealth_CapacityToBeAffectiveEmpathic"),
+        BehavioralHealthInteractionWithPeople = GetBoolOrNull(row, "BehavioralHealth_InteractionWithPeople"),
+        BehavioralHealthUsesAlcoholDrugs = GetBoolOrNull(row, "BehavioralHealth_UsesAlcoholDrugs"),
+        AppropriateEducationNa = GetBoolOrNull(row, "AppropriateEducation_NA"),
+        AppropriateEducationAppropriateUseCarSeat = GetBoolOrNull(row, "AppropriateEducation_AppropiateUseCarSeat"),
+        AppropriateEducationBottleProp = GetBoolOrNull(row, "AppropriateEducation_BottleProp"),
+        AppropriateEducationPassiveSmoke = GetBoolOrNull(row, "AppropriateEducation_PasiveSmoke"),
+        AppropriateEducationInfantCryingWhatToDo = GetBoolOrNull(row, "AppropriateEducation_InfantCryingWhatToDo"),
+        AppropriateEducationShakeBabyPrevention = GetBoolOrNull(row, "AppropriateEducation_ShakeBabyPrevention"),
+        AppropriateEducationFirearm = GetBoolOrNull(row, "AppropriateEducation_Firearm"),
+        AppropriateEducationPacifiers = GetBoolOrNull(row, "AppropriateEducation_Pacifiers"),
+        AppropriateEducationParentsReadToChild = GetBoolOrNull(row, "AppropriateEducation_ParentsReadToChild"),
+        AppropriateEducationEmergency911 = GetBoolOrNull(row, "AppropriateEducation_Emergency911"),
+        AppropriateEducationFingerFoodChoking = GetBoolOrNull(row, "AppropriateEducation_FingerFoodChoking"),
+        AppropriateEducationDisciplinePraise = GetBoolOrNull(row, "AppropriateEducation_DisciplinePrais"),
+        AppropriateEducationDrowningPrevention = GetBoolOrNull(row, "AppropriateEducation_DrowningPrevention"),
+        AppropriateEducationNeverLeaveToddlerAlone = GetBoolOrNull(row, "AppropriateEducation_NeverLeaveToddlerAlone"),
+        AppropriateEducationToiletTraining = GetBoolOrNull(row, "AppropriateEducation_ToiletTraining"),
+        AppropriateEducationNutritionExercise = GetBoolOrNull(row, "AppropriateEducation_NutritionExercise"),
+        AppropriateEducationEstablishRoutineBedMealsToiletingEtc = GetBoolOrNull(row, "AppropriateEducation_EstablishRoutineBedMealsToiletingEtc"),
+        AppropriateEducationUseSportProtection = GetBoolOrNull(row, "AppropriateEducation_UseSportProtection"),
+        AppropriateEducationBullying = GetBoolOrNull(row, "AppropriateEducation_Bullying"),
+        AppropriateEducationOralHealth = GetBoolOrNull(row, "AppropriateEducation_OralHealth"),
+        AppropriateEducationOthers = GetString(row, "AppropriateEducation_Others"),
+        AppropriateEducationSportInjuryPrevention = GetBoolOrNull(row, "AppropriateEducation_SportInjuryPrevention"),
+        AppropriateEducationDrowningSunSafety = GetBoolOrNull(row, "AppropriateEducation_DrowningSunSafety"),
+        AppropriateEducationSafeAtHome = GetBoolOrNull(row, "AppropriateEducation_SafeAtHome"),
+        AppropriateEducationCorrectUseSeatbelt = GetBoolOrNull(row, "AppropriateEducation_CorrectUseSeatbelt"),
+        AppropriateEducationSexualEducationStd = GetBoolOrNull(row, "AppropriateEducation_SexualEducationSTD"),
+        AppropriateEducationDepressionAnxiety = GetBoolOrNull(row, "AppropriateEducation_DepresionAnxiety"),
+        AppropriateEducationTabaccoAlcoholDrugsRxDrugsInhalants = GetBoolOrNull(row, "AppropriateEducation_TabaccoAlcoholDrugsRxDrugsInhalants"),
+        AppropriateEducationRiskOfTattoosPiercing = GetBoolOrNull(row, "AppropriateEducation_RiskOfTattoosPiercing"),
+        AppropriateEducationAutocontrol = GetBoolOrNull(row, "AppropriateEducation_Autocontrol"),
+        AppropriateEducationOthersCheckbox = GetBoolOrNull(row, "AppropriateEducation_Others_Checkbox"),
+    };
+
+    private static AdvanceDirectiveSection MapAdvanceDirective(IDictionary<string, object> row) => new()
+    {
+        RefuseToCompleteAdvance = GetBoolOrNull(row, "RefuseToCompleteAdvance"),
+        AdvanceCarePlanDiscussed = GetBoolOrNull(row, "AdvCarePlanDiscussed"),
+        AdvanceCarePlanExecuteOn = GetDateOrNull(row, "AdvCarePlanExecuteOnDate"),
+        AdvanceCarePlanExecutedOnCheck = GetBoolOrNull(row, "AdvCarePlanExecuteOn"),
+    };
+
+    private static ReviewOfSystemSection MapReviewOfSystem(IDictionary<string, object> row) => new()
+    {
+        Constitutional = GetString(row, "p1_sROSConstitutional"),
+        Heentoral = GetString(row, "p1_sROSHEENT"),
+        AllergicImmunologic = GetString(row, "p1_sROSAllergic"),
+        HematologicLymphatic = GetString(row, "p1_sROSHematologic"),
+        Cardiovascular = GetString(row, "p1_sROSCardiovascular"),
+        Gastrointestinal = GetString(row, "p1_sROSGastrointestinal"),
+        Genitourinary = GetString(row, "p1_sROSGenitourinary"),
+        Respiratory = GetString(row, "p1_sROSRespiratory"),
+        Musculoskeletal = GetString(row, "p1_sROSMusculoskeletal"),
+        Neurological = GetString(row, "p1_sROSNeurological"),
+        Endocrine = GetString(row, "p1_sROSEndocrine"),
+        Integumentary = GetString(row, "p1_sROSIntegumentary"),
+        Psychiatric = GetString(row, "p1_sROSPsychiatric"),
+        UrinaryIncontinenceLeaking = GetBoolOrNull(row, "p1_bHasUrinaryIncontinence"),
+        HearingDifficulty = GetIntOrNull(row, "HearingDifficulty"),
+        DescribePositiveRos = GetString(row, "p1_sROSNotes"),
+        UrinaryIncontinenceBladderExercises = GetBoolOrNull(row, "UrinaryIncontinence_BladderExercises"),
+        UrinaryIncontinenceSurgicalIntervention = GetBoolOrNull(row, "UrinaryIncontinence_SurgicalIntervention"),
+        UrinaryIncontinenceTreatmentWithMedicine = GetBoolOrNull(row, "UrinaryIncontinence_TreatmentWithMedicine"),
+        UrinaryIncontinenceCheckBoxOther = GetBoolOrNull(row, "UrinaryIncontinence_CheckBoxOther"),
+        UrinaryIncontinenceOther = GetString(row, "UrinaryIncontinence_Other"),
+    };
+
+    // Table 5 holds every medication row (current + adherence); AllergiesMedicationList comes from
+    // a different table read in a later batch. isAdherence splits the row between the two lists,
+    // exactly as legacy's For Each loop does.
+    private static MedicationListSection MapMedicationList(IDictionary<string, object> row, IReadOnlyList<dynamic> medicationRows)
+    {
+        var currentMedication = new List<MedicationItem>();
+        var adherenceMedicationList = new List<MedicationItem>();
+
+        foreach (var medRow in medicationRows)
+        {
+            IDictionary<string, object> medDict = medRow;
+            var item = new MedicationItem
+            {
+                MedicationName = GetString(medDict, "MedicationName") ?? string.Empty,
+                IsHistoric = GetBoolOrNull(medDict, "isHistoric") ?? false,
+                IsConfirmed = GetBoolOrNull(medDict, "isConfirmed") ?? false,
+            };
+
+            if (GetBoolOrNull(medDict, "IsAdherenceMedication") ?? false)
+            {
+                adherenceMedicationList.Add(item);
+            }
+            else
+            {
+                currentMedication.Add(item);
+            }
+        }
+
+        return new MedicationListSection
+        {
+            CurrentlyDoesNotUse = GetBoolOrNull(row, "PatientCurrentlyNoUse"),
+            NotKnowAllergies = GetBoolOrNull(row, "NotKnowAllergies_MedList"),
+            CurrentMedication = currentMedication,
+            AdherenceMedicationList = adherenceMedicationList,
+        };
+    }
+
+    private static MedicationReviewSection MapMedicationReview(IDictionary<string, object> row) => new()
+    {
+        Question1 = GetBoolOrNull(row, "p1_bMedReviewPatHasKnowledgeOfMedications"),
+        Question2 = GetBoolOrNull(row, "p1_bMedReviewPatCanIdMedicationFrequency"),
+        Question3 = GetBoolOrNull(row, "p1_bMedReviewPatIsUsingMedicationCorrectly"),
+    };
+
+    private static CognitiveAssessmentSection MapCognitiveAssessment(IDictionary<string, object> row) => new()
+    {
+        DayOfTheWeek = GetBoolOrNull(row, "p2_bCognitiveAssemntDayOfWeekCorrect"),
+        MonthOfTheYear = GetBoolOrNull(row, "p2_bCognitiveAssemntMonthOfYearCorrect"),
+        Year = GetBoolOrNull(row, "p2_bCognitiveAssemntYearCorrect"),
+        Ball = GetBoolOrNull(row, "p2_bCognitiveAssemntBallCorrect"),
+        Flag = GetBoolOrNull(row, "p2_bCognitiveAssemntFlagCorrect"),
+        Tree = GetBoolOrNull(row, "p2_bCognitiveAssemntTreeCorrect"),
+        Wnl = GetBoolOrNull(row, "p2_bCognitiveAssemntIsWnl"),
+        Diagnosis = GetString(row, "p2_sCognitiveAssemntDx"),
+        PlanGoalsTreatmentInterventionFollowUp = GetString(row, "p2_sCognitiveAssemntPlan"),
+    };
+
+    private static PainScreeningSection MapPainScreening(IDictionary<string, object> row) => new()
+    {
+        PatientHaveComplaint = GetBoolOrNull(row, "p4_bPainScreeningHasPain"),
+        PainIsLocated = GetString(row, "p4_sPainScreeningPainLocation"),
+        ManagePainWith = GetString(row, "p4_sPainScreeningTreatmentOrMedications"),
+        TreatmentHaveBeenEffective = GetBoolOrNull(row, "p4_bPainScreeningMedicationsEffective"),
+        TreatmentHaveBeenEffectiveNa = GetBoolOrNull(row, "TreatmentHaveBeenEffectiveNA"),
+        RatePainExperiencingNow = GetIntOrNull(row, "p4_nPainScreeningRate"),
+        Transportation = GetBoolOrNull(row, "p4_bPainScreeningInterferedTransport"),
+        BathingDressing = GetBoolOrNull(row, "p4_bPainScreeningInterferedBathing"),
+        WalkingAbility = GetBoolOrNull(row, "p4_bPainScreeningInterferedWalking"),
+        EnjoymentOfLife = GetBoolOrNull(row, "p4_bPainScreeningInterferedLife"),
+        Toileting = GetBoolOrNull(row, "p4_bPainScreeningInterferedToileting"),
+        Sleep = GetBoolOrNull(row, "p4_bPainScreeningInterferedSleep"),
+        Mood = GetBoolOrNull(row, "p4_bPainScreeningInterferedMood"),
+        Na = GetBoolOrNull(row, "PainScreeningInterferedNA"),
+        Employment = GetBoolOrNull(row, "p4_bPainScreeningInterferedEmployment"),
+        HouseWork = GetBoolOrNull(row, "p4_bPainScreeningInterferedHousework"),
+        FoodPreparation = GetBoolOrNull(row, "p4_bPainScreeningInterferedCooking"),
+        RelationshipWithOther = GetBoolOrNull(row, "p4_bPainScreeningInterferedRelationships"),
+        PainDueTo = GetString(row, "p4_sPainScreeningDx"),
+        PlanGoalsTreatmentInterventionFollowUp = GetString(row, "p4_sPainScreeningPlan"),
+        CausalCondition = GetString(row, "PainScreeing_CausalCondition"),
+        ArthritisDueToInfection = GetBoolOrNull(row, "ArthritisDueInfection"),
+        Others = GetString(row, "PainScreening_Other"),
+        PainEvaluationOtherCondition = GetBoolOrNull(row, "PainEvaluationOtherCondition"),
+        PainEvaluationOtherConditionText = GetString(row, "PainEvaluationOtherConditionText"),
+        PainEvaluationOtherActivities = GetBoolOrNull(row, "PainEvaluation_OtherActivities"),
+    };
+
+    private static ActivitiesOfDailyLivingSection MapActivitiesOfDailyLiving(IDictionary<string, object> row) => new()
+    {
+        Bathing = GetBoolOrNull(row, "p5_bFootActivitiesIndependentBath"),
+        BathingComments = GetString(row, "p5_bFootActivitiesBathComments"),
+        DressingAndUndressing = GetBoolOrNull(row, "p5_bFootActivitiesIndependentDress"),
+        DressingAndUndressingComments = GetString(row, "p5_bFootActivitiesDressComments"),
+        Eating = GetBoolOrNull(row, "p5_bFootActivitiesIndependentEat"),
+        EatingComments = GetString(row, "p5_bFootActivitiesEatComments"),
+        TransferringBedChair = GetBoolOrNull(row, "p5_bFootActivitiesIndependentMobility"),
+        TransferringBedChairComments = GetString(row, "p5_bFootActivitiesMobilityComments"),
+        VoluntarilyControl = GetBoolOrNull(row, "p5_bFootActivitiesIndependentNaturalDischarge"),
+        VoluntarilyControlComments = GetString(row, "p5_bFootActivitiesNaturalDischargeComments"),
+        UsingToilet = GetBoolOrNull(row, "p5_bFootActivitiesIndependentToilet"),
+        UsingToiletComments = GetString(row, "p5_bFootActivitiesToiletComments"),
+        Walking = GetBoolOrNull(row, "p5_bFootActivitiesIndependentWalking"),
+        WalkingComments = GetString(row, "p5_bFootActivitiesWalkingComments"),
+        BedFast = GetBoolOrNull(row, "ActivitiesDaily_BedFast"),
+        HistoryOfFalling = GetBoolOrNull(row, "HistoryOfFalling"),
+        HistoryOfFallingComments = GetString(row, "ActivitiesOfDailyLiving_HistoryOfFalling_Comments"),
+        DependenceOnOxygen = GetBoolOrNull(row, "DependenceOnOxygen"),
+        DependenceOnRespirator = GetBoolOrNull(row, "DependenceOnRespirator"),
+        DependenceOnWheelchair = GetBoolOrNull(row, "DependenceOnWheelchair"),
+    };
 
     // uspGetAHA2 returns an 11-table result set (DataSet in legacy); read once and keep every
     // table around so later batches can pull whichever ones they need without a second round trip.

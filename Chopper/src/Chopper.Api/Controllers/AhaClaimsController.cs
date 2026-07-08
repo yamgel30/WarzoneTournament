@@ -15,6 +15,13 @@ public sealed class AhaClaimsController(IAhaClaimService ahaClaimService, IAhaCl
         return header is null ? NotFound() : Ok(header);
     }
 
+    [HttpGet("{claimId:long}")]
+    public async Task<ActionResult<AhaClaimSnapshot>> GetClaim(long claimId, CancellationToken cancellationToken)
+    {
+        var snapshot = await ahaClaimReadService.GetClaimSnapshotAsync(claimId, cancellationToken);
+        return snapshot is null ? NotFound() : Ok(snapshot);
+    }
+
     [HttpPut("{claimId:long}/pages/1")]
     public async Task<IActionResult> SavePage1(long claimId, [FromBody] SavePage1Request request, CancellationToken cancellationToken)
     {

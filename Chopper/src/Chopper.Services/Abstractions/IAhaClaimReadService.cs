@@ -9,4 +9,6 @@ namespace Chopper.Services.Abstractions;
 public interface IAhaClaimReadService
 {
     Task<AhaFormHeader?> GetFormHeaderAsync(long claimId, CancellationToken cancellationToken = default);
+
+    Task<AhaClaimSnapshot?> GetClaimSnapshotAsync(long claimId, CancellationToken cancellationToken = default);
 }

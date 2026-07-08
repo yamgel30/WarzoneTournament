@@ -8,6 +8,12 @@ public sealed record ChiefComplaintPatientMedicalHistorySection
 
     public DateTime? RecentHospitalizationDate { get; init; }
 
+    // Read by GetAHA but not currently sent by SaveChiefComplaintPatientMedicalHistoryAsync --
+    // the legacy save SP has no parameter for it either.
+    public bool? RecentSurgery { get; init; }
+
+    public DateTime? RecentSurgeryDate { get; init; }
+
     public string? AllergiesNotes { get; init; }
 
     public bool? NoAllergies { get; init; }

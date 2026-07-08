@@ -51,4 +51,7 @@ public sealed record PainScreeningSection
     public string? PainEvaluationOtherConditionText { get; init; }
 
     public bool? PainEvaluationOtherActivities { get; init; }
+
+    // Read by GetAHA but not currently sent by the Page 2 save path.
+    public string? CausalCondition { get; init; }
 }
