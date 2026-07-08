@@ -652,6 +652,33 @@ Criteria from `Tables(10)`), and Social Determinants near the very end of
 the method. `GetMemberAHATemplate` (2,180 lines) and `GetAHAShort` are
 separate, still-unstarted methods after this.
 
+## Future scope: 2026/2027+ forms only, and the legacy MVC controllers
+
+Two decisions from conversation, worth keeping visible so they don't get
+lost across sessions:
+
+- **The renewed application (Chopper API + an Angular front end) is only
+  meant to support the 2026/2027-forward AHA forms.** Everything currently
+  being ported preserves *every* year's logic faithfully — pre-2023 fields,
+  the `_isGHP AndAlso DateOfVisit.Year > 2024` ("2025") gates, the
+  `isDiabetic`/`GoTo` quirks, dead branches like
+  `DiabetesScreeningMicroalbumin*`, and so on — because right now that's
+  the safer default: it's much cheaper to delete already-ported old-year
+  code later than to reconstruct something skipped by mistake. Once the
+  exact cutover point is confirmed, a dedicated pass should trim the
+  pre-2026/2027 branches, fields, and DTOs that the new front end will
+  never exercise. Not happening yet — noted here so it's not forgotten.
+- **The legacy front end is ASP.NET MVC, and its controllers hold business
+  logic of their own** — validation, orchestration, calculations — that
+  doesn't necessarily go through `AHAService1`'s SOAP operations. This repo
+  currently only has `AHAService1.vb`/`IAHAService1.vb` (the SOAP service)
+  and `AHADataAdapter.vb`/`AHAEDM.vb` (the data layer underneath it) — no
+  MVC controller source yet. Once those controllers are available, they
+  need a pass similar to `AHAService1`'s: inventory what logic lives there
+  that isn't already covered by a ported endpoint, since the new Angular
+  front end will need Chopper API (not client-side reimplementation) to
+  own anything that's a real business rule rather than pure UI behavior.
+
 ## Migration approach (strangler fig)
 
 Migrate operation by operation instead of a big-bang rewrite:
