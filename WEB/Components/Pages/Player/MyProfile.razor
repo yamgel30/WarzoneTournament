@@ -1,0 +1,64 @@
+@page "/profile"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using WarzoneTournament.Application.Common.Interfaces
+@inject IUserService UserService
+@inject NavigationManager NavManager
+
+<PageTitle>Mi Perfil — Warzone Tournament</PageTitle>
+
+@if (_user is null)
+{
+    <div class="loading-spinner-container">
+        <div class="loading-ring"></div>
+        <span class="loading-text">Cargando perfil...</span>
+    </div>
+}
+else
+{
+    <div class="profile-card">
+        <div class="profile-header">
+            <img class="profile-avatar" src="@_user.AvatarUrl" alt="avatar" />
+            <div>
+                <div class="profile-name">@_user.DisplayName</div>
+                <div class="profile-handle">@@@_user.DiscordUsername</div>
+                <span class="profile-role-badge">@_user.Role</span>
+            </div>
+        </div>
+
+        @if (_user.ProfileComplete)
+        {
+            <div class="profile-stats">
+                <div class="profile-stat">
+                    <div class="profile-stat__label">Gamer Tag</div>
+                    <div class="profile-stat__value">@_playerGamerTag</div>
+                </div>
+                <div class="profile-stat">
+                    <div class="profile-stat__label">Total Kills</div>
+                    <div class="profile-stat__value">@_totalKills</div>
+                </div>
+            </div>
+        }
+
+        <a href="/logout" class="danger-btn">
+            <span>🚪</span> Cerrar sesión
+        </a>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private WarzoneTournament.Application.DTOs.Auth.AppUserDto? _user;
+    private string _playerGamerTag = "—";
+    private int _totalKills;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState!;
+        Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid);
+        if (uid == Guid.Empty) { NavManager.NavigateTo("/login"); return; }
+        _user = await UserService.GetByIdAsync(uid);
+    }
+}

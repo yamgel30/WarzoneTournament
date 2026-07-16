@@ -24,6 +24,11 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<OCRExtractionResult>? _ocrExtractionResults;
     private IRepository<TeamPlayer>? _teamPlayers;
     private IRepository<TournamentTeam>? _tournamentTeams;
+    private IRepository<SiteSettings>? _siteSettings;
+    private IRepository<AppUser>? _appUsers;
+    private IRepository<TeamInvitation>? _teamInvitations;
+    private IRepository<AppNotification>? _notifications;
+    private IRepository<PendingDiscordInvite>? _pendingDiscordInvites;
 
     public UnitOfWork(AppDbContext context)
     {
@@ -71,6 +76,21 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<TournamentTeam> TournamentTeams
         => _tournamentTeams ??= new Repository<TournamentTeam>(_context);
+
+    public IRepository<SiteSettings> SiteSettings
+        => _siteSettings ??= new Repository<SiteSettings>(_context);
+
+    public IRepository<AppUser> AppUsers
+        => _appUsers ??= new Repository<AppUser>(_context);
+
+    public IRepository<TeamInvitation> TeamInvitations
+        => _teamInvitations ??= new Repository<TeamInvitation>(_context);
+
+    public IRepository<AppNotification> Notifications
+        => _notifications ??= new Repository<AppNotification>(_context);
+
+    public IRepository<PendingDiscordInvite> PendingDiscordInvites
+        => _pendingDiscordInvites ??= new Repository<PendingDiscordInvite>(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);

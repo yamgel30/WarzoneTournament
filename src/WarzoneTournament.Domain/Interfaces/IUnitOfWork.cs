@@ -18,6 +18,11 @@ public interface IUnitOfWork : IDisposable
     IRepository<OCRExtractionResult> OCRExtractionResults { get; }
     IRepository<TeamPlayer> TeamPlayers { get; }
     IRepository<TournamentTeam> TournamentTeams { get; }
+    IRepository<SiteSettings> SiteSettings { get; }
+    IRepository<AppUser> AppUsers { get; }
+    IRepository<TeamInvitation> TeamInvitations { get; }
+    IRepository<AppNotification> Notifications { get; }
+    IRepository<PendingDiscordInvite> PendingDiscordInvites { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
     Task BeginTransactionAsync(CancellationToken ct = default);
     Task CommitTransactionAsync(CancellationToken ct = default);

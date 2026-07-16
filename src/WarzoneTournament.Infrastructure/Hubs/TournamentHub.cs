@@ -31,6 +31,9 @@ public class TournamentHub : Hub
     public async Task JoinAdminGroup()
         => await Groups.AddToGroupAsync(Context.ConnectionId, "admins");
 
+    public async Task JoinUserNotificationGroup(string userId)
+        => await Groups.AddToGroupAsync(Context.ConnectionId, $"user-{userId}");
+
     public override async Task OnConnectedAsync()
     {
         _logger.LogDebug("Client connected: {ConnectionId}", Context.ConnectionId);

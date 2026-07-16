@@ -25,7 +25,7 @@ public class TeamResultValidator : AbstractValidator<TeamResultDto>
             .NotEmpty().WithMessage("Team ID is required.");
 
         RuleFor(x => x.Placement)
-            .GreaterThan(0).WithMessage("Placement must be greater than 0.")
+            .GreaterThanOrEqualTo(0).WithMessage("Placement cannot be negative.")
             .LessThanOrEqualTo(150).WithMessage("Placement cannot exceed 150.");
 
         RuleFor(x => x.Kills)

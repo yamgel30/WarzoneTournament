@@ -12,9 +12,9 @@ public class Team : BaseEntity
     public string? DiscordRoleId { get; set; }
     public string? ContactEmail { get; set; }
     public Platform PreferredPlatform { get; set; }
-    public Guid CaptainId { get; set; }
+    public Guid? CaptainId { get; set; }
 
-    public Player Captain { get; set; } = null!;
+    public Player? Captain { get; set; }
     public ICollection<TeamPlayer> TeamPlayers { get; set; } = new List<TeamPlayer>();
     public ICollection<TournamentTeam> TournamentTeams { get; set; } = new List<TournamentTeam>();
     public ICollection<MatchTeamResult> MatchResults { get; set; } = new List<MatchTeamResult>();

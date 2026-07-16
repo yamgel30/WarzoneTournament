@@ -1,43 +1,56 @@
 @page "/admin"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Tournament
 @inject ITournamentService TournamentService
 @inject IEvidenceService EvidenceService
 @inject NavigationManager NavManager
 
-<PageTitle>Admin Dashboard - Warzone</PageTitle>
+<PageTitle>Admin Dashboard — Warzone</PageTitle>
 
 <div class="page-container">
     <div class="page-header">
-        <h1 class="page-title">Admin Dashboard</h1>
+        <div>
+            <h1 class="page-title">Admin Dashboard</h1>
+            <p class="page-subtitle">System overview and quick actions</p>
+        </div>
     </div>
 
     <div class="admin-grid">
         <RadzenCard class="admin-card" @onclick="@(() => NavManager.NavigateTo("/admin/evidence"))">
-            <div class="admin-card__icon">📋</div>
+            <span class="admin-card__icon">📋</span>
             <div class="admin-card__value">@_pendingEvidence</div>
             <div class="admin-card__label">Pending Evidence Reviews</div>
             @if (_pendingEvidence > 0)
             {
-                <RadzenBadge Text="Action Required" BadgeStyle="BadgeStyle.Warning" />
+                <div style="margin-top:10px">
+                    <RadzenBadge Text="Action Required" BadgeStyle="BadgeStyle.Warning" />
+                </div>
             }
         </RadzenCard>
+
         <RadzenCard class="admin-card" @onclick="@(() => NavManager.NavigateTo("/tournaments"))">
-            <div class="admin-card__icon">🏆</div>
+            <span class="admin-card__icon">🏆</span>
             <div class="admin-card__value">@_activeTournaments</div>
             <div class="admin-card__label">Active Tournaments</div>
+            <div class="admin-card__sub">View all →</div>
         </RadzenCard>
+
         <RadzenCard class="admin-card" @onclick="@(() => NavManager.NavigateTo("/hangfire"))">
-            <div class="admin-card__icon">⚙️</div>
-            <div class="admin-card__label">Background Jobs</div>
+            <span class="admin-card__icon">⚙️</span>
+            <div class="admin-card__label" style="font-size:14px;color:var(--c-white)">Background Jobs</div>
             <div class="admin-card__sub">Hangfire Dashboard →</div>
         </RadzenCard>
     </div>
 
     <div class="admin-quick-actions">
-        <h2>Quick Actions</h2>
-        <div class="action-buttons">
-            <RadzenButton Text="Create Tournament" Icon="add"
+        <div class="section-header">
+            <span class="section-title">Quick Actions</span>
+            <div class="section-header-line"></div>
+        </div>
+        <div class="admin-actions">
+            <RadzenButton Text="Create Tournament" Icon="add_circle"
                           ButtonStyle="ButtonStyle.Primary"
                           Click="@(() => NavManager.NavigateTo("/tournaments/create"))" />
             <RadzenButton Text="Review Evidence" Icon="fact_check"
@@ -46,13 +59,16 @@
             <RadzenButton Text="View Leaderboard" Icon="leaderboard"
                           ButtonStyle="ButtonStyle.Info"
                           Click="@(() => NavManager.NavigateTo("/leaderboard"))" />
+            <RadzenButton Text="Manage Players" Icon="people"
+                          ButtonStyle="ButtonStyle.Secondary"
+                          Click="@(() => NavManager.NavigateTo("/players"))" />
         </div>
     </div>
 </div>
 
 @code {
-    private int _pendingEvidence = 0;
-    private int _activeTournaments = 0;
+    private int _pendingEvidence;
+    private int _activeTournaments;
 
     protected override async Task OnInitializedAsync()
     {

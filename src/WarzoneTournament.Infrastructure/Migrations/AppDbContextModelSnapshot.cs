@@ -22,6 +22,191 @@ namespace WarzoneTournament.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("WarzoneTournament.Domain.Entities.AppUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AvatarHash")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DiscordId")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("DiscordUsername")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("PlayerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiscordId")
+                        .IsUnique();
+
+                    b.HasIndex("PlayerId");
+
+                    b.ToTable("AppUsers", (string)null);
+                });
+
+            modelBuilder.Entity("WarzoneTournament.Domain.Entities.TeamInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("InvitedByPlayerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InvitedPlayerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvitedPlayerId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TeamId");
+
+                    b.ToTable("TeamInvitations", (string)null);
+                });
+
+            modelBuilder.Entity("WarzoneTournament.Domain.Entities.SiteSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AppName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DefaultBannerUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DefaultDiscordAnnouncementChannelId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("DiscordBotToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DefaultDiscordEvidenceChannelId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid?>("FeaturedTournamentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DefaultDiscordGuildId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("DefaultLogoUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DefaultMatchPointThreshold")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DefaultPlacementPointsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SupportEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SiteSettings", (string)null);
+                });
+
             modelBuilder.Entity("WarzoneTournament.Domain.Entities.EvidenceReview", b =>
                 {
                     b.Property<Guid>("Id")
@@ -164,12 +349,12 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DiscordChannelId")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("DiscordMessageId")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<long?>("FileSizeBytes")
                         .HasColumnType("bigint");
@@ -659,7 +844,7 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("CaptainId")
+                    b.Property<Guid?>("CaptainId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ContactEmail")
@@ -779,6 +964,9 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("CheckInEnd")
                         .HasColumnType("datetime2");
 
@@ -799,6 +987,10 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("DiscordChannelId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("DiscordEvidenceChannelId")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
@@ -875,6 +1067,26 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .HasDefaultValue(0);
 
                     b.Property<string>("StreamUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("YouTubeUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TwitterUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("InstagramUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TikTokUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("DiscordInviteUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -1021,6 +1233,16 @@ namespace WarzoneTournament.Infrastructure.Migrations
                     b.ToTable("TournamentTeams", (string)null);
                 });
 
+            modelBuilder.Entity("WarzoneTournament.Domain.Entities.AppUser", b =>
+                {
+                    b.HasOne("WarzoneTournament.Domain.Entities.Player", "Player")
+                        .WithMany()
+                        .HasForeignKey("PlayerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Player");
+                });
+
             modelBuilder.Entity("WarzoneTournament.Domain.Entities.EvidenceReview", b =>
                 {
                     b.HasOne("WarzoneTournament.Domain.Entities.MatchEvidence", "Evidence")
@@ -1162,7 +1384,7 @@ namespace WarzoneTournament.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CaptainId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired(false);
 
                     b.Navigation("Captain");
                 });
@@ -1214,6 +1436,33 @@ namespace WarzoneTournament.Infrastructure.Migrations
                     b.Navigation("Team");
 
                     b.Navigation("Tournament");
+                });
+
+            modelBuilder.Entity("WarzoneTournament.Domain.Entities.TeamInvitation", b =>
+                {
+                    b.HasOne("WarzoneTournament.Domain.Entities.Player", "InvitedByPlayer")
+                        .WithMany()
+                        .HasForeignKey("InvitedByPlayerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("WarzoneTournament.Domain.Entities.Player", "InvitedPlayer")
+                        .WithMany()
+                        .HasForeignKey("InvitedPlayerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("WarzoneTournament.Domain.Entities.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InvitedByPlayer");
+
+                    b.Navigation("InvitedPlayer");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("WarzoneTournament.Domain.Entities.Match", b =>

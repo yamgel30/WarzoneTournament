@@ -13,6 +13,7 @@ public class TournamentListDto
     public Platform Platform { get; set; }
     public string PlatformName => Platform.ToString();
     public int MaxTeams { get; set; }
+    public int PlayersPerTeam { get; set; }
     public int RegisteredTeamsCount { get; set; }
     public DateTime? StartDate { get; set; }
     public decimal? PrizePool { get; set; }

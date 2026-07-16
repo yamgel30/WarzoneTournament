@@ -1,0 +1,266 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.DependencyInjection
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Application.DTOs.Notification
+@inject IServiceScopeFactory ScopeFactory
+@inject NavigationManager NavManager
+@inject NotificationService RadzenNotify
+@implements IAsyncDisposable
+
+<div class="notif-bell" @ref="_bellRef">
+    <button class="notif-bell__btn" @onclick="ToggleDropdown" title="Notificaciones">
+        <span class="material-icons" style="font-size:20px;color:var(--c-muted)">notifications</span>
+        @if (_unreadCount > 0)
+        {
+            <span class="notif-badge">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
+        }
+    </button>
+
+    @if (_open)
+    {
+        <div class="notif-dropdown">
+            <div class="notif-dropdown__header">
+                <span>Notificaciones</span>
+                @if (_unreadCount > 0)
+                {
+                    <button class="notif-mark-all" @onclick="MarkAllReadAsync">Marcar todas leídas</button>
+                }
+            </div>
+
+            @if (_loading)
+            {
+                <div style="padding:24px;text-align:center">
+                    <div class="loading-ring" style="width:28px;height:28px;margin:0 auto"></div>
+                </div>
+            }
+            else if (!_notifications.Any())
+            {
+                <div class="notif-empty">
+                    <span style="font-size:2em">🔔</span>
+                    <p>Sin notificaciones</p>
+                </div>
+            }
+            else
+            {
+                <div class="notif-list">
+                    @foreach (var n in _notifications)
+                    {
+                        <div class="notif-item @(n.IsRead ? "" : "notif-item--unread")"
+                             @onclick="() => OpenNotification(n)">
+                            <div class="notif-item__icon">@GetIcon(n.Type)</div>
+                            <div class="notif-item__content">
+                                <div class="notif-item__title">@n.Title</div>
+                                <div class="notif-item__body">@n.Body</div>
+                                <div class="notif-item__time">@FormatTime(n.CreatedAt)</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .notif-bell { position: relative; }
+    .notif-bell__btn {
+        position: relative;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 8px;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+    }
+    .notif-bell__btn:hover { background: rgba(34,110,236,0.12); }
+    .notif-badge {
+        position: absolute;
+        top: 2px; right: 2px;
+        min-width: 16px; height: 16px;
+        background: var(--c-danger, #ef4444);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 3px;
+        line-height: 1;
+        animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+    .notif-dropdown {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        width: 320px;
+        background: rgba(4,11,65,0.96);
+        border: 1px solid rgba(34,110,236,0.3);
+        border-radius: 14px;
+        box-shadow: 0 8px 40px rgba(1,2,14,0.8);
+        backdrop-filter: blur(16px);
+        z-index: 999;
+        overflow: hidden;
+    }
+    .notif-dropdown__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--c-muted, #7A90B8);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        border-bottom: 1px solid rgba(34,110,236,0.15);
+    }
+    .notif-mark-all {
+        background: none; border: none; cursor: pointer;
+        color: var(--c-sky, #6CA4F1); font-size: 11px; font-weight: 600;
+        padding: 0; transition: color 0.15s;
+    }
+    .notif-mark-all:hover { color: var(--c-ice, #C2E6FC); }
+    .notif-list { max-height: 360px; overflow-y: auto; }
+    .notif-item {
+        display: flex;
+        gap: 12px;
+        padding: 12px 16px;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(34,110,236,0.08);
+        transition: background 0.15s;
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item:hover { background: rgba(8,51,212,0.15); }
+    .notif-item--unread { background: rgba(34,110,236,0.08); }
+    .notif-item--unread .notif-item__title { color: var(--c-ice, #C2E6FC); }
+    .notif-item__icon { font-size: 1.4em; flex-shrink: 0; margin-top: 2px; }
+    .notif-item__content { flex: 1; min-width: 0; }
+    .notif-item__title { font-size: 13px; font-weight: 600; color: var(--c-white, #E8EFF8); margin-bottom: 2px; }
+    .notif-item__body { font-size: 12px; color: var(--c-muted, #7A90B8); line-height: 1.4; }
+    .notif-item__time { font-size: 11px; color: var(--c-slate, #3F5497); margin-top: 4px; }
+    .notif-empty { padding: 32px 16px; text-align: center; color: var(--c-muted, #7A90B8); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+</style>
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+
+    private bool _open;
+    private bool _loading;
+    private int _unreadCount;
+    private List<NotificationDto> _notifications = new();
+    private HubConnection? _hubConnection;
+    private ElementReference _bellRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserId == Guid.Empty) return;
+        // Own scope so this DbContext doesn't conflict with the page's scoped DbContext
+        using var scope = ScopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        _unreadCount = await svc.GetUnreadCountAsync(UserId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && UserId != Guid.Empty)
+            await ConnectSignalRAsync();
+    }
+
+    private async Task ConnectSignalRAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavManager.ToAbsoluteUri("/hubs/tournament"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<NotificationDto>("NewNotification", async notif =>
+        {
+            _unreadCount++;
+            if (_open) _notifications.Insert(0, notif);
+            RadzenNotify.Notify(new NotificationMessage
+            {
+                Severity = GetSeverity(notif.Type),
+                Summary = notif.Title,
+                Detail = notif.Body,
+                Duration = 5000,
+                Click = _ => { if (!string.IsNullOrEmpty(notif.Link)) NavManager.NavigateTo(notif.Link); }
+            });
+            await InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            await _hubConnection.SendAsync("JoinUserNotificationGroup", UserId.ToString());
+        }
+        catch { }
+    }
+
+    private async Task ToggleDropdown()
+    {
+        _open = !_open;
+        if (_open && !_notifications.Any())
+        {
+            _loading = true;
+            using var scope = ScopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            _notifications = (await svc.GetRecentAsync(UserId)).ToList();
+            _loading = false;
+        }
+    }
+
+    private async Task OpenNotification(NotificationDto n)
+    {
+        if (!n.IsRead)
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            await svc.MarkReadAsync(n.Id);
+        }
+        _unreadCount = Math.Max(0, _unreadCount - (n.IsRead ? 0 : 1));
+        _notifications = _notifications.Select(x => x.Id == n.Id ? x with { IsRead = true } : x).ToList();
+        _open = false;
+        if (!string.IsNullOrEmpty(n.Link)) NavManager.NavigateTo(n.Link);
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        await svc.MarkAllReadAsync(UserId);
+        _notifications = _notifications.Select(n => n with { IsRead = true }).ToList();
+        _unreadCount = 0;
+    }
+
+    private static string GetIcon(string type) => type switch
+    {
+        "Invitation"       => "✉️",
+        "EvidenceApproved" => "✅",
+        "EvidenceRejected" => "❌",
+        _                  => "🔔"
+    };
+
+    private static NotificationSeverity GetSeverity(string type) => type switch
+    {
+        "EvidenceRejected" => NotificationSeverity.Error,
+        "EvidenceApproved" => NotificationSeverity.Success,
+        _                  => NotificationSeverity.Info
+    };
+
+    private static string FormatTime(DateTime dt)
+    {
+        var diff = DateTime.UtcNow - dt;
+        if (diff.TotalMinutes < 1) return "Ahora";
+        if (diff.TotalHours < 1) return $"Hace {(int)diff.TotalMinutes}m";
+        if (diff.TotalDays < 1) return $"Hace {(int)diff.TotalHours}h";
+        return dt.ToLocalTime().ToString("dd/MM HH:mm");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null) await _hubConnection.DisposeAsync();
+    }
+}

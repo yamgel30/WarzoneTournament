@@ -1,4 +1,6 @@
 @page "/teams/register"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using WarzoneTournament.Application.Common.Interfaces
 @using WarzoneTournament.Application.DTOs.Team
 @using WarzoneTournament.Application.DTOs.Player
@@ -47,7 +49,7 @@
                 </div>
 
                 <div class="form-field form-field--full">
-                    <RadzenLabel Text="Captain (Discord ID or Username) *" />
+                    <RadzenLabel Text="Capitán (opcional)" />
                     <div class="player-search">
                         <RadzenTextBox @bind-Value="_captainSearch" Placeholder="Search player..."
                                        Style="width:280px" @oninput="@SearchPlayers" />
@@ -179,12 +181,6 @@
 
     private async Task OnSubmit()
     {
-        if (_selectedCaptain is null)
-        {
-            _errorMessage = "Please select a captain.";
-            return;
-        }
-
         _saving = true;
         _errorMessage = null;
         try

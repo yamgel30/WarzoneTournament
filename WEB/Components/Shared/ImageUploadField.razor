@@ -1,0 +1,192 @@
+@using WarzoneTournament.Application.Common.Interfaces
+@inject IFileStorageService FileStorage
+
+<div class="iuf-root">
+
+    @* ── Preview ── *@
+    <div class="iuf-preview @(string.IsNullOrEmpty(Value) ? "iuf-preview--empty" : "")">
+        @if (!string.IsNullOrEmpty(Value))
+        {
+            <img src="@Value" alt="preview" class="iuf-img" />
+            <button type="button" class="iuf-clear" @onclick="ClearAsync" title="Quitar imagen">✕</button>
+        }
+        else
+        {
+            <span class="iuf-placeholder-icon">🖼️</span>
+            <span class="iuf-placeholder-txt">Sin imagen</span>
+        }
+    </div>
+
+    @* ── Actions row ── *@
+    <div class="iuf-actions">
+        @if (_uploading)
+        {
+            <div class="iuf-busy">
+                <span class="iuf-spinner"></span>
+                <span>Subiendo…</span>
+            </div>
+        }
+        else
+        {
+            <label class="iuf-btn">
+                📁 @(string.IsNullOrEmpty(Value) ? "Seleccionar imagen" : "Cambiar imagen")
+                <InputFile OnChange="@OnFileSelected" accept="image/*" style="display:none" />
+            </label>
+        }
+
+        <button type="button" class="iuf-url-toggle" @onclick="@(() => _showUrl = !_showUrl)">
+            @(_showUrl ? "▲ ocultar" : "🔗 URL manual")
+        </button>
+    </div>
+
+    @* ── Manual URL fallback ── *@
+    @if (_showUrl)
+    {
+        <input type="text"
+               class="iuf-url-input"
+               value="@Value"
+               @oninput="@(async e => await ValueChanged.InvokeAsync(e.Value?.ToString()))"
+               placeholder="https://... o /images/archivo.png" />
+    }
+
+    @* ── Error ── *@
+    @if (_error is not null)
+    {
+        <div class="iuf-error">⚠️ @_error</div>
+    }
+
+</div>
+
+<style>
+    .iuf-root { display: flex; flex-direction: column; gap: 8px; }
+
+    /* Preview box */
+    .iuf-preview {
+        position: relative;
+        min-height: 90px;
+        border-radius: 8px;
+        border: 2px dashed rgba(255,255,255,0.12);
+        overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.2);
+    }
+    .iuf-preview--empty {
+        flex-direction: column; gap: 4px;
+    }
+    .iuf-img {
+        max-height: 160px; max-width: 100%;
+        object-fit: contain; border-radius: 6px;
+        display: block;
+    }
+    .iuf-placeholder-icon { font-size: 1.8em; opacity: 0.3; }
+    .iuf-placeholder-txt  { font-size: 0.78em; color: var(--rz-text-secondary-color); opacity: 0.6; }
+    .iuf-clear {
+        position: absolute; top: 6px; right: 6px;
+        background: rgba(0,0,0,0.6); border: none; color: #fff;
+        width: 24px; height: 24px; border-radius: 50%;
+        cursor: pointer; font-size: 0.75em; line-height: 1;
+        display: flex; align-items: center; justify-content: center;
+        opacity: 0.7; transition: opacity .15s;
+    }
+    .iuf-clear:hover { opacity: 1; }
+
+    /* Actions */
+    .iuf-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    .iuf-btn {
+        cursor: pointer;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px;
+        background: var(--rz-base-background-color);
+        border: 1px solid var(--rz-grid-header-border-color);
+        border-radius: 6px; font-size: 0.85em; color: var(--rz-text-color);
+        transition: background .15s, border-color .15s;
+        white-space: nowrap;
+    }
+    .iuf-btn:hover { background: rgba(255,255,255,0.06); border-color: var(--rz-primary); }
+
+    .iuf-url-toggle {
+        background: none; border: none;
+        color: var(--rz-text-secondary-color); font-size: 0.78em;
+        cursor: pointer; padding: 4px 6px;
+        text-decoration: underline; opacity: 0.7;
+    }
+    .iuf-url-toggle:hover { opacity: 1; }
+
+    /* Busy spinner */
+    .iuf-busy {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 0.85em; color: var(--rz-text-secondary-color);
+    }
+    .iuf-spinner {
+        width: 16px; height: 16px;
+        border: 2px solid rgba(167,139,250,0.25);
+        border-top-color: #a78bfa;
+        border-radius: 50%;
+        animation: iuf-spin .8s linear infinite; flex-shrink: 0;
+    }
+    @@keyframes iuf-spin { to { transform: rotate(360deg); } }
+
+    /* Manual URL input */
+    .iuf-url-input {
+        width: 100%; padding: 7px 10px;
+        background: var(--rz-base-background-color);
+        border: 1px solid var(--rz-grid-header-border-color);
+        border-radius: 6px; color: var(--rz-text-color);
+        font-size: 0.85em; font-family: monospace;
+        outline: none;
+    }
+    .iuf-url-input:focus { border-color: var(--rz-primary); }
+
+    /* Error */
+    .iuf-error {
+        font-size: 0.82em; color: #fca5a5;
+        background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
+        border-radius: 6px; padding: 6px 10px;
+    }
+</style>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    private bool _uploading;
+    private bool _showUrl;
+    private string? _error;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var file = e.File;
+
+        if (file.Size > FileStorage.MaxFileSizeBytes)
+        {
+            _error = $"El archivo es demasiado grande. Máximo {FileStorage.MaxFileSizeBytes / 1024 / 1024} MB.";
+            return;
+        }
+
+        if (!FileStorage.IsValidImageFile(file.Name, file.ContentType))
+        {
+            _error = "Formato no válido. Usa JPG, PNG, GIF o WEBP.";
+            return;
+        }
+
+        _uploading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: FileStorage.MaxFileSizeBytes);
+            var url = await FileStorage.UploadFileAsync(stream, file.Name, file.ContentType);
+            await ValueChanged.InvokeAsync(url);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al subir: {ex.Message}";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    private async Task ClearAsync() => await ValueChanged.InvokeAsync(null);
+}

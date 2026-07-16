@@ -1,0 +1,127 @@
+@page "/login"
+@model WEB.Pages.LoginModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iniciar sesión — Warzone Tournament</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background: radial-gradient(ellipse at 30% 20%, rgba(7,26,130,0.5) 0%, #01020E 60%),
+                        radial-gradient(ellipse at 80% 80%, rgba(8,51,212,0.3) 0%, transparent 60%);
+            background-color: #01020E;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            color: #E8EFF8;
+        }
+        @@keyframes fade-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @@keyframes glow-pulse {
+            0%, 100% { box-shadow: 0 0 40px rgba(8,51,212,0.25); }
+            50%       { box-shadow: 0 0 70px rgba(34,110,236,0.35); }
+        }
+        .card {
+            background: rgba(4,11,65,0.75);
+            border: 1px solid rgba(34,110,236,0.25);
+            border-radius: 20px;
+            padding: 48px 40px;
+            width: 100%; max-width: 400px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            animation: fade-up 0.4s ease, glow-pulse 3s ease-in-out infinite;
+        }
+        .logo { text-align: center; margin-bottom: 40px; }
+        .logo-icon {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, #0833D4, #226EEC);
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem; margin: 0 auto 16px;
+            box-shadow: 0 0 24px rgba(8,51,212,0.5);
+        }
+        .logo h1 {
+            font-size: 1.25rem; font-weight: 900;
+            background: linear-gradient(90deg, #6CA4F1, #C2E6FC);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 1.5px; text-transform: uppercase;
+        }
+        .logo p  { font-size: 0.82rem; color: #3F5497; margin-top: 8px; }
+        .discord-btn {
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            width: 100%; padding: 15px 20px;
+            background: #5865F2; border: none; border-radius: 12px;
+            color: #fff; font-size: 1rem; font-weight: 700;
+            cursor: pointer; text-decoration: none;
+            transition: background .2s, transform .15s, box-shadow .2s;
+            box-shadow: 0 4px 16px rgba(88,101,242,0.35);
+        }
+        .discord-btn:hover {
+            background: #4752c4;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 22px rgba(88,101,242,0.5);
+        }
+        .discord-btn:active { transform: translateY(0); }
+        .discord-btn svg { flex-shrink: 0; }
+        .divider {
+            text-align: center; margin: 28px 0;
+            color: rgba(63,84,151,0.6); font-size: 0.75em;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .divider::before, .divider::after {
+            content: ''; flex: 1; height: 1px;
+            background: rgba(34,110,236,0.15);
+        }
+        .admin-link {
+            display: block; text-align: center;
+            color: #3F5497; font-size: 0.82rem;
+            text-decoration: none; transition: color .2s;
+            padding: 8px;
+        }
+        .admin-link:hover { color: #6CA4F1; }
+        .error {
+            background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4);
+            border-radius: 10px; padding: 11px 14px;
+            color: #fca5a5; font-size: 0.85rem; margin-bottom: 22px;
+            display: flex; align-items: center; gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">
+            <div class="logo-icon">⚡</div>
+            <h1>Warzone Tournament</h1>
+            <p>Plataforma de torneos competitivos</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.Error))
+        {
+            <div class="error">⚠️ @Model.Error</div>
+        }
+
+        <form method="post" asp-page-handler="Discord">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            <button type="submit" class="discord-btn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+                    <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/>
+                </svg>
+                Continuar con Discord
+            </button>
+        </form>
+
+        <div class="divider">o</div>
+        <a href="/admin/login" class="admin-link">🔐 Acceso de administrador</a>
+    </div>
+</body>
+</html>

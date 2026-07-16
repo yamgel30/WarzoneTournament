@@ -1,0 +1,225 @@
+@page "/admin/import-players"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using WarzoneTournament.Application.Common.Interfaces
+@using WarzoneTournament.Domain.Entities
+@using WarzoneTournament.Domain.Enums
+@using WarzoneTournament.Domain.Interfaces
+@inject IUnitOfWork UoW
+@inject NavigationManager NavManager
+
+<PageTitle>Importar Jugadores — Warzone</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Importar Jugadores</h1>
+            <p class="page-subtitle">Carga masiva de jugadores desde un archivo CSV</p>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+
+        @* ── INSTRUCTIONS ── *@
+        <div class="glass-card">
+            <div class="section-header">
+                <span class="section-title">📋 Formato CSV</span>
+                <div class="section-header-line"></div>
+            </div>
+            <p style="color:var(--c-muted);font-size:13px;margin-bottom:14px">
+                Cada fila representa un jugador. La primera fila debe ser el encabezado.
+                Columnas requeridas: <strong style="color:var(--c-sky)">DiscordId</strong>, <strong style="color:var(--c-sky)">Username</strong>.
+            </p>
+            <div style="background:rgba(1,2,14,0.6);border:1px solid var(--c-border);border-radius:var(--r-md);padding:14px;font-family:monospace;font-size:12px;color:var(--c-sky);line-height:1.8;margin-bottom:16px">
+                DiscordId,Username,Email,Platform<br/>
+                123456789012345,PlayerOne,player@mail.com,PC<br/>
+                987654321098765,PlayerTwo,,PlayStation
+            </div>
+            <div style="font-size:12px;color:var(--c-muted)">
+                <div style="margin-bottom:6px">• <strong style="color:var(--c-white)">DiscordId</strong> — ID numérico de Discord (requerido)</div>
+                <div style="margin-bottom:6px">• <strong style="color:var(--c-white)">Username</strong> — Nombre del jugador (requerido)</div>
+                <div style="margin-bottom:6px">• <strong style="color:var(--c-white)">Email</strong> — Correo electrónico (opcional)</div>
+                <div>• <strong style="color:var(--c-white)">Platform</strong> — PC, PlayStation, Xbox (opcional, default: PC)</div>
+            </div>
+        </div>
+
+        @* ── UPLOAD FORM ── *@
+        <div class="glass-card">
+            <div class="section-header">
+                <span class="section-title">📤 Cargar CSV</span>
+                <div class="section-header-line"></div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Flat" style="margin-bottom:14px">@_error</RadzenAlert>
+            }
+
+            <div style="margin-bottom:16px">
+                <RadzenLabel Text="Pegar contenido CSV" />
+                <textarea @bind="_csvText"
+                          rows="10"
+                          placeholder="DiscordId,Username,Email,Platform&#10;123456789,PlayerOne,,PC"
+                          style="width:100%;margin-top:6px;padding:10px 14px;background:rgba(4,11,65,0.7);border:1px solid var(--c-border);border-radius:var(--r-md);color:var(--c-white);font-family:monospace;font-size:12px;resize:vertical;outline:none">
+                </textarea>
+            </div>
+
+            <RadzenButton Text="@(_busy ? "Importando..." : "Importar Jugadores")"
+                          Icon="upload"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@ImportAsync"
+                          Disabled="@(_busy || string.IsNullOrWhiteSpace(_csvText))" />
+        </div>
+    </div>
+
+    @* ── RESULTS ── *@
+    @if (_results.Any())
+    {
+        <div class="glass-card" style="margin-top:24px">
+            <div class="section-header">
+                <span class="section-title">📊 Resultado de la importación</span>
+                <div class="section-header-line"></div>
+            </div>
+
+            <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+                <div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:var(--r-md);padding:12px 20px;text-align:center">
+                    <div style="font-size:24px;font-weight:800;color:#4ade80">@_results.Count(r => r.Status == "Creado")</div>
+                    <div style="font-size:11px;color:var(--c-muted);text-transform:uppercase;letter-spacing:1px">Creados</div>
+                </div>
+                <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:var(--r-md);padding:12px 20px;text-align:center">
+                    <div style="font-size:24px;font-weight:800;color:#fbbf24">@_results.Count(r => r.Status == "Omitido")</div>
+                    <div style="font-size:11px;color:var(--c-muted);text-transform:uppercase;letter-spacing:1px">Omitidos</div>
+                </div>
+                <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r-md);padding:12px 20px;text-align:center">
+                    <div style="font-size:24px;font-weight:800;color:#f87171">@_results.Count(r => r.Status == "Error")</div>
+                    <div style="font-size:11px;color:var(--c-muted);text-transform:uppercase;letter-spacing:1px">Errores</div>
+                </div>
+            </div>
+
+            <RadzenDataGrid Data="@_results" TItem="ImportRow" AllowPaging="true" PageSize="20"
+                            Style="border-radius:10px;overflow:hidden">
+                <Columns>
+                    <RadzenDataGridColumn TItem="ImportRow" Property="Row" Title="#" Width="50px" />
+                    <RadzenDataGridColumn TItem="ImportRow" Property="DiscordId" Title="Discord ID" Width="160px" />
+                    <RadzenDataGridColumn TItem="ImportRow" Property="Username" Title="Username" />
+                    <RadzenDataGridColumn TItem="ImportRow" Title="Estado" Width="110px">
+                        <Template Context="r">
+                            <RadzenBadge Text="@r.Status"
+                                         BadgeStyle="@(r.Status == "Creado" ? BadgeStyle.Success : r.Status == "Omitido" ? BadgeStyle.Warning : BadgeStyle.Danger)" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="ImportRow" Property="Note" Title="Nota" />
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+    }
+</div>
+
+@code {
+    private string _csvText = "";
+    private string? _error;
+    private bool _busy;
+    private List<ImportRow> _results = new();
+
+    private async Task ImportAsync()
+    {
+        _error = null;
+        _results.Clear();
+        _busy = true;
+
+        try
+        {
+            var lines = _csvText.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                .Select(l => l.Trim())
+                                .Where(l => !string.IsNullOrWhiteSpace(l))
+                                .ToList();
+
+            if (lines.Count < 2) { _error = "El CSV debe tener al menos una fila de encabezado y una de datos."; return; }
+
+            // Parse header
+            var header = lines[0].Split(',').Select(h => h.Trim().ToLowerInvariant()).ToArray();
+            int discordIdx = Array.IndexOf(header, "discordid");
+            int usernameIdx = Array.IndexOf(header, "username");
+            int emailIdx = Array.IndexOf(header, "email");
+            int platformIdx = Array.IndexOf(header, "platform");
+
+            if (discordIdx < 0 || usernameIdx < 0)
+            {
+                _error = "El CSV debe tener columnas 'DiscordId' y 'Username'.";
+                return;
+            }
+
+            for (int i = 1; i < lines.Count; i++)
+            {
+                var cols = lines[i].Split(',').Select(c => c.Trim()).ToArray();
+                var row = new ImportRow { Row = i };
+
+                if (cols.Length <= Math.Max(discordIdx, usernameIdx))
+                {
+                    row.Status = "Error";
+                    row.Note = "Fila incompleta";
+                    _results.Add(row);
+                    continue;
+                }
+
+                row.DiscordId = cols[discordIdx];
+                row.Username  = cols[usernameIdx];
+
+                if (string.IsNullOrWhiteSpace(row.DiscordId) || string.IsNullOrWhiteSpace(row.Username))
+                {
+                    row.Status = "Error";
+                    row.Note = "DiscordId o Username vacío";
+                    _results.Add(row);
+                    continue;
+                }
+
+                // Check duplicate
+                var existing = await UoW.Players.ExistsAsync(p => p.DiscordId == row.DiscordId);
+                if (existing)
+                {
+                    row.Status = "Omitido";
+                    row.Note = "Ya existe un jugador con ese DiscordId";
+                    _results.Add(row);
+                    continue;
+                }
+
+                string? email = emailIdx >= 0 && cols.Length > emailIdx && !string.IsNullOrWhiteSpace(cols[emailIdx])
+                    ? cols[emailIdx] : null;
+
+                Platform platform = Platform.PC;
+                if (platformIdx >= 0 && cols.Length > platformIdx)
+                    Enum.TryParse<Platform>(cols[platformIdx], ignoreCase: true, out platform);
+
+                await UoW.Players.AddAsync(new Player
+                {
+                    Username    = row.Username,
+                    DiscordId   = row.DiscordId,
+                    Email       = email,
+                    Platform    = platform,
+                    IsVerified  = false
+                });
+                await UoW.SaveChangesAsync();
+
+                row.Status = "Creado";
+                _results.Add(row);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error procesando el CSV: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private class ImportRow
+    {
+        public int Row { get; set; }
+        public string DiscordId { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string Note { get; set; } = "";
+    }
+}

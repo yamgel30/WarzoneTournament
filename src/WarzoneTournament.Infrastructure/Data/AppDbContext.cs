@@ -23,6 +23,11 @@ public class AppDbContext : DbContext
     public DbSet<OCRExtractionResult> OCRExtractionResults => Set<OCRExtractionResult>();
     public DbSet<TeamPlayer> TeamPlayers => Set<TeamPlayer>();
     public DbSet<TournamentTeam> TournamentTeams => Set<TournamentTeam>();
+    public DbSet<SiteSettings> SiteSettings => Set<SiteSettings>();
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<TeamInvitation> TeamInvitations => Set<TeamInvitation>();
+    public DbSet<AppNotification> Notifications => Set<AppNotification>();
+    public DbSet<PendingDiscordInvite> PendingDiscordInvites => Set<PendingDiscordInvite>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

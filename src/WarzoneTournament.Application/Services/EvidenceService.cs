@@ -16,16 +16,21 @@ public class EvidenceService : IEvidenceService
     private readonly ILogger<EvidenceService> _logger;
     private readonly ISignalRNotificationService _signalR;
     private readonly IDiscordNotificationService _discord;
+    private readonly INotificationService _notifications;
+    private readonly ISiteSettingsService _settings;
 
     public EvidenceService(IUnitOfWork uow, IMapper mapper,
         ILogger<EvidenceService> logger, ISignalRNotificationService signalR,
-        IDiscordNotificationService discord)
+        IDiscordNotificationService discord, INotificationService notifications,
+        ISiteSettingsService settings)
     {
         _uow = uow;
         _mapper = mapper;
         _logger = logger;
         _signalR = signalR;
         _discord = discord;
+        _notifications = notifications;
+        _settings = settings;
     }
 
     public async Task<Result<EvidenceDto>> SubmitEvidenceAsync(SubmitEvidenceDto dto, CancellationToken ct = default)
@@ -114,6 +119,25 @@ public class EvidenceService : IEvidenceService
         await _uow.SaveChangesAsync(ct);
         await _signalR.NotifyEvidenceReviewedAsync(id, "Approved", ct);
 
+        // Notify the submitting player
+        var appUser = evidence.SubmittedByPlayerId.HasValue
+            ? await _uow.AppUsers.FirstOrDefaultAsync(u => u.PlayerId == evidence.SubmittedByPlayerId.Value, ct)
+            : null;
+        if (appUser is not null)
+        {
+            var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);
+            await _notifications.CreateAsync(appUser.Id,
+                "Evidencia aprobada ✅",
+                $"Tu evidencia del equipo {team?.Name ?? "—"} fue aprobada.",
+                "EvidenceApproved", null, ct);
+            var player = evidence.SubmittedByPlayerId.HasValue
+                ? await _uow.Players.GetByIdAsync(evidence.SubmittedByPlayerId.Value, ct) : null;
+            var cfg = await _settings.GetAsync();
+            if (cfg.DiscordDmEvidenceApproved && !string.IsNullOrEmpty(player?.DiscordId))
+                await _discord.SendDirectMessageAsync(player.DiscordId,
+                    $"✅ Tu evidencia fue **aprobada** para el equipo **{team?.Name ?? "—"}**.", ct);
+        }
+
         _logger.LogInformation("Evidence {EvidenceId} approved by {ReviewedBy}", id, reviewedBy);
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
     }
@@ -140,6 +164,25 @@ public class EvidenceService : IEvidenceService
         await _signalR.NotifyEvidenceReviewedAsync(id, "Rejected", ct);
         await _discord.SendEvidenceRejectionNotificationAsync(id, reason, ct);
 
+        // Notify the submitting player
+        var appUser = evidence.SubmittedByPlayerId.HasValue
+            ? await _uow.AppUsers.FirstOrDefaultAsync(u => u.PlayerId == evidence.SubmittedByPlayerId.Value, ct)
+            : null;
+        if (appUser is not null)
+        {
+            var team = await _uow.Teams.GetByIdAsync(evidence.SubmittedByTeamId, ct);
+            await _notifications.CreateAsync(appUser.Id,
+                "Evidencia rechazada ❌",
+                $"Tu evidencia fue rechazada. Razón: {reason}",
+                "EvidenceRejected", null, ct);
+            var player = evidence.SubmittedByPlayerId.HasValue
+                ? await _uow.Players.GetByIdAsync(evidence.SubmittedByPlayerId.Value, ct) : null;
+            var cfg = await _settings.GetAsync();
+            if (cfg.DiscordDmEvidenceRejected && !string.IsNullOrEmpty(player?.DiscordId))
+                await _discord.SendDirectMessageAsync(player.DiscordId,
+                    $"❌ Tu evidencia fue **rechazada**.\n**Razón:** {reason}", ct);
+        }
+
         _logger.LogInformation("Evidence {EvidenceId} rejected by {ReviewedBy}: {Reason}", id, reviewedBy, reason);
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
     }
@@ -155,6 +198,7 @@ public class EvidenceService : IEvidenceService
         {
             MatchId = dto.MatchId,
             SubmittedByTeamId = dto.SubmittedByTeamId,
+            SubmittedByPlayerId = dto.SubmittedByPlayerId,
             ImageUrl = dto.ImageUrl,
             DiscordMessageId = dto.DiscordMessageId,
             DiscordChannelId = dto.DiscordChannelId,
@@ -172,6 +216,116 @@ public class EvidenceService : IEvidenceService
         _logger.LogInformation("Discord evidence submitted for match {MatchId}, message {MessageId}",
             dto.MatchId, dto.DiscordMessageId);
 
+        return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
+    }
+
+    public async Task<Result<EvidenceDto>> ApproveWithVerifiedDataAsync(
+        Guid evidenceId, string reviewedBy, int? placement, int? kills, string? notes,
+        Dictionary<Guid, int>? playerKills = null, CancellationToken ct = default)
+    {
+        var evidence = await _uow.MatchEvidences.GetByIdAsync(evidenceId, ct);
+        if (evidence is null) return Result.Failure<EvidenceDto>("Evidence not found.");
+
+        // Total kills = sum of per-player kills if provided, otherwise the manual total
+        int? totalKills = (playerKills is { Count: > 0 })
+            ? playerKills.Values.Sum()
+            : kills;
+
+        // Save manually verified extraction data
+        var existing = await _uow.OCRExtractionResults.FirstOrDefaultAsync(o => o.EvidenceId == evidenceId, ct);
+        if (existing is not null)
+        {
+            if (placement.HasValue) existing.ExtractedPlacement = placement;
+            if (totalKills.HasValue) existing.ExtractedKills = totalKills;
+            existing.RequiresManualReview = false;
+            existing.ConfidenceScore = 1.0m;
+            existing.OcrProvider = "Manual";
+            _uow.OCRExtractionResults.Update(existing);
+        }
+        else
+        {
+            await _uow.OCRExtractionResults.AddAsync(new Domain.Entities.OCRExtractionResult
+            {
+                EvidenceId = evidenceId,
+                RawText = "Revisión manual por administrador",
+                ExtractedPlacement = placement,
+                ExtractedKills = totalKills,
+                ConfidenceScore = 1.0m,
+                RequiresManualReview = false,
+                ProcessedAt = DateTime.UtcNow,
+                OcrProvider = "Manual"
+            }, ct);
+        }
+
+        // Save per-player kills to PlayerMatchStats
+        if (playerKills is { Count: > 0 })
+        {
+            foreach (var (playerId, playerKillCount) in playerKills)
+            {
+                var stat = await _uow.PlayerMatchStats.FirstOrDefaultAsync(
+                    s => s.MatchId == evidence.MatchId && s.PlayerId == playerId, ct);
+
+                if (stat is not null)
+                {
+                    stat.Kills = playerKillCount;
+                    _uow.PlayerMatchStats.Update(stat);
+                }
+                else
+                {
+                    await _uow.PlayerMatchStats.AddAsync(new Domain.Entities.PlayerMatchStats
+                    {
+                        MatchId = evidence.MatchId,
+                        PlayerId = playerId,
+                        TeamId = evidence.SubmittedByTeamId,
+                        Kills = playerKillCount,
+                        IsVerified = true
+                    }, ct);
+                }
+            }
+        }
+
+        // Upsert MatchTeamResult — saves kills and placement from the evidence photo.
+        // Points are NOT recalculated here; that happens in Manual Points when the admin hits Save.
+        if (totalKills.HasValue || placement.HasValue)
+        {
+            var teamResult = await _uow.MatchTeamResults.FirstOrDefaultAsync(
+                tr => tr.MatchId == evidence.MatchId && tr.TeamId == evidence.SubmittedByTeamId, ct);
+
+            if (teamResult is not null)
+            {
+                if (totalKills.HasValue) teamResult.Kills = totalKills.Value;
+                if (placement.HasValue) teamResult.Placement = placement.Value;
+                _uow.MatchTeamResults.Update(teamResult);
+            }
+            else
+            {
+                await _uow.MatchTeamResults.AddAsync(new Domain.Entities.MatchTeamResult
+                {
+                    MatchId = evidence.MatchId,
+                    TeamId = evidence.SubmittedByTeamId,
+                    Placement = placement ?? 0,
+                    Kills = totalKills ?? 0,
+                    IsVerified = false
+                }, ct);
+            }
+        }
+
+        evidence.Status = EvidenceStatus.Approved;
+        evidence.OcrProcessed = true;
+        _uow.MatchEvidences.Update(evidence);
+
+        await _uow.EvidenceReviews.AddAsync(new EvidenceReview
+        {
+            EvidenceId = evidenceId,
+            ReviewedBy = reviewedBy,
+            Decision = EvidenceStatus.Approved,
+            Notes = notes ?? "Revisión manual",
+            ReviewedAt = DateTime.UtcNow
+        }, ct);
+
+        await _uow.SaveChangesAsync(ct);
+        await _signalR.NotifyEvidenceReviewedAsync(evidenceId, "Approved", ct);
+        _logger.LogInformation("Evidence {EvidenceId} approved with manual data by {ReviewedBy}", evidenceId, reviewedBy);
         return Result.Success(await BuildEvidenceDtoAsync(evidence, ct));
     }
 

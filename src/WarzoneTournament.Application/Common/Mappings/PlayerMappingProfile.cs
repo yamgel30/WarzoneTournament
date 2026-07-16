@@ -9,6 +9,7 @@ public class PlayerMappingProfile : Profile
     public PlayerMappingProfile()
     {
         CreateMap<Player, PlayerDto>();
+        CreateMap<Player, PlayerListDto>();
 
         CreateMap<CreatePlayerDto, Player>()
             .ForMember(d => d.Id, opt => opt.Ignore())

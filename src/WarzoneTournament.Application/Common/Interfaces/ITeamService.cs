@@ -13,6 +13,7 @@ public interface ITeamService
     Task<Result> CheckInTeamAsync(Guid teamId, Guid tournamentId, CancellationToken ct = default);
     Task<Result> AddPlayerToTeamAsync(Guid teamId, Guid playerId, CancellationToken ct = default);
     Task<Result> RemovePlayerFromTeamAsync(Guid teamId, Guid playerId, CancellationToken ct = default);
+    Task<Result> SetCaptainAsync(Guid teamId, Guid? captainPlayerId, CancellationToken ct = default);
     Task<Result> DeleteTeamAsync(Guid id, CancellationToken ct = default);
     Task<Result<IReadOnlyList<TournamentTeamStatusDto>>> GetTeamsWithTournamentStatusAsync(Guid tournamentId, CancellationToken ct = default);
     Task<Result> UnregisterTeamFromTournamentAsync(Guid teamId, Guid tournamentId, CancellationToken ct = default);
